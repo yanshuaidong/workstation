@@ -30,6 +30,14 @@ const routes = [
     meta: {
       title: '消息面分析'
     }
+  },
+  {
+    path: '/prompt-formatter',
+    name: 'PromptFormatter',
+    component: () => import('@/components/PromptFormatter.vue'),
+    meta: {
+      title: '提示词格式化'
+    }
   }
 ]
 
@@ -38,4 +46,4 @@ const router = createRouter({
   routes
 })
 
-export default router 
+export default router

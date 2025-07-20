@@ -1,168 +1,333 @@
 <template>
   <div class="technical-analysis">
-    <div class="header">
-      <h2>期货技术分析</h2>
-    </div>
+    <!-- 页面标题 -->
+    <el-card class="header-card" shadow="never">
+      <template #header>
+        <div class="card-header">
+          <span class="title">期货技术分析</span>
+          <el-tag type="info" size="large">实时数据分析</el-tag>
+        </div>
+      </template>
+    </el-card>
     
     <!-- 列显示控制 -->
-    <div class="column-controls">
-      <div class="controls-header">
-        <h4>列显示设置</h4>
-        <div class="control-buttons">
-          <button @click="showAllColumns" class="btn btn-sm btn-outline">全选</button>
-          <button @click="hideAllColumns" class="btn btn-sm btn-outline">全不选</button>
-          <button @click="resetToDefault" class="btn btn-sm btn-outline">恢复默认</button>
-        </div>
-      </div>
-      <div class="column-checkboxes">
-        <label 
-          v-for="column in availableColumns" 
-          :key="column.key"
-          class="checkbox-label"
-        >
-          <input 
-            type="checkbox" 
-            v-model="visibleColumns[column.key]"
-            class="checkbox-input"
-          >
-          <span class="checkbox-text">{{ column.label }}</span>
-        </label>
-      </div>
-    </div>
-    
-    <!-- 查询表单 -->
-    <div class="query-form">
-      <div class="form-row">
-        <div class="form-group">
-          <label>选择合约:</label>
-          <div class="contract-selector">
-            <input 
-              type="text" 
-              v-model="contractSearch" 
-              placeholder="搜索合约名称、代码或交易所..."
-              class="form-control contract-search"
-              @input="filterContracts"
-            >
-            <select v-model="queryParams.symbol" class="form-control">
-              <option value="">请选择合约</option>
-              <option 
-                v-for="contract in filteredContracts" 
-                :key="contract.symbol" 
-                :value="contract.name"
-              >
-                {{ contract.exchange }} - {{ contract.name }} ({{ contract.symbol }})
-              </option>
-            </select>
+    <el-card class="column-controls-card" shadow="hover">
+      <template #header>
+        <div class="controls-header">
+          <span>列显示设置</span>
+          <div class="control-buttons">
+            <el-button @click="showAllColumns" size="small" type="primary" plain>
+              <el-icon><Select /></el-icon>
+              全选
+            </el-button>
+            <el-button @click="hideAllColumns" size="small" type="warning" plain>
+              <el-icon><Remove /></el-icon>
+              全不选
+            </el-button>
+            <el-button @click="resetToDefault" size="small" type="info" plain>
+              <el-icon><Refresh /></el-icon>
+              恢复默认
+            </el-button>
           </div>
         </div>
-        
-        <div class="form-group">
-          <label>周期:</label>
-          <select v-model="queryParams.period" class="form-control">
-            <option 
-              v-for="period in periods" 
-              :key="period.value" 
-              :value="period.value"
-            >
-              {{ period.label }}
-            </option>
-          </select>
-        </div>
-        
-        <div class="form-group">
-          <label>开始日期:</label>
-          <input 
-            type="date" 
-            v-model="queryParams.startDate" 
-            class="form-control"
+      </template>
+      
+      <div class="column-checkboxes">
+        <el-checkbox-group v-model="selectedColumns">
+          <el-checkbox 
+            v-for="column in availableColumns" 
+            :key="column.key"
+            :label="column.key"
+            :value="column.key"
           >
-        </div>
-        
-        <div class="form-group">
-          <label>结束日期:</label>
-          <input 
-            type="date" 
-            v-model="queryParams.endDate" 
-            class="form-control"
-          >
-        </div>
-        
-        <div class="form-group">
-          <button 
-            @click="queryData" 
-            :disabled="loading || !queryParams.symbol"
-            class="btn btn-primary"
-          >
-            {{ loading ? '查询中...' : '查询' }}
-          </button>
-          
-          <button 
-            @click="refreshContracts" 
-            :disabled="contractsLoading"
-            class="btn btn-secondary"
-          >
-            {{ contractsLoading ? '刷新中...' : '刷新合约' }}
-          </button>
-        </div>
+            {{ column.label }}
+          </el-checkbox>
+        </el-checkbox-group>
       </div>
-    </div>
+    </el-card>
+    
+    <!-- 查询表单 -->
+    <el-card class="query-form-card" shadow="hover">
+      <template #header>
+        <span>查询条件</span>
+      </template>
+      
+      <el-form :model="queryParams" label-width="80px" :inline="true">
+        <el-row :gutter="20">
+          <el-col :xs="24" :sm="12" :md="8" :lg="6">
+            <el-form-item label="选择合约">
+              <div class="contract-selector">
+                <el-input 
+                  v-model="contractSearch" 
+                  placeholder="搜索合约名称、代码或交易所..."
+                  clearable
+                  @input="filterContracts"
+                  class="contract-search"
+                >
+                  <template #prefix>
+                    <el-icon><Search /></el-icon>
+                  </template>
+                </el-input>
+                <el-select 
+                  v-model="queryParams.symbol" 
+                  placeholder="请选择合约"
+                  filterable
+                  clearable
+                  style="width: 100%; margin-top: 8px;"
+                >
+                  <el-option 
+                    v-for="contract in filteredContracts" 
+                    :key="contract.symbol" 
+                    :label="`${contract.exchange} - ${contract.name} (${contract.symbol})`"
+                    :value="contract.name"
+                  />
+                </el-select>
+              </div>
+            </el-form-item>
+          </el-col>
+          
+          <el-col :xs="12" :sm="12" :md="2" :lg="6">
+            <el-form-item label="周期">
+              <el-select v-model="queryParams.period" placeholder="选择周期" style="width: 100%; min-width: 120px;">
+                <el-option 
+                  v-for="period in periods"
+                  :key="period.value" 
+                  :label="period.label"
+                  :value="period.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          
+          <el-col :xs="24" :sm="12" :md="8" :lg="6">
+            <el-form-item label="开始日期">
+              <el-date-picker
+                v-model="queryParams.startDate"
+                type="date"
+                placeholder="选择日期"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                style="width: 100%;"
+              />
+            </el-form-item>
+          </el-col>
+          
+          <el-col :xs="24" :sm="12" :md="8" :lg="6">
+            <el-form-item label="结束日期">
+              <el-date-picker
+                v-model="queryParams.endDate"
+                type="date"
+                placeholder="选择日期"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                style="width: 100%;"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row>
+          <el-col :span="24">
+            <el-form-item>
+              <el-button 
+                @click="queryData" 
+                :loading="loading"
+                :disabled="!queryParams.symbol"
+                type="primary"
+                size="default"
+              >
+                <el-icon v-if="!loading"><Search /></el-icon>
+                {{ loading ? '查询中...' : '查询数据' }}
+              </el-button>
+              
+              <el-button 
+                @click="refreshContracts" 
+                :loading="contractsLoading"
+                type="success"
+                size="default"
+              >
+                <el-icon v-if="!contractsLoading"><Refresh /></el-icon>
+                {{ contractsLoading ? '刷新中...' : '刷新合约' }}
+              </el-button>
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </el-form>
+    </el-card>
     
     <!-- 数据表格 -->
-    <div class="data-table" v-if="tableData.length > 0">
-      <h3>{{ currentSymbol }} - {{ getCurrentPeriodLabel() }} 数据 ({{ tableData.length }}条记录)</h3>
-      <div class="table-container">
-        <table class="table">
-          <thead>
-            <tr>
-              <th v-if="visibleColumns.time">时间</th>
-              <th v-if="visibleColumns.close">收盘价</th>
-              <th v-if="visibleColumns.changePercent">涨跌幅(%)</th>
-              <th v-if="visibleColumns.volume">成交量</th>
-              <th v-if="visibleColumns.openInterest">持仓量</th>
-              <th v-if="visibleColumns.dailyChange">日增仓</th>
-              <th v-if="visibleColumns.open">开盘</th>
-              <th v-if="visibleColumns.high">最高</th>
-              <th v-if="visibleColumns.low">最低</th>
-              <th v-if="visibleColumns.change">涨跌</th>
-              <th v-if="visibleColumns.turnover">成交额</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(row, index) in tableData" :key="index">
-              <td v-if="visibleColumns.time">{{ row.时间 }}</td>
-              <td v-if="visibleColumns.close" :class="getPriceClass(row.涨跌)">{{ row.收盘 }}</td>
-              <td v-if="visibleColumns.changePercent" :class="getPriceClass(row.涨跌)">{{ row.涨跌幅 }}%</td>
-              <td v-if="visibleColumns.volume">{{ row.成交量 }}</td>
-              <td v-if="visibleColumns.openInterest">{{ row.持仓量 }}</td>
-              <td v-if="visibleColumns.dailyChange" :class="getPositionChangeClass(row.日增仓)">{{ row.日增仓 }}</td>
-              <td v-if="visibleColumns.open">{{ row.开盘 }}</td>
-              <td v-if="visibleColumns.high">{{ row.最高 }}</td>
-              <td v-if="visibleColumns.low">{{ row.最低 }}</td>
-              <td v-if="visibleColumns.change" :class="getPriceClass(row.涨跌)">{{ row.涨跌 }}</td>
-              <td v-if="visibleColumns.turnover">{{ row.成交额 }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <el-card v-if="tableData.length > 0" class="data-table-card" shadow="hover">
+      <template #header>
+        <div class="table-header">
+          <span class="table-title">{{ currentSymbol }} - {{ getCurrentPeriodLabel() }} 数据</span>
+          <el-tag type="success" size="large">{{ tableData.length }}条记录</el-tag>
+        </div>
+      </template>
+      
+      <el-table 
+        :data="tableData" 
+        stripe 
+        border
+        height="600"
+        style="width: 100%"
+        :header-cell-style="{ background: '#f5f7fa', color: '#606266' }"
+      >
+        <el-table-column 
+          v-if="isColumnVisible('time')"
+          prop="时间" 
+          label="时间" 
+          width="120"
+          align="center"
+          fixed="left"
+        />
+        
+        <el-table-column 
+          v-if="isColumnVisible('close')"
+          prop="收盘" 
+          label="收盘价" 
+          width="100"
+          align="center"
+        >
+          <template #default="{ row }">
+            <span :class="getPriceClass(row.涨跌)">{{ row.收盘 }}</span>
+          </template>
+        </el-table-column>
+        
+        <el-table-column 
+          v-if="isColumnVisible('changePercent')"
+          prop="涨跌幅" 
+          label="涨跌幅(%)" 
+          width="120"
+          align="center"
+        >
+          <template #default="{ row }">
+            <el-tag 
+              :type="getChangeTagType(row.涨跌)" 
+              size="small"
+              effect="dark"
+            >
+              {{ row.涨跌幅 }}%
+            </el-tag>
+          </template>
+        </el-table-column>
+        
+        <el-table-column 
+          v-if="isColumnVisible('volume')"
+          prop="成交量" 
+          label="成交量" 
+          width="120"
+          align="center"
+        />
+        
+        <el-table-column 
+          v-if="isColumnVisible('openInterest')"
+          prop="持仓量" 
+          label="持仓量" 
+          width="120"
+          align="center"
+        />
+        
+        <el-table-column 
+          v-if="isColumnVisible('dailyChange')"
+          prop="日增仓" 
+          label="日增仓" 
+          width="120"
+          align="center"
+        >
+          <template #default="{ row }">
+            <el-tag 
+              :type="getPositionChangeTagType(row.日增仓)" 
+              size="small"
+              effect="plain"
+            >
+              {{ row.日增仓 }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        
+        <el-table-column 
+          v-if="isColumnVisible('open')"
+          prop="开盘" 
+          label="开盘" 
+          width="100"
+          align="center"
+        />
+        
+        <el-table-column 
+          v-if="isColumnVisible('high')"
+          prop="最高" 
+          label="最高" 
+          width="100"
+          align="center"
+        />
+        
+        <el-table-column 
+          v-if="isColumnVisible('low')"
+          prop="最低" 
+          label="最低" 
+          width="100"
+          align="center"
+        />
+        
+        <el-table-column 
+          v-if="isColumnVisible('change')"
+          prop="涨跌" 
+          label="涨跌" 
+          width="100"
+          align="center"
+        >
+          <template #default="{ row }">
+            <span :class="getPriceClass(row.涨跌)">{{ row.涨跌 }}</span>
+          </template>
+        </el-table-column>
+        
+        <el-table-column 
+          v-if="isColumnVisible('turnover')"
+          prop="成交额" 
+          label="成交额" 
+          width="120"
+          align="center"
+        />
+      </el-table>
+    </el-card>
     
     <!-- 空数据提示 -->
-    <div v-else-if="!loading && hasQueried" class="no-data">
-      <p>暂无数据</p>
-    </div>
+    <el-card v-else-if="!loading && hasQueried" class="no-data-card" shadow="hover">
+      <el-empty description="暂无数据">
+        <el-button type="primary" @click="queryData">重新查询</el-button>
+      </el-empty>
+    </el-card>
     
     <!-- 错误信息 -->
-    <div v-if="error" class="error-message">
-      <p>{{ error }}</p>
-    </div>
+    <el-alert
+      v-if="error"
+      :title="error"
+      type="error"
+      show-icon
+      :closable="true"
+      @close="error = ''"
+      style="margin-top: 20px;"
+    />
   </div>
 </template>
 
 <script>
 import { request5000 } from '../utils/request'
+import { 
+  Search, 
+  Refresh, 
+  Select, 
+  Remove 
+} from '@element-plus/icons-vue'
 
 export default {
   name: 'TechnicalAnalysis',
+  components: {
+    Search,
+    Refresh,
+    Select,
+    Remove
+  },
   data() {
     const today = new Date()
     const oneMonthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -189,20 +354,8 @@ export default {
         { key: 'change', label: '涨跌' },
         { key: 'turnover', label: '成交额' }
       ],
-      // 列可见性控制
-      visibleColumns: {
-        time: true,
-        close: true,
-        changePercent: true,
-        volume: true,
-        openInterest: true,
-        dailyChange: true,
-        open: false,
-        high: false,
-        low: false,
-        change: false,
-        turnover: false
-      },
+      // 选中的列
+      selectedColumns: ['time', 'close', 'changePercent', 'volume', 'openInterest', 'dailyChange'],
       // 数据
       contracts: [],
       filteredContracts: [],
@@ -224,7 +377,7 @@ export default {
   },
   
   watch: {
-    visibleColumns: {
+    selectedColumns: {
       handler() {
         this.saveColumnSettings()
       },
@@ -280,6 +433,7 @@ export default {
         this.error = ''
         await request5000.post('/api/futures/refresh-contracts')
         await this.loadContracts()
+        this.$message.success('合约数据刷新成功')
       } catch (error) {
         this.error = `刷新合约数据失败: ${error.message}`
         console.error('刷新合约数据失败:', error)
@@ -307,7 +461,7 @@ export default {
     // 查询数据
     async queryData() {
       if (!this.queryParams.symbol) {
-        this.error = '请选择合约'
+        this.$message.warning('请选择合约')
         return
       }
       
@@ -325,14 +479,28 @@ export default {
         
         const response = await request5000.get('/api/futures/history', { params })
         
-        this.tableData = response.data || []
+        // 对数据进行排序，最新的数据在前面
+        const sortedData = (response.data || []).sort((a, b) => {
+          // 将时间字符串转换为日期对象进行比较
+          const dateA = new Date(a.时间.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))
+          const dateB = new Date(b.时间.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'))
+          // 降序排列，最新的日期在前面
+          return dateB - dateA
+        })
+        
+        this.tableData = sortedData
         this.currentSymbol = response.symbol || this.queryParams.symbol
         this.hasQueried = true
+        
+        if (sortedData.length > 0) {
+          this.$message.success(`查询成功，共获取 ${sortedData.length} 条数据`)
+        }
         
       } catch (error) {
         this.error = `查询数据失败: ${error.message}`
         console.error('查询数据失败:', error)
         this.tableData = []
+        this.$message.error('查询数据失败')
       } finally {
         this.loading = false
       }
@@ -340,37 +508,26 @@ export default {
     
     // 列显示控制方法
     showAllColumns() {
-      this.availableColumns.forEach(column => {
-        this.visibleColumns[column.key] = true
-      })
+      this.selectedColumns = this.availableColumns.map(col => col.key)
     },
     
     hideAllColumns() {
-      this.availableColumns.forEach(column => {
-        this.visibleColumns[column.key] = false
-      })
+      this.selectedColumns = []
     },
     
     resetToDefault() {
-      this.visibleColumns = {
-        time: true,
-        close: true,
-        changePercent: true,
-        volume: true,
-        openInterest: true,
-        dailyChange: true,
-        open: false,
-        high: false,
-        low: false,
-        change: false,
-        turnover: false
-      }
+      this.selectedColumns = ['time', 'close', 'changePercent', 'volume', 'openInterest', 'dailyChange']
+    },
+    
+    // 检查列是否可见
+    isColumnVisible(columnKey) {
+      return this.selectedColumns.includes(columnKey)
     },
     
     // 保存列设置到本地存储
     saveColumnSettings() {
       try {
-        localStorage.setItem('futuresTableColumnSettings', JSON.stringify(this.visibleColumns))
+        localStorage.setItem('futuresTableColumnSettings', JSON.stringify(this.selectedColumns))
       } catch (error) {
         console.warn('保存列设置失败:', error)
       }
@@ -381,8 +538,7 @@ export default {
       try {
         const saved = localStorage.getItem('futuresTableColumnSettings')
         if (saved) {
-          const settings = JSON.parse(saved)
-          this.visibleColumns = { ...this.visibleColumns, ...settings }
+          this.selectedColumns = JSON.parse(saved)
         }
       } catch (error) {
         console.warn('加载列设置失败:', error)
@@ -407,14 +563,21 @@ export default {
     getPriceClass(change) {
       if (change > 0) return 'price-up'
       if (change < 0) return 'price-down'
-      return ''
+      return 'price-neutral'
     },
     
-    // 获取持仓变化样式类
-    getPositionChangeClass(change) {
-      if (change.includes('增仓')) return 'position-up'
-      if (change.includes('减仓')) return 'position-down'
-      return ''
+    // 获取涨跌标签类型
+    getChangeTagType(change) {
+      if (change > 0) return 'danger'
+      if (change < 0) return 'success'
+      return 'info'
+    },
+    
+    // 获取持仓变化标签类型
+    getPositionChangeTagType(change) {
+      if (change.includes('增仓')) return 'danger'
+      if (change.includes('减仓')) return 'success'
+      return 'info'
     }
   }
 }
@@ -423,21 +586,30 @@ export default {
 <style scoped>
 .technical-analysis {
   padding: 20px;
-  background: #f8f9fa;
+  background: #f0f2f5;
   min-height: 100vh;
 }
 
-.header h2 {
-  color: #333;
+.header-card {
   margin-bottom: 20px;
-  text-align: center;
 }
 
-.column-controls {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: bold;
+  color: #303133;
+}
+
+.column-controls-card,
+.query-form-card,
+.data-table-card,
+.no-data-card {
   margin-bottom: 20px;
 }
 
@@ -445,13 +617,6 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-}
-
-.controls-header h4 {
-  margin: 0;
-  color: #333;
-  font-size: 16px;
 }
 
 .control-buttons {
@@ -459,246 +624,107 @@ export default {
   gap: 8px;
 }
 
-.btn-sm {
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-.btn-outline {
-  background-color: transparent;
-  color: #007bff;
-  border: 1px solid #007bff;
-}
-
-.btn-outline:hover:not(:disabled) {
-  background-color: #007bff;
-  color: white;
-}
-
 .column-checkboxes {
+  margin-top: 15px;
+}
+
+.column-checkboxes :deep(.el-checkbox-group) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  padding: 5px 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-.checkbox-label:hover {
-  background-color: #f8f9fa;
-}
-
-.checkbox-input {
-  margin-right: 8px;
-  cursor: pointer;
-}
-
-.checkbox-text {
-  font-size: 14px;
-  color: #555;
-  user-select: none;
-}
-
-.query-form {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  margin-bottom: 20px;
-}
-
-.form-row {
-  display: flex;
   gap: 15px;
-  align-items: end;
-  flex-wrap: wrap;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  min-width: 150px;
-}
-
-.form-group label {
-  font-weight: bold;
-  margin-bottom: 5px;
-  color: #555;
-}
-
-.form-control {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.form-control:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
 }
 
 .contract-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  width: 100%;
 }
 
 .contract-search {
-  background-color: #f8f9fa;
-  border: 1px solid #dee2e6;
-  font-size: 13px;
+  margin-bottom: 8px;
 }
 
-.contract-search:focus {
-  background-color: white;
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background-color: #007bff;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: #0056b3;
-}
-
-.btn-secondary {
-  background-color: #6c757d;
-  color: white;
-  margin-left: 10px;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background-color: #545b62;
-}
-
-.data-table {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.data-table h3 {
-  color: #333;
-  margin-bottom: 15px;
-}
-
-.table-container {
-  overflow-x: auto;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.table th,
-.table td {
-  padding: 10px 8px;
-  text-align: center;
-  border-bottom: 1px solid #dee2e6;
-}
-
-.table th {
-  background-color: #f8f9fa;
+.table-title {
+  font-size: 18px;
   font-weight: bold;
-  color: #495057;
-  position: sticky;
-  top: 0;
-}
-
-.table tbody tr:hover {
-  background-color: #f8f9fa;
+  color: #303133;
 }
 
 .price-up {
-  color: #dc3545;
+  color: #f56c6c;
   font-weight: bold;
 }
 
 .price-down {
-  color: #28a745;
+  color: #67c23a;
   font-weight: bold;
 }
 
-.position-up {
-  color: #dc3545;
+.price-neutral {
+  color: #909399;
   font-weight: bold;
 }
 
-.position-down {
-  color: #28a745;
-  font-weight: bold;
-}
-
-.no-data {
-  text-align: center;
-  padding: 40px;
-  color: #6c757d;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.error-message {
-  background-color: #f8d7da;
-  color: #721c24;
-  padding: 15px;
-  border-radius: 4px;
-  margin-top: 10px;
-  border: 1px solid #f5c6cb;
-}
-
+/* 响应式设计 */
 @media (max-width: 768px) {
+  .technical-analysis {
+    padding: 10px;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+  
   .controls-header {
     flex-direction: column;
-    align-items: stretch;
     gap: 10px;
   }
   
-  .column-checkboxes {
+  .table-header {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+  
+  .column-checkboxes :deep(.el-checkbox-group) {
     grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   }
-  
-  .form-row {
-    flex-direction: column;
-  }
-  
-  .form-group {
-    min-width: 100%;
-  }
-  
-  .table-container {
-    font-size: 12px;
-  }
-  
-  .table th,
-  .table td {
-    padding: 6px 4px;
-  }
+}
+
+/* Element Plus 样式覆盖 */
+:deep(.el-card__header) {
+  background: #f7f8fa;
+  color: #333;
+  border-radius: 8px 8px 0 0;
+  box-shadow: none;
+  border-bottom: 1px solid #ebeef5;
+}
+
+:deep(.el-card__header .card-header span) {
+  color: #333;
+  text-shadow: none;
+}
+
+:deep(.el-table .cell) {
+  font-size: 13px;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: #fafafa !important;
+  font-weight: 600;
+}
+
+:deep(.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell) {
+  background: #fafafa;
+}
+
+:deep(.el-table__body tr:hover > td.el-table__cell) {
+  background-color: #e6f7ff !important;
 }
 </style>

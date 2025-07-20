@@ -1,20 +1,20 @@
-// 新闻服务商配置
-// 用于管理已对接的新闻能力提供商
-
-const newsProvidersConfig = {
-  // 东方财富新闻服务
-  eastmoney: {
+// 新闻提供商配置
+const newsProviders = [
+  {
+    id: 'eastmoney',
     name: '东方财富',
-    // 支持的期货品种和新闻地址
-    config: require('./eastmoneyNews.js'),
+    description: '东方财富期货新闻资讯',
+    enabled: true,
+    supported_varieties: ['金', '银', '铜', '铝'] // 对应 eastmoneyNews.js 中的品种
   }
-  
-  // 未来可以添加更多新闻服务商
-  // 例如：
-  // sina: {
+  // 可以扩展其他新闻提供商
+  // {
+  //   id: 'sina',
   //   name: '新浪财经',
-  //   config: require('./sinaNews.js'),
+  //   description: '新浪财经期货资讯',
+  //   enabled: false,
+  //   supported_varieties: []
   // }
-};
+];
 
-module.exports = newsProvidersConfig;
+module.exports = newsProviders;

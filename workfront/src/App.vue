@@ -35,6 +35,10 @@
               <el-icon class="menu-icon"><DataBoard /></el-icon>
               <span class="menu-text">资金面分析</span>
             </el-menu-item>
+            <el-menu-item index="/prompt-formatter" class="menu-item">
+              <el-icon class="menu-icon"><Edit /></el-icon>
+              <span class="menu-text">提示词格式化</span>
+            </el-menu-item>
           </el-menu>
         </el-aside>
         
@@ -50,7 +54,7 @@
 </template>
 
 <script>
-import { DataBoard, TrendCharts, ChatDotRound } from '@element-plus/icons-vue'
+import { DataBoard, TrendCharts, ChatDotRound, Edit } from '@element-plus/icons-vue'
 import { markRaw } from 'vue'
 
 export default {
@@ -59,7 +63,8 @@ export default {
     return {
       DataBoard: markRaw(DataBoard),
       TrendCharts: markRaw(TrendCharts),
-      ChatDotRound: markRaw(ChatDotRound)
+      ChatDotRound: markRaw(ChatDotRound),
+      Edit: markRaw(Edit)
     }
   }
 }

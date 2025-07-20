@@ -66,20 +66,20 @@ const setupInterceptors = (instance, port) => {
 setupInterceptors(request, 3000)
 setupInterceptors(request5000, 5000)
 
-// 动态请求方法 - 可以指定不同的端口
-export const dynamicRequest = (port = 3000) => {
+// 动态请求方法 - 可以指定不同的端口和超时时间
+export const dynamicRequest = (port = 3000, timeout = 10000) => {
   return axios.create({
     baseURL: `http://localhost:${port}`,
-    timeout: 10000,
+    timeout: timeout,
     headers: {
       'Content-Type': 'application/json',
     }
   })
 }
 
-// 便捷方法：直接调用不同端口的接口
-export const requestWithPort = async (url, data = {}, method = 'post', port = 3000) => {
-  const instance = dynamicRequest(port)
+// 便捷方法：直接调用不同端口的接口，支持自定义超时时间
+export const requestWithPort = async (url, data = {}, method = 'post', port = 3000, timeout = 10000) => {
+  const instance = dynamicRequest(port, timeout)
   setupInterceptors(instance, port)
   
   const response = await instance[method](url, data)

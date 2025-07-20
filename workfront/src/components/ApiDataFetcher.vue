@@ -16,9 +16,13 @@
                 :loading="loadingVarieties"
                 size="large"
                 style="width: 100%"
+                filterable
+                clearable
+                :filter-method="filterVarieties"
+                :reserve-keyword="false"
               >
                 <el-option
-                  v-for="variety in varieties"
+                  v-for="variety in filteredVarieties"
                   :key="variety.symbol"
                   :label="`${variety.name} (${variety.symbol})`"
                   :value="variety.symbol"
@@ -38,9 +42,13 @@
                 :loading="loadingContracts"
                 size="large"
                 style="width: 100%"
+                filterable
+                clearable
+                :filter-method="filterContracts"
+                :reserve-keyword="false"
               >
                 <el-option
-                  v-for="contract in contracts"
+                  v-for="contract in filteredContracts"
                   :key="contract.code"
                   :label="contract.code"
                   :value="contract.code"
@@ -189,7 +197,9 @@ export default {
       loadingDates: false,        // 品种日期数据加载状态
       loadingProfitLoss: false,   // 品种盈亏数据加载状态
       varieties: [],              // 品种列表数据
+      filteredVarieties: [],      // 过滤后的品种列表数据
       contracts: [],              // 合约列表数据
+      filteredContracts: [],      // 过滤后的合约列表数据
       selectedVariety: '',        // 选中的品种代码
       selectedContract: '',       // 选中的合约代码
       structureData: null,        // 品种结构数据
@@ -289,6 +299,7 @@ export default {
         // 检查响应状态码
         if (response.code === 0) {
           this.varieties = response.data || []
+          this.filteredVarieties = [...this.varieties] // 初始化过滤后的品种列表
           console.log('成功获取品种列表:', this.varieties)
         } else {
           this.error = response.msg || '获取品种数据失败'
@@ -310,6 +321,7 @@ export default {
       // 如果没有选择品种，清空合约相关数据
       if (!varietySymbol) {
         this.contracts = []
+        this.filteredContracts = []
         this.selectedContract = ''
         this.brokersStructureTable = ''
         return
@@ -350,6 +362,7 @@ export default {
         // 检查响应状态码
         if (response.code === 0) {
           this.contracts = response.data || []
+          this.filteredContracts = [...this.contracts] // 初始化过滤后的合约列表
           console.log('成功获取合约列表:', this.contracts)
         } else {
           this.error = response.msg || '获取合约数据失败'
@@ -840,11 +853,47 @@ export default {
          return html
        } catch (error) {
          console.error('渲染表格时发生错误:', error)
-         return `<pre>${markdownTable}</pre>` // 回退到显示原始markdown
+                  return `<pre>${markdownTable}</pre>` // 回退到显示原始markdown
        }
+     },
+
+     /**
+      * 过滤品种列表
+      * 根据搜索关键词过滤品种，支持按名称、代码和市场搜索
+      * @param {string} query 搜索关键词
+      */
+     filterVarieties(query) {
+       if (!query) {
+         this.filteredVarieties = [...this.varieties]
+         return
+       }
+       
+       const lowerQuery = query.toLowerCase()
+       this.filteredVarieties = this.varieties.filter(variety => {
+         return variety.name.toLowerCase().includes(lowerQuery) ||
+                variety.symbol.toLowerCase().includes(lowerQuery) ||
+                variety.market.toLowerCase().includes(lowerQuery)
+       })
+     },
+
+     /**
+      * 过滤合约列表
+      * 根据搜索关键词过滤合约，支持按合约代码搜索
+      * @param {string} query 搜索关键词
+      */
+     filterContracts(query) {
+       if (!query) {
+         this.filteredContracts = [...this.contracts]
+         return
+       }
+       
+       const lowerQuery = query.toLowerCase()
+       this.filteredContracts = this.contracts.filter(contract => {
+         return contract.code.toLowerCase().includes(lowerQuery)
+       })
      }
-  }
-}
+   }
+ }
 </script>
 
 <style scoped>
