@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-// 创建 axios 实例
+// 创建默认的 axios 实例 (3000端口)
 const request = axios.create({
   baseURL: 'http://localhost:3000',
   timeout: 10000,
@@ -9,55 +9,83 @@ const request = axios.create({
   }
 })
 
-// 请求拦截器
-request.interceptors.request.use(
-  config => {
-    // 可以在这里添加认证 token 等
-    console.log('发送请求:', config.url)
-    return config
-  },
-  error => {
-    return Promise.reject(error)
+// 创建5000端口的 axios 实例
+const request5000 = axios.create({
+  baseURL: 'http://localhost:5000',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
   }
-)
+})
 
-// 响应拦截器
-request.interceptors.response.use(
-  response => {
-    // 检查响应结构
-    const responseData = response.data
-    
-    // 如果有嵌套的data字段，提取内层数据
-    if (responseData && responseData.data && typeof responseData.data === 'object') {
-      // 返回内层的业务数据 {code: 0, msg: '', data: Array(85)}
-      return responseData.data
+// 通用拦截器配置函数
+const setupInterceptors = (instance, port) => {
+  // 请求拦截器
+  instance.interceptors.request.use(
+    config => {
+      console.log(`发送请求到${port}端口:`, config.url)
+      return config
+    },
+    error => {
+      return Promise.reject(error)
     }
-    
-    // 否则直接返回响应数据
-    return responseData
-  },
-  error => {
-    // 统一处理错误响应
-    let errorMessage = '请求失败'
-    
-    if (error.response) {
-      // 服务器响应了错误状态码
-      errorMessage = `服务器错误: ${error.response.status} - ${error.response.statusText}`
-    } else if (error.request) {
-      // 请求发出但没有收到响应
-      errorMessage = '网络错误: 无法连接到服务器'
-    } else {
-      // 其他错误
-      errorMessage = '请求失败: ' + error.message
-    }
-    
-    // 创建标准化的错误对象
-    const standardError = new Error(errorMessage)
-    standardError.originalError = error
-    
-    return Promise.reject(standardError)
-  }
-)
+  )
 
-// 导出 axios 实例
-export default request 
+  // 响应拦截器
+  instance.interceptors.response.use(
+    response => {
+      const responseData = response.data
+      
+      // 如果有嵌套的data字段，提取内层数据
+      if (responseData && responseData.data && typeof responseData.data === 'object') {
+        return responseData.data
+      }
+      
+      return responseData
+    },
+    error => {
+      let errorMessage = '请求失败'
+      
+      if (error.response) {
+        errorMessage = `服务器错误: ${error.response.status} - ${error.response.statusText}`
+      } else if (error.request) {
+        errorMessage = `网络错误: 无法连接到${port}端口服务器`
+      } else {
+        errorMessage = '请求失败: ' + error.message
+      }
+      
+      const standardError = new Error(errorMessage)
+      standardError.originalError = error
+      
+      return Promise.reject(standardError)
+    }
+  )
+}
+
+// 为两个实例配置拦截器
+setupInterceptors(request, 3000)
+setupInterceptors(request5000, 5000)
+
+// 动态请求方法 - 可以指定不同的端口
+export const dynamicRequest = (port = 3000) => {
+  return axios.create({
+    baseURL: `http://localhost:${port}`,
+    timeout: 10000,
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  })
+}
+
+// 便捷方法：直接调用不同端口的接口
+export const requestWithPort = async (url, data = {}, method = 'post', port = 3000) => {
+  const instance = dynamicRequest(port)
+  setupInterceptors(instance, port)
+  
+  const response = await instance[method](url, data)
+  return response
+}
+
+// 导出所有实例
+export default request
+export { request5000 } 

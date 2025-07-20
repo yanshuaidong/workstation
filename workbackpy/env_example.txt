@@ -1,0 +1,17 @@
+# Flask 配置
+FLASK_ENV=development
+FLASK_DEBUG=true
+SECRET_KEY=your-secret-key-here
+
+# 数据库配置
+DATABASE_URL=sqlite:///app.db
+
+# CORS 配置 - 允许来自 Vue 项目的请求
+CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
+
+# API 配置
+API_VERSION=v1
+
+# 服务器配置
+HOST=0.0.0.0
+PORT=5000 

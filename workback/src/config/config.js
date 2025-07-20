@@ -28,6 +28,20 @@ const config = {
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
         'x-requested-with': 'XMLHttpRequest'
       }
+    },
+    openctp: {
+      baseUrl: 'http://dict.openctp.cn',
+      endpoints: {
+        markets: '/markets',
+        products: '/products',
+        instruments: '/instruments',
+        prices: '/prices'
+      },
+      headers: {
+        'accept': 'application/json',
+        'accept-language': 'zh-CN,zh;q=0.9',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
+      }
     }
   },
   
