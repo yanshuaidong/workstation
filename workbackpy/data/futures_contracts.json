@@ -1,11 +1,6 @@
 {
-  "update_time": "2025-07-20T15:55:33.493314",
+  "update_time": "2025-08-27T20:48:38.863038",
   "contracts": [
-    {
-      "exchange": "上期所",
-      "name": "沪铜2508",
-      "symbol": "cu2508"
-    },
     {
       "exchange": "上期所",
       "name": "沪铜2509",
@@ -63,6 +58,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "沪铜2608",
+      "symbol": "cu2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "沪铜主连",
       "symbol": "cum"
     },
@@ -70,11 +70,6 @@
       "exchange": "上期所",
       "name": "沪铜次主连",
       "symbol": "cus"
-    },
-    {
-      "exchange": "上期所",
-      "name": "沪铝2508",
-      "symbol": "al2508"
     },
     {
       "exchange": "上期所",
@@ -133,6 +128,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "沪铝2608",
+      "symbol": "al2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "沪铝主连",
       "symbol": "alm"
     },
@@ -140,11 +140,6 @@
       "exchange": "上期所",
       "name": "沪铝次主连",
       "symbol": "als"
-    },
-    {
-      "exchange": "上期所",
-      "name": "沪锌2508",
-      "symbol": "zn2508"
     },
     {
       "exchange": "上期所",
@@ -203,6 +198,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "沪锌2608",
+      "symbol": "zn2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "沪锌主连",
       "symbol": "znm"
     },
@@ -210,11 +210,6 @@
       "exchange": "上期所",
       "name": "沪锌次主连",
       "symbol": "zns"
-    },
-    {
-      "exchange": "上期所",
-      "name": "沪铅2508",
-      "symbol": "pb2508"
     },
     {
       "exchange": "上期所",
@@ -273,6 +268,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "沪铅2608",
+      "symbol": "pb2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "沪铅主连",
       "symbol": "pbm"
     },
@@ -283,11 +283,6 @@
     },
     {
       "exchange": "上期所",
-      "name": "沪金2508",
-      "symbol": "au2508"
-    },
-    {
-      "exchange": "上期所",
       "name": "沪金2509",
       "symbol": "au2509"
     },
@@ -295,6 +290,11 @@
       "exchange": "上期所",
       "name": "沪金2510",
       "symbol": "au2510"
+    },
+    {
+      "exchange": "上期所",
+      "name": "沪金2511",
+      "symbol": "au2511"
     },
     {
       "exchange": "上期所",
@@ -330,11 +330,6 @@
       "exchange": "上期所",
       "name": "沪金次主连",
       "symbol": "aus"
-    },
-    {
-      "exchange": "上期所",
-      "name": "沪银2508",
-      "symbol": "ag2508"
     },
     {
       "exchange": "上期所",
@@ -393,6 +388,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "沪银2608",
+      "symbol": "ag2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "沪银主连",
       "symbol": "agm"
     },
@@ -400,11 +400,6 @@
       "exchange": "上期所",
       "name": "沪银次主连",
       "symbol": "ags"
-    },
-    {
-      "exchange": "上期所",
-      "name": "螺纹钢2508",
-      "symbol": "rb2508"
     },
     {
       "exchange": "上期所",
@@ -463,6 +458,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "螺纹钢2608",
+      "symbol": "rb2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "螺纹钢主连",
       "symbol": "rbm"
     },
@@ -470,11 +470,6 @@
       "exchange": "上期所",
       "name": "螺纹钢次主连",
       "symbol": "rbs"
-    },
-    {
-      "exchange": "上期所",
-      "name": "线材2508",
-      "symbol": "wr2508"
     },
     {
       "exchange": "上期所",
@@ -533,6 +528,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "线材2608",
+      "symbol": "wr2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "线材主连",
       "symbol": "wrm"
     },
@@ -540,11 +540,6 @@
       "exchange": "上期所",
       "name": "线材次主连",
       "symbol": "wrs"
-    },
-    {
-      "exchange": "上期所",
-      "name": "燃油2508",
-      "symbol": "fu2508"
     },
     {
       "exchange": "上期所",
@@ -603,6 +598,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "燃油2608",
+      "symbol": "fu2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "燃油主连",
       "symbol": "fum"
     },
@@ -610,11 +610,6 @@
       "exchange": "上期所",
       "name": "燃油次主连",
       "symbol": "fus"
-    },
-    {
-      "exchange": "上期所",
-      "name": "橡胶2508",
-      "symbol": "ru2508"
     },
     {
       "exchange": "上期所",
@@ -663,6 +658,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "橡胶2608",
+      "symbol": "ru2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "橡胶主连",
       "symbol": "rum"
     },
@@ -670,11 +670,6 @@
       "exchange": "上期所",
       "name": "橡胶次主连",
       "symbol": "rus"
-    },
-    {
-      "exchange": "上期所",
-      "name": "沥青2508",
-      "symbol": "bu2508"
     },
     {
       "exchange": "上期所",
@@ -733,6 +728,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "沥青2608",
+      "symbol": "bu2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "沥青2609",
       "symbol": "bu2609"
     },
@@ -760,11 +760,6 @@
       "exchange": "上期所",
       "name": "沥青次主连",
       "symbol": "bus"
-    },
-    {
-      "exchange": "上期所",
-      "name": "热卷2508",
-      "symbol": "hc2508"
     },
     {
       "exchange": "上期所",
@@ -823,6 +818,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "热卷2608",
+      "symbol": "hc2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "热卷主连",
       "symbol": "hcm"
     },
@@ -830,11 +830,6 @@
       "exchange": "上期所",
       "name": "热卷次主连",
       "symbol": "hcs"
-    },
-    {
-      "exchange": "上期所",
-      "name": "沪镍2508",
-      "symbol": "ni2508"
     },
     {
       "exchange": "上期所",
@@ -893,6 +888,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "沪镍2608",
+      "symbol": "ni2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "沪镍主连",
       "symbol": "nim"
     },
@@ -900,11 +900,6 @@
       "exchange": "上期所",
       "name": "沪镍次主连",
       "symbol": "nis"
-    },
-    {
-      "exchange": "上期所",
-      "name": "沪锡2508",
-      "symbol": "sn2508"
     },
     {
       "exchange": "上期所",
@@ -963,6 +958,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "沪锡2608",
+      "symbol": "sn2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "沪锡主连",
       "symbol": "snm"
     },
@@ -970,11 +970,6 @@
       "exchange": "上期所",
       "name": "沪锡次主连",
       "symbol": "sns"
-    },
-    {
-      "exchange": "上期所",
-      "name": "纸浆2508",
-      "symbol": "sp2508"
     },
     {
       "exchange": "上期所",
@@ -1033,6 +1028,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "纸浆2608",
+      "symbol": "sp2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "纸浆主连",
       "symbol": "spm"
     },
@@ -1040,11 +1040,6 @@
       "exchange": "上期所",
       "name": "纸浆次主连",
       "symbol": "sps"
-    },
-    {
-      "exchange": "上期所",
-      "name": "不锈钢2508",
-      "symbol": "ss2508"
     },
     {
       "exchange": "上期所",
@@ -1103,6 +1098,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "不锈钢2608",
+      "symbol": "ss2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "不锈钢主连",
       "symbol": "ssm"
     },
@@ -1110,11 +1110,6 @@
       "exchange": "上期所",
       "name": "不锈钢次主连",
       "symbol": "sss"
-    },
-    {
-      "exchange": "上期所",
-      "name": "氧化铝2508",
-      "symbol": "ao2508"
     },
     {
       "exchange": "上期所",
@@ -1173,6 +1168,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "氧化铝2608",
+      "symbol": "ao2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "氧化铝主连",
       "symbol": "aom"
     },
@@ -1180,11 +1180,6 @@
       "exchange": "上期所",
       "name": "氧化铝次主连",
       "symbol": "aos"
-    },
-    {
-      "exchange": "上期所",
-      "name": "丁二烯胶2508",
-      "symbol": "br2508"
     },
     {
       "exchange": "上期所",
@@ -1243,6 +1238,11 @@
     },
     {
       "exchange": "上期所",
+      "name": "丁二烯胶2608",
+      "symbol": "br2608"
+    },
+    {
+      "exchange": "上期所",
       "name": "丁二烯胶主连",
       "symbol": "brm"
     },
@@ -1295,6 +1295,11 @@
       "exchange": "上期所",
       "name": "铸造铝2607",
       "symbol": "ad2607"
+    },
+    {
+      "exchange": "上期所",
+      "name": "铸造铝2608",
+      "symbol": "ad2608"
     },
     {
       "exchange": "上期所",
@@ -1388,11 +1393,6 @@
     },
     {
       "exchange": "大商所",
-      "name": "豆二2508",
-      "symbol": "b2508"
-    },
-    {
-      "exchange": "大商所",
       "name": "豆二2509",
       "symbol": "b2509"
     },
@@ -1448,6 +1448,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "豆二2608",
+      "symbol": "b2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "豆二主连",
       "symbol": "bm"
     },
@@ -1455,11 +1460,6 @@
       "exchange": "大商所",
       "name": "豆二次主连",
       "symbol": "bs"
-    },
-    {
-      "exchange": "大商所",
-      "name": "豆粕2508",
-      "symbol": "m2508"
     },
     {
       "exchange": "大商所",
@@ -1498,6 +1498,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "豆粕2608",
+      "symbol": "m2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "豆粕主连",
       "symbol": "mm"
     },
@@ -1505,11 +1510,6 @@
       "exchange": "大商所",
       "name": "豆粕次主连",
       "symbol": "ms"
-    },
-    {
-      "exchange": "大商所",
-      "name": "豆油2508",
-      "symbol": "y2508"
     },
     {
       "exchange": "大商所",
@@ -1548,6 +1548,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "豆油2608",
+      "symbol": "y2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "豆油主连",
       "symbol": "ym"
     },
@@ -1555,11 +1560,6 @@
       "exchange": "大商所",
       "name": "豆油次主连",
       "symbol": "ys"
-    },
-    {
-      "exchange": "大商所",
-      "name": "棕榈油2508",
-      "symbol": "p2508"
     },
     {
       "exchange": "大商所",
@@ -1618,6 +1618,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "棕榈油2608",
+      "symbol": "p2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "棕榈油主连",
       "symbol": "pm"
     },
@@ -1625,11 +1630,6 @@
       "exchange": "大商所",
       "name": "棕榈油次主连",
       "symbol": "ps"
-    },
-    {
-      "exchange": "大商所",
-      "name": "塑料2508",
-      "symbol": "l2508"
     },
     {
       "exchange": "大商所",
@@ -1688,6 +1688,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "塑料2608",
+      "symbol": "l2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "塑料主连",
       "symbol": "lm"
     },
@@ -1695,11 +1700,6 @@
       "exchange": "大商所",
       "name": "塑料次主连",
       "symbol": "ls"
-    },
-    {
-      "exchange": "大商所",
-      "name": "PVC2508",
-      "symbol": "v2508"
     },
     {
       "exchange": "大商所",
@@ -1758,6 +1758,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "PVC2608",
+      "symbol": "v2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "PVC主连",
       "symbol": "vm"
     },
@@ -1765,11 +1770,6 @@
       "exchange": "大商所",
       "name": "PVC次主连",
       "symbol": "vs"
-    },
-    {
-      "exchange": "大商所",
-      "name": "焦炭2508",
-      "symbol": "j2508"
     },
     {
       "exchange": "大商所",
@@ -1828,6 +1828,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "焦炭2608",
+      "symbol": "j2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "焦炭主连",
       "symbol": "jm"
     },
@@ -1835,11 +1840,6 @@
       "exchange": "大商所",
       "name": "焦炭次主连",
       "symbol": "js"
-    },
-    {
-      "exchange": "大商所",
-      "name": "焦煤2508",
-      "symbol": "jm2508"
     },
     {
       "exchange": "大商所",
@@ -1898,6 +1898,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "焦煤2608",
+      "symbol": "jm2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "焦煤主连",
       "symbol": "jmm"
     },
@@ -1905,11 +1910,6 @@
       "exchange": "大商所",
       "name": "焦煤次主连",
       "symbol": "jms"
-    },
-    {
-      "exchange": "大商所",
-      "name": "纤维板2508",
-      "symbol": "fb2508"
     },
     {
       "exchange": "大商所",
@@ -1968,6 +1968,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "纤维板2608",
+      "symbol": "fb2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "纤维板主连",
       "symbol": "fbm"
     },
@@ -2015,11 +2020,6 @@
       "exchange": "大商所",
       "name": "胶合板次主连",
       "symbol": "bbs"
-    },
-    {
-      "exchange": "大商所",
-      "name": "铁矿石2508",
-      "symbol": "i2508"
     },
     {
       "exchange": "大商所",
@@ -2078,6 +2078,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "铁矿石2608",
+      "symbol": "i2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "铁矿石主连",
       "symbol": "im"
     },
@@ -2085,16 +2090,6 @@
       "exchange": "大商所",
       "name": "铁矿石次主连",
       "symbol": "is"
-    },
-    {
-      "exchange": "大商所",
-      "name": "鸡蛋2507",
-      "symbol": "jd2507"
-    },
-    {
-      "exchange": "大商所",
-      "name": "鸡蛋2508",
-      "symbol": "jd2508"
     },
     {
       "exchange": "大商所",
@@ -2148,6 +2143,16 @@
     },
     {
       "exchange": "大商所",
+      "name": "鸡蛋2607",
+      "symbol": "jd2607"
+    },
+    {
+      "exchange": "大商所",
+      "name": "鸡蛋2608",
+      "symbol": "jd2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "鸡蛋主连",
       "symbol": "jdm"
     },
@@ -2155,11 +2160,6 @@
       "exchange": "大商所",
       "name": "鸡蛋次主连",
       "symbol": "jds"
-    },
-    {
-      "exchange": "大商所",
-      "name": "聚丙烯2508",
-      "symbol": "pp2508"
     },
     {
       "exchange": "大商所",
@@ -2218,6 +2218,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "聚丙烯2608",
+      "symbol": "pp2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "聚丙烯主连",
       "symbol": "ppm"
     },
@@ -2265,16 +2270,6 @@
       "exchange": "大商所",
       "name": "淀粉次主连",
       "symbol": "css"
-    },
-    {
-      "exchange": "大商所",
-      "name": "乙二醇2507",
-      "symbol": "eg2507"
-    },
-    {
-      "exchange": "大商所",
-      "name": "乙二醇2508",
-      "symbol": "eg2508"
     },
     {
       "exchange": "大商所",
@@ -2328,6 +2323,16 @@
     },
     {
       "exchange": "大商所",
+      "name": "乙二醇2607",
+      "symbol": "eg2607"
+    },
+    {
+      "exchange": "大商所",
+      "name": "乙二醇2608",
+      "symbol": "eg2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "乙二醇主连",
       "symbol": "egm"
     },
@@ -2335,11 +2340,6 @@
       "exchange": "大商所",
       "name": "乙二醇次主连",
       "symbol": "egs"
-    },
-    {
-      "exchange": "大商所",
-      "name": "粳米2508",
-      "symbol": "rr2508"
     },
     {
       "exchange": "大商所",
@@ -2398,6 +2398,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "粳米2608",
+      "symbol": "rr2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "粳米主连",
       "symbol": "rrm"
     },
@@ -2405,16 +2410,6 @@
       "exchange": "大商所",
       "name": "粳米次主连",
       "symbol": "rrs"
-    },
-    {
-      "exchange": "大商所",
-      "name": "苯乙烯2507",
-      "symbol": "eb2507"
-    },
-    {
-      "exchange": "大商所",
-      "name": "苯乙烯2508",
-      "symbol": "eb2508"
     },
     {
       "exchange": "大商所",
@@ -2468,6 +2463,16 @@
     },
     {
       "exchange": "大商所",
+      "name": "苯乙烯2607",
+      "symbol": "eb2607"
+    },
+    {
+      "exchange": "大商所",
+      "name": "苯乙烯2608",
+      "symbol": "eb2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "苯乙烯主连",
       "symbol": "ebm"
     },
@@ -2475,16 +2480,6 @@
       "exchange": "大商所",
       "name": "苯乙烯次主连",
       "symbol": "ebs"
-    },
-    {
-      "exchange": "大商所",
-      "name": "LPG2507",
-      "symbol": "pg2507"
-    },
-    {
-      "exchange": "大商所",
-      "name": "LPG2508",
-      "symbol": "pg2508"
     },
     {
       "exchange": "大商所",
@@ -2538,6 +2533,16 @@
     },
     {
       "exchange": "大商所",
+      "name": "LPG2607",
+      "symbol": "pg2607"
+    },
+    {
+      "exchange": "大商所",
+      "name": "LPG2608",
+      "symbol": "pg2608"
+    },
+    {
+      "exchange": "大商所",
       "name": "LPG主连",
       "symbol": "pgm"
     },
@@ -2545,11 +2550,6 @@
       "exchange": "大商所",
       "name": "LPG次主连",
       "symbol": "pgs"
-    },
-    {
-      "exchange": "大商所",
-      "name": "生猪2507",
-      "symbol": "lh2507"
     },
     {
       "exchange": "大商所",
@@ -2578,6 +2578,11 @@
     },
     {
       "exchange": "大商所",
+      "name": "生猪2607",
+      "symbol": "lh2607"
+    },
+    {
+      "exchange": "大商所",
       "name": "生猪主连",
       "symbol": "lhm"
     },
@@ -2585,11 +2590,6 @@
       "exchange": "大商所",
       "name": "生猪次主连",
       "symbol": "lhs"
-    },
-    {
-      "exchange": "大商所",
-      "name": "原木2507",
-      "symbol": "lg2507"
     },
     {
       "exchange": "大商所",
@@ -2615,6 +2615,11 @@
       "exchange": "大商所",
       "name": "原木2605",
       "symbol": "lg2605"
+    },
+    {
+      "exchange": "大商所",
+      "name": "原木2607",
+      "symbol": "lg2607"
     },
     {
       "exchange": "大商所",
@@ -2788,11 +2793,6 @@
     },
     {
       "exchange": "郑商所",
-      "name": "PTA508",
-      "symbol": "TA508"
-    },
-    {
-      "exchange": "郑商所",
       "name": "PTA509",
       "symbol": "TA509"
     },
@@ -2845,6 +2845,11 @@
       "exchange": "郑商所",
       "name": "PTA607",
       "symbol": "TA607"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "PTA608",
+      "symbol": "TA608"
     },
     {
       "exchange": "郑商所",
@@ -2938,11 +2943,6 @@
     },
     {
       "exchange": "郑商所",
-      "name": "甲醇508",
-      "symbol": "MA508"
-    },
-    {
-      "exchange": "郑商所",
       "name": "甲醇509",
       "symbol": "MA509"
     },
@@ -2998,6 +2998,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "甲醇608",
+      "symbol": "MA608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "甲醇主连",
       "symbol": "MAM"
     },
@@ -3005,11 +3010,6 @@
       "exchange": "郑商所",
       "name": "甲醇次主连",
       "symbol": "MAS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "玻璃508",
-      "symbol": "FG508"
     },
     {
       "exchange": "郑商所",
@@ -3068,6 +3068,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "玻璃608",
+      "symbol": "FG608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "玻璃主连",
       "symbol": "FGM"
     },
@@ -3075,11 +3080,6 @@
       "exchange": "郑商所",
       "name": "玻璃次主连",
       "symbol": "FGS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "菜籽508",
-      "symbol": "RS508"
     },
     {
       "exchange": "郑商所",
@@ -3098,6 +3098,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "菜籽608",
+      "symbol": "RS608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "菜籽主连",
       "symbol": "RSM"
     },
@@ -3105,11 +3110,6 @@
       "exchange": "郑商所",
       "name": "菜籽次主连",
       "symbol": "RSS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "菜粕508",
-      "symbol": "RM508"
     },
     {
       "exchange": "郑商所",
@@ -3140,6 +3140,11 @@
       "exchange": "郑商所",
       "name": "菜粕607",
       "symbol": "RM607"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "菜粕608",
+      "symbol": "RM608"
     },
     {
       "exchange": "郑商所",
@@ -3218,11 +3223,6 @@
     },
     {
       "exchange": "郑商所",
-      "name": "硅铁508",
-      "symbol": "SF508"
-    },
-    {
-      "exchange": "郑商所",
       "name": "硅铁509",
       "symbol": "SF509"
     },
@@ -3278,6 +3278,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "硅铁608",
+      "symbol": "SF608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "硅铁主连",
       "symbol": "SFM"
     },
@@ -3285,11 +3290,6 @@
       "exchange": "郑商所",
       "name": "硅铁次主连",
       "symbol": "SFS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "锰硅508",
-      "symbol": "SM508"
     },
     {
       "exchange": "郑商所",
@@ -3348,6 +3348,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "锰硅608",
+      "symbol": "SM608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "锰硅主连",
       "symbol": "SMM"
     },
@@ -3355,11 +3360,6 @@
       "exchange": "郑商所",
       "name": "锰硅次主连",
       "symbol": "SMS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "动力煤508",
-      "symbol": "ZC508"
     },
     {
       "exchange": "郑商所",
@@ -3418,6 +3418,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "动力煤608",
+      "symbol": "ZC608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "动力煤主连",
       "symbol": "ZCM"
     },
@@ -3425,11 +3430,6 @@
       "exchange": "郑商所",
       "name": "动力煤次主连",
       "symbol": "ZCS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "棉纱508",
-      "symbol": "CY508"
     },
     {
       "exchange": "郑商所",
@@ -3485,6 +3485,11 @@
       "exchange": "郑商所",
       "name": "棉纱607",
       "symbol": "CY607"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "棉纱608",
+      "symbol": "CY608"
     },
     {
       "exchange": "郑商所",
@@ -3583,11 +3588,6 @@
     },
     {
       "exchange": "郑商所",
-      "name": "尿素508",
-      "symbol": "UR508"
-    },
-    {
-      "exchange": "郑商所",
       "name": "尿素509",
       "symbol": "UR509"
     },
@@ -3643,6 +3643,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "尿素608",
+      "symbol": "UR608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "尿素主连",
       "symbol": "URM"
     },
@@ -3650,11 +3655,6 @@
       "exchange": "郑商所",
       "name": "尿素次主连",
       "symbol": "URS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "纯碱508",
-      "symbol": "SA508"
     },
     {
       "exchange": "郑商所",
@@ -3713,6 +3713,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "纯碱608",
+      "symbol": "SA608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "纯碱主连",
       "symbol": "SAM"
     },
@@ -3720,11 +3725,6 @@
       "exchange": "郑商所",
       "name": "纯碱次主连",
       "symbol": "SAS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "短纤508",
-      "symbol": "PF508"
     },
     {
       "exchange": "郑商所",
@@ -3783,6 +3783,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "短纤608",
+      "symbol": "PF608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "短纤主连",
       "symbol": "PFM"
     },
@@ -3835,11 +3840,6 @@
       "exchange": "郑商所",
       "name": "花生次主连",
       "symbol": "PKS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "对二甲苯508",
-      "symbol": "PX508"
     },
     {
       "exchange": "郑商所",
@@ -3898,6 +3898,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "对二甲苯608",
+      "symbol": "PX608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "对二甲苯主连",
       "symbol": "PXM"
     },
@@ -3905,11 +3910,6 @@
       "exchange": "郑商所",
       "name": "对二甲苯次主连",
       "symbol": "PXS"
-    },
-    {
-      "exchange": "郑商所",
-      "name": "烧碱508",
-      "symbol": "SH508"
     },
     {
       "exchange": "郑商所",
@@ -3968,6 +3968,11 @@
     },
     {
       "exchange": "郑商所",
+      "name": "烧碱608",
+      "symbol": "SH608"
+    },
+    {
+      "exchange": "郑商所",
       "name": "烧碱主连",
       "symbol": "SHM"
     },
@@ -3977,9 +3982,74 @@
       "symbol": "SHS"
     },
     {
-      "exchange": "上期能源",
-      "name": "原油2508",
-      "symbol": "sc2508"
+      "exchange": "郑商所",
+      "name": "瓶片509",
+      "symbol": "PR509"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片510",
+      "symbol": "PR510"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片511",
+      "symbol": "PR511"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片512",
+      "symbol": "PR512"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片601",
+      "symbol": "PR601"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片602",
+      "symbol": "PR602"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片603",
+      "symbol": "PR603"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片604",
+      "symbol": "PR604"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片605",
+      "symbol": "PR605"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片606",
+      "symbol": "PR606"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片607",
+      "symbol": "PR607"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片608",
+      "symbol": "PR608"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片主连",
+      "symbol": "PRM"
+    },
+    {
+      "exchange": "郑商所",
+      "name": "瓶片次主连",
+      "symbol": "PRS"
     },
     {
       "exchange": "上期能源",
@@ -4038,6 +4108,11 @@
     },
     {
       "exchange": "上期能源",
+      "name": "原油2608",
+      "symbol": "sc2608"
+    },
+    {
+      "exchange": "上期能源",
       "name": "原油2609",
       "symbol": "sc2609"
     },
@@ -4085,11 +4160,6 @@
       "exchange": "上期能源",
       "name": "原油次主连",
       "symbol": "scs"
-    },
-    {
-      "exchange": "上期能源",
-      "name": "20号胶2508",
-      "symbol": "nr2508"
     },
     {
       "exchange": "上期能源",
@@ -4148,6 +4218,11 @@
     },
     {
       "exchange": "上期能源",
+      "name": "20号胶2608",
+      "symbol": "nr2608"
+    },
+    {
+      "exchange": "上期能源",
       "name": "20号胶主连",
       "symbol": "nrm"
     },
@@ -4155,11 +4230,6 @@
       "exchange": "上期能源",
       "name": "20号胶次主连",
       "symbol": "nrs"
-    },
-    {
-      "exchange": "上期能源",
-      "name": "低硫燃油2508",
-      "symbol": "lu2508"
     },
     {
       "exchange": "上期能源",
@@ -4218,6 +4288,11 @@
     },
     {
       "exchange": "上期能源",
+      "name": "低硫燃油2608",
+      "symbol": "lu2608"
+    },
+    {
+      "exchange": "上期能源",
       "name": "低硫燃油主连",
       "symbol": "lum"
     },
@@ -4225,11 +4300,6 @@
       "exchange": "上期能源",
       "name": "低硫燃油次主连",
       "symbol": "lus"
-    },
-    {
-      "exchange": "上期能源",
-      "name": "国际铜2508",
-      "symbol": "bc2508"
     },
     {
       "exchange": "上期能源",
@@ -4288,6 +4358,11 @@
     },
     {
       "exchange": "上期能源",
+      "name": "国际铜2608",
+      "symbol": "bc2608"
+    },
+    {
+      "exchange": "上期能源",
       "name": "国际铜主连",
       "symbol": "bcm"
     },
@@ -4295,11 +4370,6 @@
       "exchange": "上期能源",
       "name": "国际铜次主连",
       "symbol": "bcs"
-    },
-    {
-      "exchange": "上期能源",
-      "name": "欧线集运2508",
-      "symbol": "ec2508"
     },
     {
       "exchange": "上期能源",
@@ -4328,6 +4398,11 @@
     },
     {
       "exchange": "上期能源",
+      "name": "欧线集运2608",
+      "symbol": "ec2608"
+    },
+    {
+      "exchange": "上期能源",
       "name": "欧线集运主连",
       "symbol": "ecm"
     },
@@ -4338,23 +4413,23 @@
     },
     {
       "exchange": "中金所",
-      "name": "中证500股指2507",
-      "symbol": "IC2507"
-    },
-    {
-      "exchange": "中金所",
-      "name": "中证500股指2508",
-      "symbol": "IC2508"
-    },
-    {
-      "exchange": "中金所",
       "name": "中证500股指2509",
       "symbol": "IC2509"
     },
     {
       "exchange": "中金所",
+      "name": "中证500股指2510",
+      "symbol": "IC2510"
+    },
+    {
+      "exchange": "中金所",
       "name": "中证500股指2512",
       "symbol": "IC2512"
+    },
+    {
+      "exchange": "中金所",
+      "name": "中证500股指2603",
+      "symbol": "IC2603"
     },
     {
       "exchange": "中金所",
@@ -4388,23 +4463,23 @@
     },
     {
       "exchange": "中金所",
-      "name": "沪深2507",
-      "symbol": "IF2507"
-    },
-    {
-      "exchange": "中金所",
-      "name": "沪深2508",
-      "symbol": "IF2508"
-    },
-    {
-      "exchange": "中金所",
       "name": "沪深2509",
       "symbol": "IF2509"
     },
     {
       "exchange": "中金所",
+      "name": "沪深2510",
+      "symbol": "IF2510"
+    },
+    {
+      "exchange": "中金所",
       "name": "沪深2512",
       "symbol": "IF2512"
+    },
+    {
+      "exchange": "中金所",
+      "name": "沪深2603",
+      "symbol": "IF2603"
     },
     {
       "exchange": "中金所",
@@ -4438,23 +4513,23 @@
     },
     {
       "exchange": "中金所",
-      "name": "上证2507",
-      "symbol": "IH2507"
-    },
-    {
-      "exchange": "中金所",
-      "name": "上证2508",
-      "symbol": "IH2508"
-    },
-    {
-      "exchange": "中金所",
       "name": "上证2509",
       "symbol": "IH2509"
     },
     {
       "exchange": "中金所",
+      "name": "上证2510",
+      "symbol": "IH2510"
+    },
+    {
+      "exchange": "中金所",
       "name": "上证2512",
       "symbol": "IH2512"
+    },
+    {
+      "exchange": "中金所",
+      "name": "上证2603",
+      "symbol": "IH2603"
     },
     {
       "exchange": "中金所",
@@ -4608,23 +4683,23 @@
     },
     {
       "exchange": "中金所",
-      "name": "中证1000股指2507",
-      "symbol": "IM2507"
-    },
-    {
-      "exchange": "中金所",
-      "name": "中证1000股指2508",
-      "symbol": "IM2508"
-    },
-    {
-      "exchange": "中金所",
       "name": "中证1000股指2509",
       "symbol": "IM2509"
     },
     {
       "exchange": "中金所",
+      "name": "中证1000股指2510",
+      "symbol": "IM2510"
+    },
+    {
+      "exchange": "中金所",
       "name": "中证1000股指2512",
       "symbol": "IM2512"
+    },
+    {
+      "exchange": "中金所",
+      "name": "中证1000股指2603",
+      "symbol": "IM2603"
     },
     {
       "exchange": "中金所",
@@ -4698,11 +4773,6 @@
     },
     {
       "exchange": "广期所",
-      "name": "工业硅2508",
-      "symbol": "si2508"
-    },
-    {
-      "exchange": "广期所",
       "name": "工业硅2509",
       "symbol": "si2509"
     },
@@ -4758,6 +4828,11 @@
     },
     {
       "exchange": "广期所",
+      "name": "工业硅2608",
+      "symbol": "si2608"
+    },
+    {
+      "exchange": "广期所",
       "name": "工业硅主连",
       "symbol": "sim"
     },
@@ -4765,11 +4840,6 @@
       "exchange": "广期所",
       "name": "工业硅次主连",
       "symbol": "sis"
-    },
-    {
-      "exchange": "广期所",
-      "name": "碳酸锂2508",
-      "symbol": "lc2508"
     },
     {
       "exchange": "广期所",
@@ -4828,6 +4898,11 @@
     },
     {
       "exchange": "广期所",
+      "name": "碳酸锂2608",
+      "symbol": "lc2608"
+    },
+    {
+      "exchange": "广期所",
       "name": "碳酸锂主连",
       "symbol": "lcm"
     },
@@ -4835,11 +4910,6 @@
       "exchange": "广期所",
       "name": "碳酸锂次主连",
       "symbol": "lcs"
-    },
-    {
-      "exchange": "广期所",
-      "name": "多晶硅2508",
-      "symbol": "ps2508"
     },
     {
       "exchange": "广期所",
@@ -4895,6 +4965,11 @@
       "exchange": "广期所",
       "name": "多晶硅2607",
       "symbol": "ps2607"
+    },
+    {
+      "exchange": "广期所",
+      "name": "多晶硅2608",
+      "symbol": "ps2608"
     },
     {
       "exchange": "广期所",

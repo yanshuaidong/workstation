@@ -355,7 +355,7 @@ export default {
         { key: 'turnover', label: '成交额' }
       ],
       // 选中的列
-      selectedColumns: ['time', 'close', 'changePercent', 'volume', 'openInterest', 'dailyChange'],
+      selectedColumns: ['time', 'close', 'changePercent', 'volume', 'openInterest', 'dailyChange', 'high', 'low'],
       // 数据
       contracts: [],
       filteredContracts: [],
@@ -516,7 +516,7 @@ export default {
     },
     
     resetToDefault() {
-      this.selectedColumns = ['time', 'close', 'changePercent', 'volume', 'openInterest', 'dailyChange']
+      this.selectedColumns = ['time', 'close', 'changePercent', 'volume', 'openInterest', 'dailyChange', 'high', 'low']
     },
     
     // 检查列是否可见

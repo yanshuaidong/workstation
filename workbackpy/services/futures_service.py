@@ -88,6 +88,9 @@ class FuturesService:
                 start_date=actual_start_date,
                 end_date=end_date
             )
+            # 打印一下df
+            print(df)
+
             
             if df.empty:
                 return []

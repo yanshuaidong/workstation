@@ -3,7 +3,7 @@ import axios from 'axios'
 // 创建默认的 axios 实例 (3000端口)
 const request = axios.create({
   baseURL: 'http://localhost:3000',
-  timeout: 10000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   }
@@ -12,7 +12,7 @@ const request = axios.create({
 // 创建5000端口的 axios 实例
 const request5000 = axios.create({
   baseURL: 'http://localhost:5000',
-  timeout: 10000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   }

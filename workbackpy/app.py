@@ -11,8 +11,13 @@ def create_app():
     # 加载配置
     app.config.from_object(Config)
     
-    # 启用 CORS
-    CORS(app, origins=['http://localhost:8080', 'http://127.0.0.1:8080'])
+    # 启用 CORS - 允许多个来源访问
+    CORS(app, origins=[
+        'http://localhost:8080', 
+        'http://127.0.0.1:8080',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000'
+    ], supports_credentials=True)
     
     # 注册蓝图
     app.register_blueprint(api_bp, url_prefix='/api')
