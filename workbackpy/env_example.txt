@@ -1,4 +1,4 @@
-# Flask 配置
+# Flask 应用配置
 FLASK_ENV=development
 FLASK_DEBUG=true
 SECRET_KEY=your-secret-key-here
@@ -7,11 +7,14 @@ SECRET_KEY=your-secret-key-here
 DATABASE_URL=sqlite:///app.db
 
 # CORS 配置 - 允许来自 Vue 项目的请求
+# 如果前端端口改变，需要在这里添加新的端口地址
 CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
 
 # API 配置
 API_VERSION=v1
 
-# 服务器配置
+# 服务器配置 - 重要：如果端口被占用，修改这里的 PORT 值
+# HOST=0.0.0.0 表示监听所有网络接口
+# PORT=7001 表示服务器将在 7001 端口运行
 HOST=0.0.0.0
-PORT=5000 
+PORT=7001 

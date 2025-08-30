@@ -9,9 +9,9 @@ const request = axios.create({
   }
 })
 
-// 创建5000端口的 axios 实例
-const request5000 = axios.create({
-  baseURL: 'http://localhost:5000',
+// 创建7001端口的 axios 实例
+const request7001 = axios.create({
+  baseURL: 'http://localhost:7001',
   timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
@@ -64,7 +64,7 @@ const setupInterceptors = (instance, port) => {
 
 // 为两个实例配置拦截器
 setupInterceptors(request, 3000)
-setupInterceptors(request5000, 5000)
+setupInterceptors(request7001, 7001)
 
 // 动态请求方法 - 可以指定不同的端口和超时时间
 export const dynamicRequest = (port = 3000, timeout = 10000) => {
@@ -88,4 +88,4 @@ export const requestWithPort = async (url, data = {}, method = 'post', port = 30
 
 // 导出所有实例
 export default request
-export { request5000 } 
+export { request7001 } 

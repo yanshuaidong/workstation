@@ -54,4 +54,13 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    # 服务器启动配置 - 重要：端口配置从 Config 类中读取
+    # 如果需要修改端口，请：
+    # 1. 修改 .env 文件中的 PORT 值，或者
+    # 2. 修改 config.py 中 Config.PORT 的默认值
+    # 当前配置：HOST={Config.HOST}, PORT={Config.PORT}
+    app.run(
+        debug=Config.DEBUG,      # 调试模式，从配置中读取
+        host=Config.HOST,        # 主机地址，从配置中读取（通常是 0.0.0.0）
+        port=Config.PORT         # 端口号，从配置中读取（现在是 7001）
+    ) 

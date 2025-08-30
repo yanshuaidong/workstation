@@ -1,5 +1,5 @@
 {
-  "update_time": "2025-08-27T20:48:38.863038",
+  "update_time": "2025-08-30T15:53:07.674729",
   "contracts": [
     {
       "exchange": "上期所",
@@ -543,11 +543,6 @@
     },
     {
       "exchange": "上期所",
-      "name": "燃油2509",
-      "symbol": "fu2509"
-    },
-    {
-      "exchange": "上期所",
       "name": "燃油2510",
       "symbol": "fu2510"
     },
@@ -600,6 +595,11 @@
       "exchange": "上期所",
       "name": "燃油2608",
       "symbol": "fu2608"
+    },
+    {
+      "exchange": "上期所",
+      "name": "燃油2609",
+      "symbol": "fu2609"
     },
     {
       "exchange": "上期所",
@@ -4053,11 +4053,6 @@
     },
     {
       "exchange": "上期能源",
-      "name": "原油2509",
-      "symbol": "sc2509"
-    },
-    {
-      "exchange": "上期能源",
       "name": "原油2510",
       "symbol": "sc2510"
     },
@@ -4153,6 +4148,11 @@
     },
     {
       "exchange": "上期能源",
+      "name": "原油2809",
+      "symbol": "sc2809"
+    },
+    {
+      "exchange": "上期能源",
       "name": "原油主连",
       "symbol": "scm"
     },
@@ -4233,11 +4233,6 @@
     },
     {
       "exchange": "上期能源",
-      "name": "低硫燃油2509",
-      "symbol": "lu2509"
-    },
-    {
-      "exchange": "上期能源",
       "name": "低硫燃油2510",
       "symbol": "lu2510"
     },
@@ -4290,6 +4285,11 @@
       "exchange": "上期能源",
       "name": "低硫燃油2608",
       "symbol": "lu2608"
+    },
+    {
+      "exchange": "上期能源",
+      "name": "低硫燃油2609",
+      "symbol": "lu2609"
     },
     {
       "exchange": "上期能源",
