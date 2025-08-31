@@ -32,10 +32,12 @@ export const refreshFuturesContractsApi = `${BASE_URL_7001}/futures/refresh-cont
 export const getSettingsApi = `${BASE_URL_7002}/settings`;
 export const updateSettingsApi = `${BASE_URL_7002}/settings`;
 export const updateContractsListApi = `${BASE_URL_7002}/contracts/update-list`;
+export const getContractsListApi = `${BASE_URL_7002}/contracts/list`;
 export const getListUpdateLogApi = `${BASE_URL_7002}/contracts/list-update-log`;
 export const updateAllHistoryApi = `${BASE_URL_7002}/history/update-all`;
 export const retrySingleHistoryApi = `${BASE_URL_7002}/history/retry-single`;
 export const getHistoryLogsApi = `${BASE_URL_7002}/history/logs`;
+export const getHistoryDataApi = `${BASE_URL_7002}/history/data`;
 
 // 旧版本兼容（相对路径）
 export const getUsersApi = '/api/users'
