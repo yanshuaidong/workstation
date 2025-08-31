@@ -18,6 +18,15 @@ const request7001 = axios.create({
   }
 })
 
+// 创建7002端口的 axios 实例 (期货数据更新系统)
+const request7002 = axios.create({
+  baseURL: 'http://localhost:7002',
+  timeout: 120000,
+  headers: {
+    'Content-Type': 'application/json',
+  }
+})
+
 // 通用拦截器配置函数
 const setupInterceptors = (instance, port) => {
   // 请求拦截器
@@ -35,6 +44,11 @@ const setupInterceptors = (instance, port) => {
   instance.interceptors.response.use(
     response => {
       const responseData = response.data
+      
+      // 对于7002端口，直接返回完整的响应数据
+      if (port === 7002) {
+        return responseData
+      }
       
       // 如果有嵌套的data字段，提取内层数据
       if (responseData && responseData.data && typeof responseData.data === 'object') {
@@ -62,9 +76,10 @@ const setupInterceptors = (instance, port) => {
   )
 }
 
-// 为两个实例配置拦截器
+// 为所有实例配置拦截器
 setupInterceptors(request, 3000)
 setupInterceptors(request7001, 7001)
+setupInterceptors(request7002, 7002)
 
 // 动态请求方法 - 可以指定不同的端口和超时时间
 export const dynamicRequest = (port = 3000, timeout = 10000) => {
@@ -88,4 +103,4 @@ export const requestWithPort = async (url, data = {}, method = 'post', port = 30
 
 // 导出所有实例
 export default request
-export { request7001 } 
+export { request7001, request7002 } 

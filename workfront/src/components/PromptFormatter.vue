@@ -51,7 +51,7 @@
       <template #header>
         <div class="card-header">
           <span>生成的提示词</span>
-          <el-button type="text" @click="copyPrompt" size="small">
+          <el-button link @click="copyPrompt" size="small">
             复制
           </el-button>
         </div>

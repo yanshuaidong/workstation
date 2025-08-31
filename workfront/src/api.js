@@ -1,6 +1,7 @@
 // API 接口定义
 const BASE_URL_3000 = 'http://localhost:3000/api';
 const BASE_URL_7001 = 'http://localhost:7001/api';
+const BASE_URL_7002 = 'http://localhost:7002/api';
 
 // 3000端口的接口
 export const getAllVarietiesApi = `${BASE_URL_3000}/get-all-varieties`;
@@ -27,6 +28,15 @@ export const getFuturesHistoryApi = `${BASE_URL_7001}/futures/history`;
 export const getFuturesPeriodsApi = `${BASE_URL_7001}/futures/periods`;
 export const refreshFuturesContractsApi = `${BASE_URL_7001}/futures/refresh-contracts`;
 
+// 期货数据更新系统接口 (7002端口) - 新版本
+export const getSettingsApi = `${BASE_URL_7002}/settings`;
+export const updateSettingsApi = `${BASE_URL_7002}/settings`;
+export const updateContractsListApi = `${BASE_URL_7002}/contracts/update-list`;
+export const getListUpdateLogApi = `${BASE_URL_7002}/contracts/list-update-log`;
+export const updateAllHistoryApi = `${BASE_URL_7002}/history/update-all`;
+export const retrySingleHistoryApi = `${BASE_URL_7002}/history/retry-single`;
+export const getHistoryLogsApi = `${BASE_URL_7002}/history/logs`;
+
 // 旧版本兼容（相对路径）
 export const getUsersApi = '/api/users'
 export const createUserApi = '/api/users'
@@ -36,5 +46,6 @@ export const deleteUserApi = '/api/users'
 // 导出端口配置，方便组件使用
 export const API_PORTS = {
   PORT_3000: BASE_URL_3000,
-  PORT_7001: BASE_URL_7001
+  PORT_7001: BASE_URL_7001,
+  PORT_7002: BASE_URL_7002
 } 

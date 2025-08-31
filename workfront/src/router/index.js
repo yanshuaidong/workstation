@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import ApiDataFetcher from '@/components/ApiDataFetcher.vue'
 import TechnicalAnalysis from '@/components/TechnicalAnalysis.vue'
+import FuturesUpdate from '@/components/FuturesUpdate.vue'
 
 const routes = [
   {
@@ -38,7 +39,15 @@ const routes = [
     meta: {
       title: '提示词格式化'
     }
-  }
+  },
+  {
+    path: '/futures-update',
+    name: 'FuturesUpdate',  
+    component: FuturesUpdate,
+    meta: {
+      title: '期货数据更新'
+    }
+  },
 ]
 
 const router = createRouter({

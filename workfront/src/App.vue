@@ -6,8 +6,8 @@
         <div class="header-content">
           <h1 class="header-title">量化分析平台</h1>
           <div class="header-actions">
-            <el-button type="text" icon="Setting" size="small">设置</el-button>
-            <el-button type="text" icon="User" size="small">用户</el-button>
+            <el-button link icon="Setting" size="small">设置</el-button>
+            <el-button link icon="User" size="small">用户</el-button>
           </div>
         </div>
       </el-header>
@@ -38,6 +38,10 @@
             <el-menu-item index="/prompt-formatter" class="menu-item">
               <el-icon class="menu-icon"><Edit /></el-icon>
               <span class="menu-text">提示词格式化</span>
+            </el-menu-item>
+            <el-menu-item index="/futures-update" class="menu-item">
+              <el-icon class="menu-icon"><Refresh /></el-icon>
+              <span class="menu-text">期货数据更新</span>
             </el-menu-item>
           </el-menu>
         </el-aside>

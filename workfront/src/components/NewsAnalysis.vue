@@ -129,7 +129,7 @@
                 </template>
                 <template #default="scope">
                   <el-button 
-                    type="text" 
+                    link 
                     size="small"
                     @click="openNewsLink(scope.row.link)"
                   >
