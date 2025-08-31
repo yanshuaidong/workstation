@@ -14,6 +14,17 @@
 - **APScheduler**: 定时任务调度
 - **MySQL**: 阿里云RDS数据库
 
+Flask==2.3.3（Web框架）
+Flask-CORS==4.0.0（跨域支持）
+PyMySQL==1.1.0（MySQL数据库连接）
+akshare==1.17.44（金融数据获取）
+pandas>=2.0.0（数据处理）
+APScheduler==3.10.4（任务调度）
+requests==2.31.0（HTTP请求）
+cryptography>=41.0.0（加密库）
+ta>=0.10.2（技术分析）
+numpy>=1.24.0（数值计算）
+
 ### 前端技术栈
 - **Vue 3**: 前端框架
 - **Element Plus**: UI组件库

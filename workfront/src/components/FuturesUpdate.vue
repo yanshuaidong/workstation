@@ -381,11 +381,11 @@ export default {
   },
   
   methods: {
-    // 初始化日期范围（默认近一个月）
+    // 初始化日期范围（默认近三个月）
     initDateRange() {
       const end = new Date()
       const start = new Date()
-      start.setDate(start.getDate() - 30)
+      start.setDate(start.getDate() - 90)
       
       this.dateRange = [
         start.toISOString().split('T')[0],

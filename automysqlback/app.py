@@ -20,6 +20,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
 import logging
+import ta
+import numpy as np
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -160,6 +162,65 @@ def init_database():
             """)
             logger.info("已更新现有记录的合约名称")
         
+        # 迁移现有历史数据表，添加技术指标字段
+        cursor.execute("SHOW TABLES LIKE 'hist_%'")
+        all_hist_tables = [table[0] for table in cursor.fetchall()]
+        
+        # 过滤掉非期货历史数据表（如history_update_log等）
+        # 只保留格式为 hist_{symbol} 的表，排除 history_update_log 等表
+        existing_tables = []
+        for table_name in all_hist_tables:
+            # 排除特定的非期货历史数据表
+            if table_name not in ['history_update_log']:
+                # 检查表是否确实有期货历史数据表的结构（有trade_date字段）
+                try:
+                    cursor.execute(f"""
+                        SELECT COUNT(*) 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = DATABASE() 
+                        AND TABLE_NAME = '{table_name}' 
+                        AND COLUMN_NAME = 'trade_date'
+                    """)
+                    if cursor.fetchone()[0] > 0:
+                        existing_tables.append(table_name)
+                except Exception as e:
+                    logger.warning(f"检查表{table_name}结构时出错: {e}")
+        
+        for table_name in existing_tables:
+            # 检查是否已有技术指标字段
+            cursor.execute(f"""
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = '{table_name}' 
+                AND COLUMN_NAME = 'macd_dif'
+            """)
+            
+            if cursor.fetchone()[0] == 0:
+                # 修改现有字段类型并添加技术指标字段
+                cursor.execute(f"""
+                    ALTER TABLE {table_name}
+                    MODIFY COLUMN open_price DECIMAL(10,2) NOT NULL COMMENT '开盘价',
+                    MODIFY COLUMN high_price DECIMAL(10,2) NOT NULL COMMENT '最高价',
+                    MODIFY COLUMN low_price DECIMAL(10,2) NOT NULL COMMENT '最低价',
+                    MODIFY COLUMN close_price DECIMAL(10,2) NOT NULL COMMENT '收盘价',
+                    MODIFY COLUMN turnover DECIMAL(20,2) NOT NULL DEFAULT 0 COMMENT '成交额',
+                    MODIFY COLUMN price_change DECIMAL(10,2) DEFAULT 0 COMMENT '涨跌',
+                    MODIFY COLUMN change_pct DECIMAL(10,2) DEFAULT 0.00 COMMENT '涨跌幅',
+                    ADD COLUMN macd_dif DECIMAL(10,4) NULL COMMENT 'MACD快线' AFTER change_pct,
+                    ADD COLUMN macd_dea DECIMAL(10,4) NULL COMMENT 'MACD慢线' AFTER macd_dif,
+                    ADD COLUMN macd_histogram DECIMAL(10,4) NULL COMMENT 'MACD柱状图' AFTER macd_dea,
+                    ADD COLUMN rsi_14 DECIMAL(6,2) NULL COMMENT 'RSI(14)' AFTER macd_histogram,
+                    ADD COLUMN kdj_k DECIMAL(6,2) NULL COMMENT 'KDJ-K值' AFTER rsi_14,
+                    ADD COLUMN kdj_d DECIMAL(6,2) NULL COMMENT 'KDJ-D值' AFTER kdj_k,
+                    ADD COLUMN kdj_j DECIMAL(6,2) NULL COMMENT 'KDJ-J值' AFTER kdj_d,
+                    ADD COLUMN bb_upper DECIMAL(10,2) NULL COMMENT '布林带上轨' AFTER kdj_j,
+                    ADD COLUMN bb_middle DECIMAL(10,2) NULL COMMENT '布林带中轨' AFTER bb_upper,
+                    ADD COLUMN bb_lower DECIMAL(10,2) NULL COMMENT '布林带下轨' AFTER bb_middle,
+                    ADD COLUMN bb_width DECIMAL(10,2) NULL COMMENT '布林带宽度' AFTER bb_lower
+                """)
+                logger.info(f"已为表 {table_name} 添加技术指标字段")
+        
         conn.commit()
         logger.info("数据库表初始化完成")
         
@@ -180,15 +241,26 @@ def create_history_table(symbol):
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {table_name} (
                 trade_date DATE PRIMARY KEY COMMENT '交易日期',
-                open_price INT NOT NULL COMMENT '开盘价',
-                high_price INT NOT NULL COMMENT '最高价',
-                low_price INT NOT NULL COMMENT '最低价',
-                close_price INT NOT NULL COMMENT '收盘价',
+                open_price DECIMAL(10,2) NOT NULL COMMENT '开盘价',
+                high_price DECIMAL(10,2) NOT NULL COMMENT '最高价',
+                low_price DECIMAL(10,2) NOT NULL COMMENT '最低价',
+                close_price DECIMAL(10,2) NOT NULL COMMENT '收盘价',
                 volume BIGINT NOT NULL DEFAULT 0 COMMENT '成交量',
                 open_interest BIGINT NOT NULL DEFAULT 0 COMMENT '持仓量',
-                turnover BIGINT NOT NULL DEFAULT 0 COMMENT '成交额',
-                price_change INT DEFAULT 0 COMMENT '价格变动',
-                change_pct DECIMAL(8,2) DEFAULT 0.00 COMMENT '涨跌幅',
+                turnover DECIMAL(20,2) NOT NULL DEFAULT 0 COMMENT '成交额',
+                price_change DECIMAL(10,2) DEFAULT 0 COMMENT '涨跌',
+                change_pct DECIMAL(10,2) DEFAULT 0.00 COMMENT '涨跌幅',
+                macd_dif DECIMAL(10,4) NULL COMMENT 'MACD快线',
+                macd_dea DECIMAL(10,4) NULL COMMENT 'MACD慢线',
+                macd_histogram DECIMAL(10,4) NULL COMMENT 'MACD柱状图',
+                rsi_14 DECIMAL(6,2) NULL COMMENT 'RSI(14)',
+                kdj_k DECIMAL(6,2) NULL COMMENT 'KDJ-K值',
+                kdj_d DECIMAL(6,2) NULL COMMENT 'KDJ-D值',
+                kdj_j DECIMAL(6,2) NULL COMMENT 'KDJ-J值',
+                bb_upper DECIMAL(10,2) NULL COMMENT '布林带上轨',
+                bb_middle DECIMAL(10,2) NULL COMMENT '布林带中轨',
+                bb_lower DECIMAL(10,2) NULL COMMENT '布林带下轨',
+                bb_width DECIMAL(10,2) NULL COMMENT '布林带宽度',
                 source_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '数据源时间戳',
                 ingest_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '入库时间戳',
                 INDEX idx_trade_date (trade_date)
@@ -204,6 +276,93 @@ def create_history_table(symbol):
     finally:
         cursor.close()
         conn.close()
+
+def calculate_technical_indicators(df):
+    """计算技术指标"""
+    try:
+        if df.empty or len(df) < 2:
+            return df
+        
+        # 确保数据按日期排序
+        df = df.sort_values('时间').reset_index(drop=True)
+        
+        # 转换价格数据为float类型
+        price_cols = ['开盘', '最高', '最低', '收盘']
+        for col in price_cols:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # 成交量转换
+        df['成交量'] = pd.to_numeric(df.get('成交量', 0), errors='coerce').fillna(0)
+        
+        # 初始化技术指标列
+        df['macd_dif'] = np.nan
+        df['macd_dea'] = np.nan
+        df['macd_histogram'] = np.nan
+        df['rsi_14'] = np.nan
+        df['kdj_k'] = np.nan
+        df['kdj_d'] = np.nan
+        df['kdj_j'] = np.nan
+        df['bb_upper'] = np.nan
+        df['bb_middle'] = np.nan
+        df['bb_lower'] = np.nan
+        df['bb_width'] = np.nan
+        
+        # 检查数据质量
+        if df['收盘'].isna().all():
+            logger.warning("收盘价数据全部为空，无法计算技术指标")
+            return df
+        
+        # 1. 计算MACD (12,26,9)
+        try:
+            if len(df) >= 26:  # MACD至少需要26个数据点
+                macd_data = ta.trend.MACD(close=df['收盘'], window_slow=26, window_fast=12, window_sign=9)
+                df['macd_dif'] = macd_data.macd()
+                df['macd_dea'] = macd_data.macd_signal()
+                df['macd_histogram'] = macd_data.macd_diff()
+        except Exception as e:
+            logger.warning(f"MACD计算失败: {e}")
+        
+        # 2. 计算RSI (14)
+        try:
+            if len(df) >= 14:  # RSI需要至少14个数据点
+                df['rsi_14'] = ta.momentum.RSIIndicator(close=df['收盘'], window=14).rsi()
+        except Exception as e:
+            logger.warning(f"RSI计算失败: {e}")
+        
+        # 3. 计算KDJ (9,3,3)
+        try:
+            if len(df) >= 9:  # KDJ需要至少9个数据点
+                # 计算StochasticOscillator
+                stoch = ta.momentum.StochasticOscillator(
+                    high=df['最高'], 
+                    low=df['最低'], 
+                    close=df['收盘'], 
+                    window=9, 
+                    smooth_window=3
+                )
+                df['kdj_k'] = stoch.stoch()
+                df['kdj_d'] = stoch.stoch_signal()
+                # J = 3*K - 2*D
+                df['kdj_j'] = 3 * df['kdj_k'] - 2 * df['kdj_d']
+        except Exception as e:
+            logger.warning(f"KDJ计算失败: {e}")
+        
+        # 4. 计算布林带 (20,2)
+        try:
+            if len(df) >= 20:  # 布林带需要至少20个数据点
+                bb = ta.volatility.BollingerBands(close=df['收盘'], window=20, window_dev=2)
+                df['bb_upper'] = bb.bollinger_hband()
+                df['bb_middle'] = bb.bollinger_mavg()
+                df['bb_lower'] = bb.bollinger_lband()
+                df['bb_width'] = bb.bollinger_wband()
+        except Exception as e:
+            logger.warning(f"布林带计算失败: {e}")
+        
+        return df
+        
+    except Exception as e:
+        logger.error(f"技术指标计算失败: {e}")
+        return df
 
 def filter_main_contracts(contracts_df):
     """筛选主连合约"""
@@ -557,17 +716,30 @@ def fetch_and_store_history_with_retry(symbol, start_date, end_date, timeout_sec
                 if missing_columns:
                     raise ValueError(f"数据框缺少必需的列: {missing_columns}")
                 
+                # 计算技术指标
+                logger.info(f"{symbol}({contract_name}) 开始计算技术指标")
+                hist_df = calculate_technical_indicators(hist_df)
+                logger.info(f"{symbol}({contract_name}) 技术指标计算完成")
+                
                 # 数据入库
                 table_name = f"hist_{symbol}"
                 success_rows = 0
                 
                 for idx, row in hist_df.iterrows():
                     try:
+                        # 处理技术指标的NaN值
+                        def handle_nan(value):
+                            return None if pd.isna(value) else float(value)
+                        
                         cursor.execute(f"""
                             INSERT INTO {table_name} 
                             (trade_date, open_price, high_price, low_price, close_price, 
-                             volume, open_interest, turnover, price_change, change_pct, source_ts)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                             volume, open_interest, turnover, price_change, change_pct,
+                             macd_dif, macd_dea, macd_histogram, rsi_14,
+                             kdj_k, kdj_d, kdj_j,
+                             bb_upper, bb_middle, bb_lower, bb_width, source_ts)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                             ON DUPLICATE KEY UPDATE
                             open_price = VALUES(open_price),
                             high_price = VALUES(high_price),
@@ -578,6 +750,17 @@ def fetch_and_store_history_with_retry(symbol, start_date, end_date, timeout_sec
                             turnover = VALUES(turnover),
                             price_change = VALUES(price_change),
                             change_pct = VALUES(change_pct),
+                            macd_dif = VALUES(macd_dif),
+                            macd_dea = VALUES(macd_dea),
+                            macd_histogram = VALUES(macd_histogram),
+                            rsi_14 = VALUES(rsi_14),
+                            kdj_k = VALUES(kdj_k),
+                            kdj_d = VALUES(kdj_d),
+                            kdj_j = VALUES(kdj_j),
+                            bb_upper = VALUES(bb_upper),
+                            bb_middle = VALUES(bb_middle),
+                            bb_lower = VALUES(bb_lower),
+                            bb_width = VALUES(bb_width),
                             ingest_ts = NOW()
                         """, (
                             row['时间'],
@@ -589,7 +772,18 @@ def fetch_and_store_history_with_retry(symbol, start_date, end_date, timeout_sec
                             row.get('持仓量', 0),
                             row.get('成交额', 0),
                             row.get('涨跌', 0),
-                            row.get('涨跌幅', 0.0)
+                            row.get('涨跌幅', 0.0),
+                            handle_nan(row.get('macd_dif')),
+                            handle_nan(row.get('macd_dea')),
+                            handle_nan(row.get('macd_histogram')),
+                            handle_nan(row.get('rsi_14')),
+                            handle_nan(row.get('kdj_k')),
+                            handle_nan(row.get('kdj_d')),
+                            handle_nan(row.get('kdj_j')),
+                            handle_nan(row.get('bb_upper')),
+                            handle_nan(row.get('bb_middle')),
+                            handle_nan(row.get('bb_lower')),
+                            handle_nan(row.get('bb_width'))
                         ))
                         success_rows += 1
                     except Exception as row_error:
@@ -821,6 +1015,127 @@ def get_history_logs():
         return jsonify({
             'code': 1,
             'message': f'获取失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/history/recalculate-indicators', methods=['POST'])
+def recalculate_indicators():
+    """重新计算现有数据的技术指标"""
+    data = request.get_json()
+    symbol = data.get('symbol')  # 可选，如果不提供则处理所有合约
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 获取要处理的合约列表
+        if symbol:
+            cursor.execute("SELECT symbol FROM contracts_main WHERE symbol = %s AND is_active = 1", (symbol,))
+        else:
+            cursor.execute("SELECT symbol FROM contracts_main WHERE is_active = 1")
+        
+        symbols = [row['symbol'] for row in cursor.fetchall()]
+        
+        if not symbols:
+            return jsonify({
+                'code': 1,
+                'message': '没有找到需要处理的合约'
+            })
+        
+        def recalculate_task():
+            """重新计算技术指标的后台任务"""
+            success_count = 0
+            total_count = len(symbols)
+            
+            for contract_symbol in symbols:
+                try:
+                    logger.info(f"开始重新计算 {contract_symbol} 的技术指标")
+                    
+                    # 从数据库读取历史数据
+                    conn_task = get_db_connection()
+                    cursor_task = conn_task.cursor(pymysql.cursors.DictCursor)
+                    
+                    table_name = f"hist_{contract_symbol}"
+                    cursor_task.execute(f"""
+                        SELECT trade_date as 时间, open_price as 开盘, high_price as 最高, 
+                               low_price as 最低, close_price as 收盘, volume as 成交量,
+                               open_interest as 持仓量, turnover as 成交额, 
+                               price_change as 涨跌, change_pct as 涨跌幅
+                        FROM {table_name} 
+                        ORDER BY trade_date ASC
+                    """)
+                    
+                    rows = cursor_task.fetchall()
+                    if not rows:
+                        logger.warning(f"{contract_symbol} 没有历史数据")
+                        cursor_task.close()
+                        conn_task.close()
+                        continue
+                    
+                    # 转换为DataFrame
+                    hist_df = pd.DataFrame(rows)
+                    
+                    # 计算技术指标
+                    hist_df = calculate_technical_indicators(hist_df)
+                    
+                    # 更新数据库
+                    for idx, row in hist_df.iterrows():
+                        def handle_nan(value):
+                            return None if pd.isna(value) else float(value)
+                        
+                        cursor_task.execute(f"""
+                            UPDATE {table_name} SET
+                            macd_dif = %s, macd_dea = %s, macd_histogram = %s,
+                            rsi_14 = %s, kdj_k = %s, kdj_d = %s, kdj_j = %s,
+                            bb_upper = %s, bb_middle = %s, bb_lower = %s, bb_width = %s,
+                            ingest_ts = NOW()
+                            WHERE trade_date = %s
+                        """, (
+                            handle_nan(row.get('macd_dif')),
+                            handle_nan(row.get('macd_dea')),
+                            handle_nan(row.get('macd_histogram')),
+                            handle_nan(row.get('rsi_14')),
+                            handle_nan(row.get('kdj_k')),
+                            handle_nan(row.get('kdj_d')),
+                            handle_nan(row.get('kdj_j')),
+                            handle_nan(row.get('bb_upper')),
+                            handle_nan(row.get('bb_middle')),
+                            handle_nan(row.get('bb_lower')),
+                            handle_nan(row.get('bb_width')),
+                            row['时间']
+                        ))
+                    
+                    conn_task.commit()
+                    cursor_task.close()
+                    conn_task.close()
+                    
+                    success_count += 1
+                    logger.info(f"{contract_symbol} 技术指标重新计算完成 ({success_count}/{total_count})")
+                    
+                except Exception as e:
+                    logger.error(f"{contract_symbol} 技术指标重新计算失败: {e}")
+            
+            logger.info(f"技术指标重新计算完成: {success_count}/{total_count}")
+        
+        # 在后台线程中执行
+        threading.Thread(target=recalculate_task, daemon=True).start()
+        
+        return jsonify({
+            'code': 0,
+            'message': '技术指标重新计算已启动',
+            'data': {
+                'total_contracts': len(symbols),
+                'target_symbol': symbol or '全部合约'
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"启动技术指标重新计算失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'启动失败: {str(e)}'
         })
     finally:
         cursor.close()
