@@ -29,37 +29,54 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# 统一的 compose 命令封装（自动兼容 docker-compose 与 docker compose）
+compose() {
+    if command -v docker-compose >/dev/null 2>&1; then
+        docker-compose "$@"
+    elif docker compose version >/dev/null 2>&1; then
+        docker compose "$@"
+    else
+        print_error "未检测到 Docker Compose。请安装独立的 docker-compose 或使用 Docker 内置的 docker compose 插件。"
+        exit 1
+    fi
+}
+
 # 检查Docker和Docker Compose
 check_requirements() {
     print_info "检查系统要求..."
-    
+
     if ! command -v docker &> /dev/null; then
         print_error "Docker未安装，请先安装Docker"
         exit 1
     fi
-    
-    if ! command -v docker-compose &> /dev/null; then
-        print_error "Docker Compose未安装，请先安装Docker Compose"
+
+    # 这里通过封装函数进行一次探测
+    if command -v docker-compose >/dev/null 2>&1; then
+        print_info "检测到 docker-compose：$(docker-compose --version 2>/dev/null | head -n1)"
+    elif docker compose version >/dev/null 2>&1; then
+        print_info "检测到 docker compose 插件：$(docker compose version 2>/dev/null | head -n1)"
+    else
+        print_error "Docker Compose未安装，请先安装Docker Compose（独立二进制或 docker compose 插件）"
         exit 1
     fi
-    
+
     print_success "系统要求检查通过"
 }
 
 # 创建必要的目录
 create_directories() {
     print_info "创建必要的目录..."
-    
+
     mkdir -p nginx/logs
     mkdir -p logs/backend
-    
+
     print_success "目录创建完成"
 }
 
 # 检查环境配置
 check_env() {
     print_info "检查环境配置..."
-    
+
     if [ ! -f ".env" ]; then
         if [ -f "env.production" ]; then
             print_warning ".env文件不存在，复制env.production为.env"
@@ -70,29 +87,29 @@ check_env() {
             exit 1
         fi
     fi
-    
+
     print_success "环境配置检查完成"
 }
 
 # 构建和启动服务
 start_services() {
     print_info "构建和启动服务..."
-    
-    # 停止可能存在的服务
-    docker-compose down 2>/dev/null || true
-    
+
+    # 停止可能存在的服务（忽略错误）
+    compose down 2>/dev/null || true
+
     # 构建镜像
     print_info "构建Docker镜像..."
-    docker-compose build --no-cache
-    
+    compose build --no-cache
+
     # 启动服务
     print_info "启动服务..."
-    docker-compose up -d
-    
+    compose up -d
+
     # 等待服务启动
     print_info "等待服务启动..."
     sleep 10
-    
+
     # 检查服务状态
     check_services_status
 }
@@ -100,7 +117,7 @@ start_services() {
 # 停止服务
 stop_services() {
     print_info "停止服务..."
-    docker-compose down
+    compose down
     print_success "服务已停止"
 }
 
@@ -114,28 +131,28 @@ restart_services() {
 # 检查服务状态
 check_services_status() {
     print_info "检查服务状态..."
-    
+
     # 检查容器状态
     echo "=== 容器状态 ==="
-    docker-compose ps
-    
+    compose ps
+
     echo ""
     echo "=== 服务健康检查 ==="
-    
+
     # 检查Nginx
     if curl -f -s http://localhost/health > /dev/null; then
         print_success "Nginx服务正常"
     else
         print_error "Nginx服务异常"
     fi
-    
+
     # 检查后端API
     if curl -f -s http://localhost/api-a/settings > /dev/null; then
         print_success "后端API服务正常"
     else
         print_warning "后端API服务可能需要更多时间启动"
     fi
-    
+
     echo ""
     echo "=== 访问地址 ==="
     print_info "前端地址: http://localhost"
@@ -147,69 +164,69 @@ show_logs() {
     if [ -n "$2" ]; then
         # 查看特定服务的日志
         print_info "查看 $2 服务日志..."
-        docker-compose logs -f "$2"
+        compose logs -f "$2"
     else
         # 查看所有服务日志
         print_info "查看所有服务日志..."
-        docker-compose logs -f
+        compose logs -f
     fi
 }
 
 # 清理资源
 cleanup() {
     print_info "清理Docker资源..."
-    
-    # 停止服务
-    docker-compose down
-    
+
+    # 停止服务、删除容器/网络
+    compose down || true
+
     # 删除镜像
-    docker-compose down --rmi all
-    
+    compose down --rmi all || true
+
     # 删除卷
-    docker-compose down --volumes
-    
+    compose down --volumes || true
+
     # 清理未使用的资源
     docker system prune -f
-    
+
     print_success "资源清理完成"
 }
 
 # 备份数据
 backup_data() {
     print_info "备份数据..."
-    
+
     BACKUP_DIR="backup/$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$BACKUP_DIR"
-    
+
     # 备份日志
     if [ -d "logs" ]; then
         cp -r logs "$BACKUP_DIR/"
     fi
-    
+
     # 备份nginx配置
     if [ -d "nginx" ]; then
         cp -r nginx "$BACKUP_DIR/"
     fi
-    
+
     print_success "数据备份完成: $BACKUP_DIR"
 }
 
 # 更新服务
 update_services() {
     print_info "更新服务..."
-    
+
     # 备份数据
     backup_data
-    
+
     # 拉取最新代码（如果是从git部署）
     if [ -d ".git" ]; then
         print_info "拉取最新代码..."
         git pull
     fi
-    
+
     # 重新构建和启动
     restart_services
-    
+
     print_success "服务更新完成"
 }
 
