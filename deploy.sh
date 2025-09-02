@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 期货数据系统部署脚本
-# 使用方法: ./deploy.sh [start|stop|restart|logs|status]
+# 使用方法: ./deploy.sh [deploy|start|stop|restart|logs|status|add-service]
 
 set -e
 
@@ -10,9 +10,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# 打印彩色信息
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
@@ -29,89 +28,96 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# 统一的 compose 命令封装（自动兼容 docker-compose 与 docker compose）
+# 统一的 compose 命令
 compose() {
     if command -v docker-compose >/dev/null 2>&1; then
         docker-compose "$@"
     elif docker compose version >/dev/null 2>&1; then
         docker compose "$@"
     else
-        print_error "未检测到 Docker Compose。请安装独立的 docker-compose 或使用 Docker 内置的 docker compose 插件。"
+        print_error "Docker Compose 未安装"
         exit 1
     fi
 }
 
-# 检查Docker和Docker Compose
-check_requirements() {
-    print_info "检查系统要求..."
-
-    if ! command -v docker &> /dev/null; then
-        print_error "Docker未安装，请先安装Docker"
+# 部署更新（拉代码+重启）
+deploy_update() {
+    local branch=${1:-main}
+    
+    print_info "开始部署更新，分支: $branch"
+    
+    # 检查Git仓库
+    if [ ! -d ".git" ]; then
+        print_error "当前目录不是Git仓库"
         exit 1
     fi
-
-    # 这里通过封装函数进行一次探测
-    if command -v docker-compose >/dev/null 2>&1; then
-        print_info "检测到 docker-compose：$(docker-compose --version 2>/dev/null | head -n1)"
-    elif docker compose version >/dev/null 2>&1; then
-        print_info "检测到 docker compose 插件：$(docker compose version 2>/dev/null | head -n1)"
-    else
-        print_error "Docker Compose未安装，请先安装Docker Compose（独立二进制或 docker compose 插件）"
-        exit 1
+    
+    # 停止服务
+    print_info "停止服务..."
+    compose down || true
+    
+    # 备份当前版本
+    local backup_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+    print_info "备份当前版本: ${backup_commit:0:8}"
+    
+    # 拉取最新代码
+    print_info "拉取最新代码..."
+    git fetch origin
+    git checkout $branch
+    git reset --hard origin/$branch
+    
+    local new_commit=$(git rev-parse HEAD)
+    print_success "更新到版本: ${new_commit:0:8}"
+    
+    # 显示更新内容
+    if [ "$backup_commit" != "$new_commit" ] && [ "$backup_commit" != "unknown" ]; then
+        print_info "更新内容:"
+        git log --oneline $backup_commit..$new_commit | head -5
     fi
-
-    print_success "系统要求检查通过"
-}
-
-# 创建必要的目录
-create_directories() {
-    print_info "创建必要的目录..."
-
-    mkdir -p nginx/logs
-    mkdir -p logs/backend
-
-    print_success "目录创建完成"
-}
-
-# 检查环境配置
-check_env() {
-    print_info "检查环境配置..."
-
+    
+    # 检查环境配置
     if [ ! -f ".env" ]; then
         if [ -f "env.production" ]; then
-            print_warning ".env文件不存在，复制env.production为.env"
+            print_info "创建环境配置文件..."
             cp env.production .env
-            print_warning "请根据实际情况修改.env文件中的配置"
         else
-            print_error "环境配置文件不存在，请创建.env文件"
+            print_error "环境配置文件不存在"
             exit 1
         fi
     fi
-
-    print_success "环境配置检查完成"
-}
-
-# 构建和启动服务
-start_services() {
-    print_info "构建和启动服务..."
-
-    # 停止可能存在的服务（忽略错误）
-    compose down 2>/dev/null || true
-
-    # 构建镜像
-    print_info "构建Docker镜像..."
+    
+    # 重新构建并启动
+    print_info "构建并启动服务..."
     compose build --no-cache
-
-    # 启动服务
-    print_info "启动服务..."
     compose up -d
-
+    
     # 等待服务启动
     print_info "等待服务启动..."
-    sleep 15
-
+    sleep 10
+    
     # 检查服务状态
-    check_services_status
+    check_services
+    
+    print_success "部署完成！"
+}
+
+# 启动服务
+start_services() {
+    print_info "启动服务..."
+    
+    # 检查环境配置
+    if [ ! -f ".env" ]; then
+        if [ -f "env.production" ]; then
+            cp env.production .env
+        else
+            print_error "环境配置文件不存在"
+            exit 1
+        fi
+    fi
+    
+    compose up -d
+    sleep 5
+    check_services
 }
 
 # 停止服务
@@ -124,121 +130,105 @@ stop_services() {
 # 重启服务
 restart_services() {
     print_info "重启服务..."
-    stop_services
-    start_services
+    compose down
+    compose up -d
+    sleep 5
+    check_services
 }
 
 # 检查服务状态
-check_services_status() {
+check_services() {
     print_info "检查服务状态..."
-
-    # 检查容器状态
-    echo "=== 容器状态 ==="
+    
     compose ps
-
+    
     echo ""
-    echo "=== 服务健康检查 ==="
-
-    # 检查Nginx
-    if curl -f -s http://localhost/health > /dev/null; then
-        print_success "Nginx服务正常"
+    print_info "服务健康检查:"
+    
+    # 检查前端
+    if curl -f -s http://localhost/ > /dev/null 2>&1; then
+        print_success "前端服务正常"
     else
-        print_error "Nginx服务异常"
+        print_warning "前端服务异常"
     fi
-
+    
     # 检查后端API
-    if curl -f -s http://localhost/api-a/settings > /dev/null; then
+    if curl -f -s http://localhost/api-a/settings > /dev/null 2>&1; then
         print_success "后端API服务正常"
     else
-        print_warning "后端API服务可能需要更多时间启动"
+        print_warning "后端API服务异常"
     fi
-
+    
     echo ""
-    echo "=== 访问地址 ==="
-    print_info "前端地址: http://localhost"
-    print_info "后端API: http://localhost/api-a/"
-    print_info "Docker监控: http://localhost/monitor/"
-    print_info "  - 首次访问需要设置管理员密码"
+    print_info "访问地址:"
+    print_info "  前端: http://localhost"
+    print_info "  后端API: http://localhost/api-a/"
+    print_info "  监控面板: http://localhost/monitor/"
 }
 
 # 查看日志
 show_logs() {
     if [ -n "$2" ]; then
-        # 查看特定服务的日志
-        print_info "查看 $2 服务日志..."
         compose logs -f "$2"
     else
-        # 查看所有服务日志
-        print_info "查看所有服务日志..."
         compose logs -f
     fi
 }
 
-# 清理资源
-cleanup() {
-    print_info "清理Docker资源..."
-
-    # 停止服务、删除容器/网络
-    compose down || true
-
-    # 删除镜像
-    compose down --rmi all || true
-
-    # 删除卷
-    compose down --volumes || true
-
-    # 清理未使用的资源
-    docker system prune -f
-
-    print_success "资源清理完成"
-}
-
-# 备份数据
-backup_data() {
-    print_info "备份数据..."
-
-    BACKUP_DIR="backup/$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
-
-    # 备份日志
-    if [ -d "logs" ]; then
-        cp -r logs "$BACKUP_DIR/"
+# 添加新服务
+add_service() {
+    local service_name=$2
+    local port=$3
+    
+    if [ -z "$service_name" ] || [ -z "$port" ]; then
+        print_error "使用方法: $0 add-service <服务名> <端口>"
+        print_error "例如: $0 add-service newservice 7002"
+        exit 1
     fi
-
-    # 备份nginx配置
-    if [ -d "nginx" ]; then
-        cp -r nginx "$BACKUP_DIR/"
+    
+    print_info "添加新服务: $service_name (端口: $port)"
+    
+    # 检查docker-compose.yml是否存在该服务
+    if grep -q "^  $service_name:" docker-compose.yml; then
+        print_warning "服务 $service_name 已存在于 docker-compose.yml"
+    else
+        print_info "请手动在 docker-compose.yml 中添加服务配置"
+        print_info "然后在 nginx/nginx.conf 中添加代理配置"
     fi
-
-    print_success "数据备份完成: $BACKUP_DIR"
-}
-
-# 更新服务
-update_services() {
-    print_info "更新服务..."
-
-    # 备份数据
-    backup_data
-
-    # 拉取最新代码（如果是从git部署）
-    if [ -d ".git" ]; then
-        print_info "拉取最新代码..."
-        git pull
+    
+    # 检查nginx配置
+    if grep -q "server $service_name:$port" nginx/nginx.conf; then
+        print_warning "Nginx配置中已存在该服务"
+    else
+        print_info "需要在 nginx/nginx.conf 中添加以下配置:"
+        echo ""
+        echo "    upstream ${service_name}_api {"
+        echo "        server $service_name:$port;"
+        echo "        keepalive 32;"
+        echo "    }"
+        echo ""
+        echo "    location /api-${service_name}/ {"
+        echo "        rewrite ^/api-${service_name}/(.*)$ /api/$1 break;"
+        echo "        proxy_pass http://${service_name}_api;"
+        echo "        proxy_set_header Host \$host;"
+        echo "        proxy_set_header X-Real-IP \$remote_addr;"
+        echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
+        echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
+        echo "        proxy_http_version 1.1;"
+        echo "        proxy_set_header Connection \"\";"
+        echo "    }"
+        echo ""
+        print_info "添加配置后运行: $0 restart"
     fi
-
-    # 重新构建和启动
-    restart_services
-
-    print_success "服务更新完成"
 }
 
 # 主函数
 main() {
-    case "${1:-start}" in
+    case "${1:-help}" in
+        "deploy")
+            deploy_update "$2"
+            ;;
         "start")
-            check_requirements
-            create_directories
-            check_env
             start_services
             ;;
         "stop")
@@ -248,41 +238,40 @@ main() {
             restart_services
             ;;
         "status")
-            check_services_status
+            check_services
             ;;
         "logs")
             show_logs "$@"
             ;;
-        "cleanup")
-            cleanup
-            ;;
-        "backup")
-            backup_data
-            ;;
-        "update")
-            update_services
+        "add-service")
+            add_service "$@"
             ;;
         "help"|"-h"|"--help")
-            echo "使用方法: $0 [command]"
+            echo "期货数据系统部署脚本"
             echo ""
-            echo "可用命令:"
-            echo "  start    - 启动服务 (默认)"
-            echo "  stop     - 停止服务"
-            echo "  restart  - 重启服务"
-            echo "  status   - 检查服务状态"
-            echo "  logs     - 查看日志 (可指定服务名)"
-            echo "  cleanup  - 清理Docker资源"
-            echo "  backup   - 备份数据"
-            echo "  update   - 更新服务"
-            echo "  help     - 显示帮助信息"
+            echo "使用方法: $0 [command] [options]"
+            echo ""
+            echo "主要命令:"
+            echo "  deploy [branch]  - 拉取代码并部署更新 (默认main分支)"
+            echo "  start           - 启动所有服务"
+            echo "  stop            - 停止所有服务"
+            echo "  restart         - 重启所有服务"
+            echo "  status          - 查看服务状态"
+            echo "  logs [service]  - 查看日志 (可指定服务名)"
+            echo "  add-service <name> <port> - 添加新服务指导"
+            echo ""
+            echo "常用场景:"
+            echo "  修改代码后部署: $0 deploy"
+            echo "  添加新服务: $0 add-service newapi 7002"
+            echo "  查看日志: $0 logs"
+            echo "  重启服务: $0 restart"
             ;;
         *)
             print_error "未知命令: $1"
-            print_info "使用 '$0 help' 查看可用命令"
+            print_info "使用 '$0 help' 查看帮助"
             exit 1
             ;;
     esac
 }
 
-# 执行主函数
 main "$@"
