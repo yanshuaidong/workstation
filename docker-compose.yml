@@ -16,6 +16,7 @@ services:
     depends_on:
       - workfront
       - automysqlback
+      - portainer
     restart: unless-stopped
     networks:
       - futures-network
@@ -76,15 +77,14 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: futures-portainer
-    ports:
-      - "9000:9000"
+    expose:
+      - "9000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     restart: unless-stopped
     networks:
       - futures-network
-    command: --admin-password-file /data/admin_password
 
 networks:
   futures-network:

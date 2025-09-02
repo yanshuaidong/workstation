@@ -98,13 +98,6 @@ start_services() {
     # 停止可能存在的服务（忽略错误）
     compose down 2>/dev/null || true
 
-    # 初始化Portainer
-    if [ -f "init-portainer.sh" ]; then
-        print_info "初始化Portainer监控面板..."
-        chmod +x init-portainer.sh
-        ./init-portainer.sh
-    fi
-
     # 构建镜像
     print_info "构建Docker镜像..."
     compose build --no-cache
@@ -115,7 +108,7 @@ start_services() {
 
     # 等待服务启动
     print_info "等待服务启动..."
-    sleep 10
+    sleep 15
 
     # 检查服务状态
     check_services_status
@@ -165,8 +158,7 @@ check_services_status() {
     print_info "前端地址: http://localhost"
     print_info "后端API: http://localhost/api-a/"
     print_info "Docker监控: http://localhost/monitor/"
-    print_info "  - 用户名: admin"
-    print_info "  - 密码: admin123456"
+    print_info "  - 首次访问需要设置管理员密码"
 }
 
 # 查看日志
