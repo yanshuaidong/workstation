@@ -312,7 +312,13 @@
 </template>
 
 <script>
-import { request7001 } from '../utils/request'
+import request from '../utils/request'
+import { 
+  getFuturesContractsApi,
+  getFuturesHistoryApi,
+  getFuturesPeriodsApi,
+  refreshFuturesContractsApi
+} from '../api'
 import { 
   Search, 
   Refresh, 
@@ -399,7 +405,7 @@ export default {
       try {
         this.contractsLoading = true
         this.error = ''
-        const response = await request7001.get('/api/futures/contracts')
+        const response = await request.get(getFuturesContractsApi)
         this.contracts = response || []
         this.filteredContracts = this.contracts
       } catch (error) {
@@ -413,7 +419,7 @@ export default {
     // 加载周期选项
     async loadPeriods() {
       try {
-        const response = await request7001.get('/api/futures/periods')
+        const response = await request.get(getFuturesPeriodsApi)
         this.periods = response || []
       } catch (error) {
         console.error('加载周期选项失败:', error)
@@ -431,7 +437,7 @@ export default {
       try {
         this.contractsLoading = true
         this.error = ''
-        await request7001.post('/api/futures/refresh-contracts')
+        await request.post(refreshFuturesContractsApi)
         await this.loadContracts()
         this.$message.success('合约数据刷新成功')
       } catch (error) {
@@ -477,7 +483,7 @@ export default {
           end_date: this.queryParams.endDate.replace(/-/g, '')
         }
         
-        const response = await request7001.get('/api/futures/history', { params })
+        const response = await request.get(getFuturesHistoryApi, { params })
         
         // 对数据进行排序，最新的数据在前面
         const sortedData = (response.data || []).sort((a, b) => {

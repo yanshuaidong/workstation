@@ -475,7 +475,7 @@
 </template>
 
 <script>
-import { request7002 } from '@/utils/request'
+import request from '@/utils/request'
 import {
   getSettingsApi,
   updateSettingsApi,
@@ -658,7 +658,7 @@ export default {
     // 加载系统设置
     async loadSettings() {
       try {
-        const response = await request7002.get(getSettingsApi.replace('http://localhost:7002', ''))
+        const response = await request.get(getSettingsApi)
         if (response.code === 0) {
           this.settings = { ...this.settings, ...response.data }
           this.parseTimeString()
@@ -672,7 +672,7 @@ export default {
     // 更新设置
     async updateSettings() {
       try {
-        const response = await request7002.post(updateSettingsApi.replace('http://localhost:7002', ''), this.settings)
+        const response = await request.post(updateSettingsApi, this.settings)
         if (response.code === 0) {
           this.$message.success('设置已更新')
         }
@@ -685,7 +685,7 @@ export default {
     // 加载合约列表更新记录
     async loadContractsUpdateLog() {
       try {
-        const response = await request7002.get(getListUpdateLogApi.replace('http://localhost:7002', ''))
+        const response = await request.get(getListUpdateLogApi)
         if (response.code === 0) {
           this.contractsUpdateLog = response.data || {}
         }
@@ -698,7 +698,7 @@ export default {
     async updateContractsList() {
       this.contractsLoading = true
       try {
-        const response = await request7002.post(updateContractsListApi.replace('http://localhost:7002', ''))
+        const response = await request.post(updateContractsListApi)
         
         if (response.code === 0) {
           this.$message.success(`合约列表更新成功！新增: ${response.data.new_count}`)
@@ -721,7 +721,7 @@ export default {
     async loadHistoryLogs() {
       this.historyLogsLoading = true
       try {
-        const response = await request7002.get(getHistoryLogsApi.replace('http://localhost:7002', ''))
+        const response = await request.get(getHistoryLogsApi)
         if (response.code === 0) {
           this.historyLogs = response.data || []
         }
@@ -741,7 +741,7 @@ export default {
       
       this.historyLoading = true
       try {
-        const response = await request7002.post(updateAllHistoryApi.replace('http://localhost:7002', ''), {
+        const response = await request.post(updateAllHistoryApi, {
           date_start: this.dateRange[0],
           date_end: this.dateRange[1]
         })
@@ -772,7 +772,7 @@ export default {
       
       log.retrying = true
       try {
-        const response = await request7002.post(retrySingleHistoryApi.replace('http://localhost:7002', ''), {
+        const response = await request.post(retrySingleHistoryApi, {
           symbol: log.contract_symbol,
           date_start: this.dateRange[0],
           date_end: this.dateRange[1]
@@ -892,7 +892,7 @@ export default {
     // 加载合约列表
     async loadContractsList() {
       try {
-        const response = await request7002.get(getContractsListApi.replace('http://localhost:7002', ''))
+        const response = await request.get(getContractsListApi)
         if (response.code === 0) {
           this.contractsList = response.data.contracts || []
         }
@@ -930,7 +930,7 @@ export default {
           end_date: this.dataDateRange[1]
         })
 
-        const response = await request7002.get(`${getHistoryDataApi.replace('http://localhost:7002', '')}?${params}`)
+        const response = await request.get(`${getHistoryDataApi}?${params}`)
         
         if (response.code === 0) {
           this.historyData = response.data.data || []

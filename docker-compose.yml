@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: futures-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/logs:/var/log/nginx
+      # SSL证书目录（如果需要HTTPS）
+      # - ./nginx/ssl:/etc/ssl:ro
+    depends_on:
+      - workfront
+      - automysqlback
+    restart: unless-stopped
+    networks:
+      - futures-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服务
+  workfront:
+    build:
+      context: ./workfront
+      dockerfile: Dockerfile
+    container_name: futures-frontend
+    expose:
+      - "80"
+    restart: unless-stopped
+    networks:
+      - futures-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 后端API服务
+  automysqlback:
+    build:
+      context: ./automysqlback
+      dockerfile: Dockerfile
+    container_name: futures-backend
+    expose:
+      - "7001"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      # 数据库配置通过环境变量传入
+      - DB_HOST=${DB_HOST:-rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_USER=${DB_USER:-ysd}
+      - DB_PASSWORD=${DB_PASSWORD:-Yan1234567}
+      - DB_DATABASE=${DB_DATABASE:-futures}
+    volumes:
+      # 挂载日志目录
+      - ./logs/backend:/app/logs
+    restart: unless-stopped
+    networks:
+      - futures-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7001/api/settings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  futures-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  nginx-logs:
+  backend-logs:

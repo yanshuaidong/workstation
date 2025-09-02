@@ -1368,4 +1368,4 @@ if __name__ == '__main__':
     atexit.register(lambda: scheduler.shutdown())
     
     # 启动Flask应用
-    app.run(host='0.0.0.0', port=7002, debug=True)
+    app.run(host='0.0.0.0', port=7001, debug=True)

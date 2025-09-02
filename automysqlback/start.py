@@ -18,7 +18,7 @@ if __name__ == '__main__':
         
         print("=" * 50)
         print("期货数据更新系统启动中...")
-        print("端口: 7002")
+        print("端口: 7001")
         print("数据库: 阿里云RDS MySQL")
         print("=" * 50)
         
@@ -42,12 +42,12 @@ if __name__ == '__main__':
             print("系统将继续运行，但定时任务可能不可用")
         
         print("系统启动完成！")
-        print("访问地址: http://localhost:7002")
+        print("访问地址: http://localhost:7001")
         print("按 Ctrl+C 停止服务")
         print("=" * 50)
         
         # 启动Flask应用
-        app.run(host='0.0.0.0', port=7002, debug=False)
+        app.run(host='0.0.0.0', port=7001, debug=False)
         
     except KeyboardInterrupt:
         print("\n正在关闭系统...")
@@ -58,4 +58,4 @@ if __name__ == '__main__':
         print(f"启动失败: {e}")
         import traceback
         traceback.print_exc()
-        sys.exit(1) 
+        sys.exit(1)
