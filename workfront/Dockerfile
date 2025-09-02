@@ -1,33 +1,35 @@
-# 前端构建 Dockerfile
-# 第一阶段：构建
+# 前端构建 Dockerfile（极速国内源 + BuildKit 缓存）
+# ===== 构建阶段 =====
 FROM node:18-alpine AS build
 
-# 设置工作目录
+# Alpine 源换阿里云（如需 apk 装包会更快；不装也无妨）
+RUN sed -i 's@dl-cdn.alpinelinux.org@mirrors.aliyun.com@g' /etc/apk/repositories
+
 WORKDIR /app
 
-# 复制package文件
+# 先拷依赖清单，最大化镜像层缓存
 COPY package*.json ./
 
-# 安装依赖
-RUN npm install --registry https://registry.npmmirror.com
+# 使用 npmmirror，并利用 BuildKit 的 npm 缓存（需 DOCKER_BUILDKIT=1）
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set registry https://registry.npmmirror.com \
+ && npm ci --prefer-offline --no-audit --fund=false
 
-# 复制源代码
+# 拷贝源码并构建
 COPY . .
-
-# 构建生产版本
 RUN npm run build
 
-# 第二阶段：生产环境
+# ===== 运行阶段 =====
 FROM nginx:alpine
 
-# 复制构建产物到nginx目录
+# 可选：Alpine 源换阿里云，便于后续扩展（apk add）
+RUN sed -i 's@dl-cdn.alpinelinux.org@mirrors.aliyun.com@g' /etc/apk/repositories
+
+# 放置构建产物
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# 复制nginx配置
+# 自定义 nginx 配置（你已有）
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# 暴露端口
 EXPOSE 80
-
-# 启动nginx
 CMD ["nginx", "-g", "daemon off;"]
