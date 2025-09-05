@@ -39,6 +39,10 @@ export const retrySingleHistoryApi = `${BASE_URL_API_A}/history/retry-single`;
 export const getHistoryLogsApi = `${BASE_URL_API_A}/history/logs`;
 export const getHistoryDataApi = `${BASE_URL_API_A}/history/data`;
 
+// 分时行情数据接口
+export const getIntradayContractsApi = `${BASE_URL_API_A}/intraday/contracts`;
+export const getIntradayDataApi = `${BASE_URL_API_A}/intraday/data`;
+
 
 // 导出端口配置，方便组件使用
 export const API_PORTS = {

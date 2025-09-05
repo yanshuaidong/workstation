@@ -1313,6 +1313,211 @@ def auto_update_task():
     except Exception as e:
         logger.error(f"自动更新失败: {e}")
 
+@app.route('/api/intraday/contracts', methods=['GET'])
+def get_intraday_contracts():
+    """获取可用的期货合约列表（用于分时行情查询）"""
+    try:
+        logger.info("开始获取分时合约列表 - 依次获取 6个交易所数据")
+        
+        # 期货合约代码到中文名称的映射表
+        contract_mapping = {
+            # 上海期货交易所 SHFE
+            'rb': '螺纹钢', 'hc': '热轧卷板', 'bu': '石油沥青', 'ru': '天然橡胶', 'br': '合成橡胶',
+            'fu': '燃料油', 'sp': '纸浆', 'cu': '铜', 'al': '铝', 'ao': '氧化铝', 'pb': '铅',
+            'zn': '锌', 'sn': '锡', 'ni': '镍', 'ss': '不锈钢', 'au': '黄金', 'ag': '白银',
+            'wr': '线材',
+            # 上海国际能源交易中心 INE
+            'nr': '20号胶', 'lu': '低硫燃料油', 'bc': '国际铜', 'sc': '原油', 'ec': '集运指数(欧线)',
+            # 大连商品交易所 DCE
+            'a': '黄大豆1号', 'b': '黄大豆2号', 'c': '黄玉米', 'cs': '玉米淀粉', 'm': '豆粕',
+            'y': '豆油', 'p': '棕榈油', 'i': '铁矿石', 'j': '焦炭', 'jm': '焦煤', 'l': '聚乙烯',
+            'v': '聚氯乙烯', 'pp': '聚丙烯', 'eg': '乙二醇', 'rr': '粳米', 'eb': '苯乙烯',
+            'pg': '液化石油气', 'jd': '鸡蛋', 'fb': '纤维板', 'bb': '胶合板', 'lh': '生猪',
+            'lg': '原木',
+            # 郑州商品交易所 CZCE
+            'RM': '菜粕', 'OI': '菜籽油', 'CF': '一号棉花', 'TA': '精对苯二甲酸', 'PX': '对二甲苯',
+            'SR': '白砂糖', 'MA': '甲醇', 'FG': '玻璃', 'ZC': '动力煤', 'CY': '棉纱',
+            'SA': '纯碱', 'SH': '烧碱', 'PF': '短纤', 'PR': '瓶片', 'JR': '粳稻',
+            'RS': '菜籽', 'PM': '普通小麦', 'WH': '强麦', 'RI': '早籼稻', 'LR': '晚籼稻',
+            'SF': '硅铁', 'SM': '锰硅', 'AP': '苹果', 'CJ': '红枣', 'UR': '尿素', 'PK': '花生',
+            # 广州期货交易所 GFEX
+            'SI': '工业硅', 'LC': '碳酸锂', 'PS': '多晶硅',
+            # 中国金融期货交易所 CFFEX
+            'IF': '沪深300指数', 'IH': '上证50指数', 'IC': '中证500指数', 'IM': '中证1000指数',
+            'TS': '2年期国债', 'TF': '5年期国债', 'T': '10年期国债', 'TL': '30年期国债'
+        }
+        
+        # 获取6个交易所的主力合约数据
+        exchanges = ['dce', 'czce', 'shfe', 'gfex', 'cffex', 'ine']
+        all_contracts = []
+        
+        for exchange in exchanges:
+            try:
+                logger.info(f"正在获取 {exchange.upper()} 交易所主力合约")
+                contracts_text = ak.match_main_contract(symbol=exchange)
+                logger.info(f"{exchange}_text 类型: {type(contracts_text)}")
+                logger.info(f"{exchange}_text 内容: {repr(contracts_text)}")
+                
+                if contracts_text and isinstance(contracts_text, str):
+                    # 解析合约代码，格式如: "FU2601,SC2510,AL2510,..."
+                    contract_codes = [code.strip() for code in contracts_text.split(',') if code.strip()]
+                    
+                    for contract_code in contract_codes:
+                        # 提取品种代码（去掉数字部分）
+                        variety_code = ''.join([c for c in contract_code if c.isalpha()]).upper()
+                        
+                        # 查找对应的中文名称（不区分大小写匹配）
+                        chinese_name = None
+                        for key, value in contract_mapping.items():
+                            if key.upper() == variety_code.upper():
+                                chinese_name = value
+                                break
+                        
+                        # 如果没找到匹配，使用原始品种代码
+                        if chinese_name is None:
+                            chinese_name = variety_code
+                        
+                        all_contracts.append({
+                            'symbol': contract_code,
+                            'name': chinese_name,
+                            'variety_code': variety_code,
+                            'exchange': exchange.upper()
+                        })
+                        
+                        logger.info(f"解析合约: {contract_code} -> {chinese_name} ({exchange.upper()})")
+                
+            except Exception as e:
+                logger.error(f"获取 {exchange} 交易所数据失败: {e}")
+                continue
+        
+        # 按交易所和品种名称排序
+        all_contracts.sort(key=lambda x: (x['exchange'], x['name']))
+        
+        logger.info(f"总共获取到 {len(all_contracts)} 个主力合约")
+        
+        return jsonify({
+            'code': 0,
+            'message': '获取成功',
+            'data': {
+                'contracts': all_contracts,
+                'total': len(all_contracts)
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"获取分时合约列表失败: {e}")
+        logger.error(f"错误详情: {traceback.format_exc()}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取失败: {str(e)}'
+        })
+
+@app.route('/api/intraday/data', methods=['GET'])
+def get_intraday_data():
+    """获取分时行情数据"""
+    symbol = request.args.get('symbol')
+    period = request.args.get('period', '60')  # 默认60分钟
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    if not symbol:
+        return jsonify({
+            'code': 1,
+            'message': '缺少合约代码参数'
+        })
+    
+    # 设置默认日期范围（最近3天）
+    if not start_date or not end_date:
+        end_date = datetime.now().date().strftime('%Y-%m-%d')
+        start_date = (datetime.now().date() - timedelta(days=3)).strftime('%Y-%m-%d')
+    
+    try:
+        logger.info(f"获取分时数据: {symbol}, 周期: {period}, 日期范围: {start_date} 到 {end_date}")
+        
+        # 调用akshare获取分时数据
+        logger.info(f"正在调用 ak.futures_zh_minute_sina(symbol='{symbol}', period='{period}')")
+        intraday_df = ak.futures_zh_minute_sina(symbol=symbol, period=period)
+        logger.info(f"akshare返回数据类型: {type(intraday_df)}")
+        
+        if intraday_df is None:
+            logger.error(f"akshare返回了None，合约: {symbol}")
+            return jsonify({
+                'code': 1,
+                'message': f'合约 {symbol} 获取数据失败，akshare返回None'
+            })
+        
+        logger.info(f"获取到数据形状: {intraday_df.shape}")
+        if not intraday_df.empty:
+            logger.info(f"数据列名: {list(intraday_df.columns)}")
+            logger.info(f"前3行数据:\n{intraday_df.head(3)}")
+        
+        if intraday_df.empty:
+            logger.warning(f"合约 {symbol} 返回空数据")
+            return jsonify({
+                'code': 1,
+                'message': f'合约 {symbol} 没有分时数据'
+            })
+        
+        # 转换datetime列为字符串格式
+        intraday_df['datetime'] = pd.to_datetime(intraday_df['datetime'])
+        
+        # 根据日期范围过滤数据
+        start_datetime = pd.to_datetime(start_date)
+        end_datetime = pd.to_datetime(end_date) + timedelta(days=1)  # 包含结束日期
+        
+        filtered_df = intraday_df[
+            (intraday_df['datetime'] >= start_datetime) & 
+            (intraday_df['datetime'] < end_datetime)
+        ]
+        
+        # 转换为前端需要的格式
+        formatted_data = []
+        for idx, row in filtered_df.iterrows():
+            formatted_data.append({
+                'datetime': row['datetime'].strftime('%Y-%m-%d %H:%M:%S'),
+                'price': {
+                    'open': float(row['open']) if pd.notna(row['open']) else 0,
+                    'high': float(row['high']) if pd.notna(row['high']) else 0,
+                    'low': float(row['low']) if pd.notna(row['low']) else 0,
+                    'close': float(row['close']) if pd.notna(row['close']) else 0
+                },
+                'volume': int(row['volume']) if pd.notna(row['volume']) else 0,
+                'hold': int(row['hold']) if pd.notna(row['hold']) else 0,
+                # 原始数据用于表格显示
+                'raw': {
+                    'datetime': row['datetime'].strftime('%Y-%m-%d %H:%M:%S'),
+                    'open': float(row['open']) if pd.notna(row['open']) else 0,
+                    'high': float(row['high']) if pd.notna(row['high']) else 0,
+                    'low': float(row['low']) if pd.notna(row['low']) else 0,
+                    'close': float(row['close']) if pd.notna(row['close']) else 0,
+                    'volume': int(row['volume']) if pd.notna(row['volume']) else 0,
+                    'hold': int(row['hold']) if pd.notna(row['hold']) else 0
+                }
+            })
+        
+        # 按时间倒序排列（最新的在前面）
+        formatted_data.reverse()
+        
+        return jsonify({
+            'code': 0,
+            'message': '获取成功',
+            'data': {
+                'symbol': symbol,
+                'period': period,
+                'start_date': start_date,
+                'end_date': end_date,
+                'total_records': len(formatted_data),
+                'data': formatted_data
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取分时数据失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取失败: {str(e)}'
+        })
+
 def setup_scheduler():
     """设置定时任务"""
     global scheduler

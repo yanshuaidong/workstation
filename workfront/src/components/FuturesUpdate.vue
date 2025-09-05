@@ -440,7 +440,153 @@
       </div>
     </el-card>
 
-    <!-- 列选择对话框 -->
+    <!-- 分时行情数据展示区块 -->
+    <el-card class="intraday-display-card">
+      <template #header>
+        <div class="card-header">
+          <span>分时行情数据</span>
+        </div>
+      </template>
+
+      <!-- 控制面板 -->
+      <div class="control-panel">
+        <el-row :gutter="20">
+          <!-- 合约选择 -->
+          <el-col :span="6">
+            <el-form-item label="选择合约">
+              <el-select
+                v-model="selectedIntradayContract"
+                placeholder="请选择合约"
+                style="width: 100%"
+                @change="onIntradayContractChange"
+                filterable
+                clearable
+              >
+                <el-option
+                  v-for="contract in intradayContractsList"
+                  :key="contract.symbol"
+                  :label="`${contract.name} (${contract.symbol})`"
+                  :value="contract.symbol"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+
+          <!-- 日期范围选择 -->
+          <el-col :span="6">
+            <el-form-item label="查询日期范围">
+              <el-date-picker
+                v-model="intradayDateRange"
+                type="daterange"
+                range-separator="至"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+
+          <!-- 分时周期选择 -->
+          <el-col :span="4">
+            <el-form-item label="分时周期">
+              <el-select
+                v-model="intradayPeriod"
+                placeholder="选择周期"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="option in intradayPeriodOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+
+          <!-- 查询按钮 -->
+          <el-col :span="4">
+            <el-form-item label=" ">
+              <el-button
+                type="primary"
+                @click="queryIntradayData"
+                :loading="intradayDataLoading"
+                icon="Search"
+                style="width: 100%"
+              >
+                查询
+              </el-button>
+            </el-form-item>
+          </el-col>
+
+          <!-- 复制操作 -->
+          <el-col :span="4">
+            <el-form-item label="复制操作">
+              <div class="copy-controls">
+                <el-button
+                  size="small"
+                  @click="showIntradayColumnSelector"
+                  :disabled="!intradayData.length"
+                >
+                  选择列
+                </el-button>
+                <el-button
+                  size="small"
+                  type="success"
+                  @click="copyIntradayAsJson"
+                  :disabled="!intradayData.length"
+                >
+                  复制JSON
+                </el-button>
+                <el-button
+                  size="small"
+                  type="warning"
+                  @click="copyIntradayAsTable"
+                  :disabled="!intradayData.length"
+                >
+                  复制表格
+                </el-button>
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </div>
+
+      <!-- 数据表格 -->
+      <div class="data-table-container">
+        <!-- 表格标题 -->
+        <div v-if="selectedIntradayContractName" class="table-title">
+          {{ selectedIntradayContractName }}的分时行情数据（{{ intradayPeriodOptions.find(p => p.value === intradayPeriod)?.label }}）
+          <span v-if="intradayData.length" class="data-count">
+            （共{{ intradayData.length }}条记录）
+          </span>
+        </div>
+
+        <!-- 数据表格 -->
+        <el-table
+          :data="intradayData"
+          v-loading="intradayDataLoading"
+          stripe
+          border
+          style="width: 100%"
+          max-height="600"
+          empty-text="请选择合约并查询数据"
+        >
+          <el-table-column type="index" label="序号" width="60" :index="(index) => index + 1" />
+          <el-table-column prop="raw.datetime" label="时间" width="180" />
+          <el-table-column prop="raw.open" label="开盘价" width="100" />
+          <el-table-column prop="raw.high" label="最高价" width="100" />
+          <el-table-column prop="raw.low" label="最低价" width="100" />
+          <el-table-column prop="raw.close" label="收盘价" width="100" />
+          <el-table-column prop="raw.volume" label="成交量" width="120" />
+          <el-table-column prop="raw.hold" label="持仓量" width="120" />
+        </el-table>
+      </div>
+    </el-card>
+
+    <!-- 历史数据列选择对话框 -->
     <el-dialog
       v-model="columnSelectorVisible"
       title="选择要复制的列"
@@ -471,6 +617,38 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 分时行情列选择对话框 -->
+    <el-dialog
+      v-model="intradayColumnSelectorVisible"
+      title="选择要复制的列"
+      width="600px"
+    >
+      <div class="column-selector">
+        <el-checkbox
+          v-model="intradaySelectAllColumns"
+          @change="toggleIntradaySelectAll"
+          style="margin-bottom: 15px; font-weight: bold;"
+        >
+          全选/全不选
+        </el-checkbox>
+        
+        <el-row :gutter="10">
+          <el-col :span="8" v-for="column in intradayColumnOptions" :key="column.key">
+            <el-checkbox v-model="intradaySelectedColumns[column.key]">
+              {{ column.label }}
+            </el-checkbox>
+          </el-col>
+        </el-row>
+      </div>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="intradayColumnSelectorVisible = false">取消</el-button>
+          <el-button type="primary" @click="intradayColumnSelectorVisible = false">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -485,7 +663,9 @@ import {
   updateAllHistoryApi,
   retrySingleHistoryApi,
   getHistoryLogsApi,
-  getHistoryDataApi
+  getHistoryDataApi,
+  getIntradayContractsApi,
+  getIntradayDataApi
 } from '@/api'
 
 export default {
@@ -563,6 +743,38 @@ export default {
         { key: 'bb_middle', label: '布林带中轨' },
         { key: 'bb_lower', label: '布林带下轨' },
         { key: 'bb_width', label: '布林带宽度' }
+      ],
+      
+      // 分时行情数据相关
+      intradayContractsList: [], // 分时行情合约列表
+      selectedIntradayContract: '', // 选中的分时行情合约
+      selectedIntradayContractName: '', // 选中合约的名称
+      intradayDateRange: [], // 分时行情查询日期范围
+      intradayPeriod: '60', // 分时周期
+      intradayData: [], // 分时行情数据
+      intradayDataLoading: false, // 分时数据加载状态
+      
+      // 分时行情周期选项
+      intradayPeriodOptions: [
+        { label: '1分钟', value: '1' },
+        { label: '5分钟', value: '5' },
+        { label: '15分钟', value: '15' },
+        { label: '30分钟', value: '30' },
+        { label: '60分钟', value: '60' }
+      ],
+      
+      // 分时行情列选择相关
+      intradayColumnSelectorVisible: false,
+      intradaySelectAllColumns: true,
+      intradaySelectedColumns: {},
+      intradayColumnOptions: [
+        { key: 'datetime', label: '时间' },
+        { key: 'open', label: '开盘价' },
+        { key: 'high', label: '最高价' },
+        { key: 'low', label: '最低价' },
+        { key: 'close', label: '收盘价' },
+        { key: 'volume', label: '成交量' },
+        { key: 'hold', label: '持仓量' }
       ]
     }
   },
@@ -601,6 +813,23 @@ export default {
         }
       },
       deep: true
+    },
+    
+    // 监听分时行情selectedColumns变化，更新selectAllColumns状态
+    intradaySelectedColumns: {
+      handler(newVal) {
+        const allSelected = this.intradayColumnOptions.every(column => newVal[column.key])
+        const noneSelected = this.intradayColumnOptions.every(column => !newVal[column.key])
+        
+        if (allSelected) {
+          this.intradaySelectAllColumns = true
+        } else if (noneSelected) {
+          this.intradaySelectAllColumns = false
+        } else {
+          this.intradaySelectAllColumns = false // 部分选中状态
+        }
+      },
+      deep: true
     }
   },
   
@@ -608,11 +837,14 @@ export default {
     await this.loadSettings()
     this.initDateRange()
     this.initDataDateRange()
+    this.initIntradayDateRange()
     this.parseTimeString()
     this.initSelectedColumns()
+    this.initIntradaySelectedColumns()
     await this.loadContractsUpdateLog()
     await this.loadHistoryLogs()
     await this.loadContractsList()
+    await this.loadIntradayContractsList()
     // 默认不启动定时器，由用户手动开启
   },
   
@@ -1165,6 +1397,212 @@ export default {
         console.error('复制失败:', error)
         this.$message.error('复制失败')
       }
+    },
+
+    // === 分时行情数据相关方法 ===
+
+    // 初始化分时行情查询日期范围（默认最近3天）
+    initIntradayDateRange() {
+      const end = new Date()
+      const start = new Date()
+      start.setDate(start.getDate() - 3)
+      
+      this.intradayDateRange = [
+        start.toISOString().split('T')[0],
+        end.toISOString().split('T')[0]
+      ]
+    },
+
+    // 初始化分时行情选中的列（默认全选）
+    initIntradaySelectedColumns() {
+      this.intradaySelectedColumns = {}
+      this.intradayColumnOptions.forEach(column => {
+        this.intradaySelectedColumns[column.key] = true
+      })
+    },
+
+    // 加载分时行情合约列表
+    async loadIntradayContractsList() {
+      try {
+        const response = await request.get(getIntradayContractsApi)
+        if (response.code === 0) {
+          this.intradayContractsList = response.data.contracts || []
+        }
+      } catch (error) {
+        console.error('加载分时行情合约列表失败:', error)
+        this.$message.error('加载分时行情合约列表失败')
+      }
+    },
+
+    // 分时行情合约变化处理
+    onIntradayContractChange(symbol) {
+      const contract = this.intradayContractsList.find(c => c.symbol === symbol)
+      this.selectedIntradayContractName = contract ? contract.name : ''
+      // 清空之前的数据
+      this.intradayData = []
+    },
+
+    // 查询分时行情数据
+    async queryIntradayData() {
+      if (!this.selectedIntradayContract) {
+        this.$message.warning('请先选择合约')
+        return
+      }
+
+      if (!this.intradayDateRange || this.intradayDateRange.length !== 2) {
+        this.$message.warning('请选择查询日期范围')
+        return
+      }
+
+      this.intradayDataLoading = true
+      try {
+        const params = new URLSearchParams({
+          symbol: this.selectedIntradayContract,
+          period: this.intradayPeriod,
+          start_date: this.intradayDateRange[0],
+          end_date: this.intradayDateRange[1]
+        })
+
+        const response = await request.get(`${getIntradayDataApi}?${params}`)
+        
+        if (response.code === 0) {
+          this.intradayData = response.data.data || []
+          this.$message.success(`查询成功，获取到 ${this.intradayData.length} 条分时数据`)
+        } else {
+          this.$message.error(`查询失败: ${response.message}`)
+        }
+      } catch (error) {
+        console.error('查询分时行情数据失败:', error)
+        this.$message.error(`查询失败: ${error.message}`)
+      } finally {
+        this.intradayDataLoading = false
+      }
+    },
+
+    // 显示分时行情列选择器
+    showIntradayColumnSelector() {
+      this.intradayColumnSelectorVisible = true
+    },
+
+    // 切换分时行情全选/全不选
+    toggleIntradaySelectAll(value) {
+      this.intradayColumnOptions.forEach(column => {
+        this.intradaySelectedColumns[column.key] = value
+      })
+    },
+
+    // 复制分时行情数据为JSON格式
+    async copyIntradayAsJson() {
+      if (!this.intradayData.length) {
+        this.$message.warning('没有数据可复制')
+        return
+      }
+
+      try {
+        const filteredData = this.intradayData.map(item => {
+          const result = {}
+
+          // 根据选中的列过滤数据
+          if (this.intradaySelectedColumns.datetime) result.datetime = item.datetime
+          if (this.intradaySelectedColumns.open) result.open = item.price.open
+          if (this.intradaySelectedColumns.high) result.high = item.price.high
+          if (this.intradaySelectedColumns.low) result.low = item.price.low
+          if (this.intradaySelectedColumns.close) result.close = item.price.close
+          if (this.intradaySelectedColumns.volume) result.volume = item.volume
+          if (this.intradaySelectedColumns.hold) result.hold = item.hold
+
+          return result
+        })
+
+        const jsonData = JSON.stringify({ data: filteredData }, null, 2)
+        const success = await this.copyToClipboard(jsonData)
+        
+        if (success) {
+          this.$message.success('分时行情JSON数据已复制到剪贴板')
+        } else {
+          this.$message.error('复制失败，请手动复制数据')
+          console.log('复制的JSON数据:', jsonData)
+        }
+      } catch (error) {
+        console.error('复制失败:', error)
+        this.$message.error('复制失败')
+      }
+    },
+
+    // 复制分时行情数据为Markdown表格格式
+    async copyIntradayAsTable() {
+      if (!this.intradayData.length) {
+        this.$message.warning('没有数据可复制')
+        return
+      }
+
+      try {
+        // 构建表头
+        const headers = []
+        const headerMap = {
+          datetime: '时间',
+          open: '开盘价',
+          high: '最高价',
+          low: '最低价',
+          close: '收盘价',
+          volume: '成交量',
+          hold: '持仓量'
+        }
+
+        Object.keys(headerMap).forEach(key => {
+          if (this.intradaySelectedColumns[key]) {
+            headers.push(headerMap[key])
+          }
+        })
+
+        // 构建表格数据
+        const rows = this.intradayData.map(item => {
+          const row = []
+          Object.keys(headerMap).forEach(key => {
+            if (this.intradaySelectedColumns[key]) {
+              let value = ''
+              switch (key) {
+                case 'datetime':
+                  value = item.raw.datetime
+                  break
+                case 'open':
+                case 'high':
+                case 'low':
+                case 'close':
+                  value = item.raw[key]
+                  break
+                case 'volume':
+                case 'hold':
+                  value = item.raw[key]
+                  break
+                default:
+                  value = item.raw[key] !== null && item.raw[key] !== undefined ? item.raw[key] : '-'
+              }
+              row.push(value)
+            }
+          })
+          return row
+        })
+
+        // 构建Markdown表格
+        let markdown = '| ' + headers.join(' | ') + ' |\n'
+        markdown += '| ' + headers.map(() => '---').join(' | ') + ' |\n'
+        rows.forEach(row => {
+          markdown += '| ' + row.join(' | ') + ' |\n'
+        })
+
+        const success = await this.copyToClipboard(markdown)
+        
+        if (success) {
+          this.$message.success('分时行情Markdown表格已复制到剪贴板')
+        } else {
+          this.$message.error('复制失败，请手动复制数据')
+          console.log('复制的Markdown表格:', markdown)
+        }
+      } catch (error) {
+        console.error('复制失败:', error)
+        this.$message.error('复制失败')
+      }
     }
   }
 }
@@ -1178,7 +1616,8 @@ export default {
 .header-card,
 .contracts-card,
 .history-card,
-.data-display-card {
+.data-display-card,
+.intraday-display-card {
   margin-bottom: 20px;
 }
 
