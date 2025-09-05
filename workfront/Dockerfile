@@ -13,10 +13,14 @@ COPY package*.json ./
 # 使用 npmmirror，并利用 BuildKit 的 npm 缓存（需 DOCKER_BUILDKIT=1）
 RUN --mount=type=cache,target=/root/.npm \
     npm config set registry https://registry.npmmirror.com \
- && npm ci --prefer-offline --no-audit --fund=false
+ && npm config set fund false \
+ && npm config set audit false \
+ && npm ci --prefer-offline --no-audit --no-fund --silent
 
 # 拷贝源码并构建
 COPY . .
+# 设置 Node.js 内存限制和构建优化
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm run build
 
 # ===== 运行阶段 =====

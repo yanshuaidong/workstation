@@ -29,9 +29,14 @@ services:
     build:
       context: ./workfront
       dockerfile: Dockerfile
+      # 构建时的内存限制
+      shm_size: 1gb
     container_name: futures-frontend
     expose:
       - "80"
+    # 运行时内存限制
+    mem_limit: 512m
+    memswap_limit: 1g
     restart: unless-stopped
     networks:
       - futures-network

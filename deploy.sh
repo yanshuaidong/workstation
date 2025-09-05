@@ -88,7 +88,26 @@ deploy_update() {
     
     # 重新构建并启动
     print_info "构建并启动服务..."
-    compose build --no-cache
+    
+    # 设置 Docker BuildKit 和内存优化
+    export DOCKER_BUILDKIT=1
+    export BUILDKIT_PROGRESS=plain
+    
+    # 检查系统内存
+    if command -v free >/dev/null 2>&1; then
+        local available_memory=$(free -m | awk 'NR==2{printf "%.0f", $7}')
+        if [ "$available_memory" -lt 2048 ]; then
+            print_warning "系统可用内存较低 (${available_memory}MB)，构建可能较慢"
+            print_info "建议关闭其他应用程序或增加 swap 空间"
+        fi
+    fi
+    
+    # 构建时添加内存限制
+    if ! compose build --no-cache --memory=2g; then
+        print_error "构建失败，尝试使用更小的内存限制重新构建..."
+        compose build --no-cache --memory=1g
+    fi
+    
     compose up -d
     
     # 等待服务启动

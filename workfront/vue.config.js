@@ -3,7 +3,24 @@ const { defineConfig } = require('@vue/cli-service')
 module.exports = defineConfig({
   transpileDependencies: true,
 
+  // 生产环境优化配置
+  configureWebpack: {
+    optimization: {
+      splitChunks: {
+        chunks: 'all',
+        cacheGroups: {
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            chunks: 'all',
+          }
+        }
+      }
+    }
+  },
+
   chainWebpack: config => {
+    // 定义全局变量
     config.plugin('define').tap(definitions => {
       Object.assign(definitions[0], {
         __VUE_OPTIONS_API__: JSON.stringify(true),
@@ -12,6 +29,18 @@ module.exports = defineConfig({
       })
       return definitions
     })
+
+    // 生产环境优化
+    if (process.env.NODE_ENV === 'production') {
+      // 移除 console.log
+      config.optimization.minimizer('terser').tap(args => {
+        args[0].terserOptions.compress.drop_console = true
+        return args
+      })
+      
+      // 禁用 source map 以减少构建时间和内存使用
+      config.devtool(false)
+    }
   },
 
   devServer: {
