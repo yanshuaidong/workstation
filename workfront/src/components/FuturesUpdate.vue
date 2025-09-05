@@ -958,6 +958,59 @@ export default {
       })
     },
 
+    // 通用复制方法（兼容HTTP和HTTPS）
+    async copyToClipboard(text) {
+      try {
+        // 优先使用现代 Clipboard API（仅在 HTTPS 或 localhost 下可用）
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text)
+          return true
+        } else {
+          // 降级方案：使用传统的 execCommand 方法
+          return this.fallbackCopyTextToClipboard(text)
+        }
+      } catch (error) {
+        console.error('复制失败:', error)
+        // 如果现代API失败，尝试降级方案
+        return this.fallbackCopyTextToClipboard(text)
+      }
+    },
+
+    // 降级复制方案
+    fallbackCopyTextToClipboard(text) {
+      try {
+        // 创建一个临时的 textarea 元素
+        const textArea = document.createElement('textarea')
+        textArea.value = text
+        
+        // 设置样式使其不可见
+        textArea.style.position = 'fixed'
+        textArea.style.top = '0'
+        textArea.style.left = '0'
+        textArea.style.width = '2em'
+        textArea.style.height = '2em'
+        textArea.style.padding = '0'
+        textArea.style.border = 'none'
+        textArea.style.outline = 'none'
+        textArea.style.boxShadow = 'none'
+        textArea.style.background = 'transparent'
+        textArea.style.opacity = '0'
+        
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        
+        // 尝试复制
+        const successful = document.execCommand('copy')
+        document.body.removeChild(textArea)
+        
+        return successful
+      } catch (error) {
+        console.error('降级复制方案也失败了:', error)
+        return false
+      }
+    },
+
     // 复制为JSON格式
     async copyAsJson() {
       if (!this.historyData.length) {
@@ -1014,8 +1067,14 @@ export default {
         })
 
         const jsonData = JSON.stringify({ data: filteredData }, null, 2)
-        await navigator.clipboard.writeText(jsonData)
-        this.$message.success('JSON数据已复制到剪贴板')
+        const success = await this.copyToClipboard(jsonData)
+        
+        if (success) {
+          this.$message.success('JSON数据已复制到剪贴板')
+        } else {
+          this.$message.error('复制失败，请手动复制数据')
+          console.log('复制的JSON数据:', jsonData)
+        }
       } catch (error) {
         console.error('复制失败:', error)
         this.$message.error('复制失败')
@@ -1094,8 +1153,14 @@ export default {
           markdown += '| ' + row.join(' | ') + ' |\n'
         })
 
-        await navigator.clipboard.writeText(markdown)
-        this.$message.success('Markdown表格已复制到剪贴板')
+        const success = await this.copyToClipboard(markdown)
+        
+        if (success) {
+          this.$message.success('Markdown表格已复制到剪贴板')
+        } else {
+          this.$message.error('复制失败，请手动复制数据')
+          console.log('复制的Markdown表格:', markdown)
+        }
       } catch (error) {
         console.error('复制失败:', error)
         this.$message.error('复制失败')
