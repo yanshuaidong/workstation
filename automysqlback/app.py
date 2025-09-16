@@ -22,6 +22,7 @@ import atexit
 import logging
 import ta
 import numpy as np
+import re
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -118,6 +119,22 @@ def init_database():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='主连历史数据更新日志表'
         """)
         
+        # 5. 推荐记录表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recommendation_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                date DATE NOT NULL COMMENT '日期',
+                long_names TEXT NULL COMMENT '推荐做多的品种中文名（逗号分隔）',
+                short_names TEXT NULL COMMENT '推荐做空的品种中文名（逗号分隔）',
+                total_long_count INT DEFAULT 0 COMMENT '做多品种数量',
+                total_short_count INT DEFAULT 0 COMMENT '做空品种数量',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_date (date),
+                INDEX idx_date (date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='每日多空推荐记录表'
+        """)
+        
         conn.commit()
         
         # 初始化默认配置（如果不存在）
@@ -196,8 +213,21 @@ def init_database():
                 AND COLUMN_NAME = 'macd_dif'
             """)
             
-            if cursor.fetchone()[0] == 0:
-                # 修改现有字段类型并添加技术指标字段
+            has_indicators = cursor.fetchone()[0] > 0
+            
+            # 检查是否已有推荐字段
+            cursor.execute(f"""
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = '{table_name}' 
+                AND COLUMN_NAME = 'recommendation'
+            """)
+            
+            has_recommendation = cursor.fetchone()[0] > 0
+            
+            if not has_indicators:
+                # 修改现有字段类型并添加技术指标字段和推荐字段
                 cursor.execute(f"""
                     ALTER TABLE {table_name}
                     MODIFY COLUMN open_price DECIMAL(10,2) NOT NULL COMMENT '开盘价',
@@ -217,9 +247,17 @@ def init_database():
                     ADD COLUMN bb_upper DECIMAL(10,2) NULL COMMENT '布林带上轨' AFTER kdj_j,
                     ADD COLUMN bb_middle DECIMAL(10,2) NULL COMMENT '布林带中轨' AFTER bb_upper,
                     ADD COLUMN bb_lower DECIMAL(10,2) NULL COMMENT '布林带下轨' AFTER bb_middle,
-                    ADD COLUMN bb_width DECIMAL(10,2) NULL COMMENT '布林带宽度' AFTER bb_lower
+                    ADD COLUMN bb_width DECIMAL(10,2) NULL COMMENT '布林带宽度' AFTER bb_lower,
+                    ADD COLUMN recommendation VARCHAR(20) NULL COMMENT '推荐操作：做多/做空/观察' AFTER bb_width
                 """)
-                logger.info(f"已为表 {table_name} 添加技术指标字段")
+                logger.info(f"已为表 {table_name} 添加技术指标字段和推荐字段")
+            elif not has_recommendation:
+                # 只添加推荐字段
+                cursor.execute(f"""
+                    ALTER TABLE {table_name}
+                    ADD COLUMN recommendation VARCHAR(20) NULL COMMENT '推荐操作：做多/做空/观察' AFTER bb_width
+                """)
+                logger.info(f"已为表 {table_name} 添加推荐字段")
         
         conn.commit()
         logger.info("数据库表初始化完成")
@@ -261,6 +299,7 @@ def create_history_table(symbol):
                 bb_middle DECIMAL(10,2) NULL COMMENT '布林带中轨',
                 bb_lower DECIMAL(10,2) NULL COMMENT '布林带下轨',
                 bb_width DECIMAL(10,2) NULL COMMENT '布林带宽度',
+                recommendation VARCHAR(20) NULL COMMENT '推荐操作：做多/做空/观察',
                 source_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '数据源时间戳',
                 ingest_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '入库时间戳',
                 INDEX idx_trade_date (trade_date)
@@ -363,6 +402,250 @@ def calculate_technical_indicators(df):
     except Exception as e:
         logger.error(f"技术指标计算失败: {e}")
         return df
+
+def record_daily_recommendations(date_str):
+    """
+    记录指定日期的推荐操作到推荐记录表
+    
+    参数:
+    - date_str: 日期字符串，格式为 'YYYY-MM-DD'
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 获取所有主连合约
+        cursor.execute("""
+            SELECT symbol, name FROM contracts_main 
+            WHERE is_active = 1 
+            ORDER BY symbol
+        """)
+        contracts = cursor.fetchall()
+        
+        long_names = []  # 推荐做多的品种
+        short_names = []  # 推荐做空的品种
+        
+        # 遍历每个合约，查询最新的推荐操作
+        for contract in contracts:
+            symbol = contract['symbol']
+            name = contract['name']
+            table_name = f"hist_{symbol}"
+            
+            try:
+                # 查询指定日期的推荐操作
+                cursor.execute(f"""
+                    SELECT recommendation FROM {table_name}
+                    WHERE trade_date = %s
+                    LIMIT 1
+                """, (date_str,))
+                
+                result = cursor.fetchone()
+                if result and result['recommendation']:
+                    recommendation = result['recommendation']
+                    # 解析推荐操作（格式：做多 (3) 或 做空 (-2) 或 观察 (1)）
+                    if recommendation.startswith('做多'):
+                        # 提取分值，格式：做多 (3)
+                        score_match = re.search(r'\(([+-]?\d+)\)', recommendation)
+                        score = score_match.group(1) if score_match else '0'
+                        long_names.append(f"{name}（{score}）")
+                    elif recommendation.startswith('做空'):
+                        # 提取分值，格式：做空 (-2)
+                        score_match = re.search(r'\(([+-]?\d+)\)', recommendation)
+                        score = score_match.group(1) if score_match else '0'
+                        short_names.append(f"{name}（{score}）")
+                    # 观察的不记录到推荐列表中
+                        
+            except Exception as e:
+                logger.warning(f"查询合约 {symbol} 的推荐操作失败: {e}")
+                continue
+        
+        # 构建存储格式：多品种1，品种2，空品种3，品种4
+        long_names_str = '，'.join(long_names) if long_names else ''
+        short_names_str = '，'.join(short_names) if short_names else ''
+        
+        # 插入或更新推荐记录
+        cursor.execute("""
+            INSERT INTO recommendation_log 
+            (date, long_names, short_names, total_long_count, total_short_count)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+            long_names = VALUES(long_names),
+            short_names = VALUES(short_names),
+            total_long_count = VALUES(total_long_count),
+            total_short_count = VALUES(total_short_count),
+            updated_at = NOW()
+        """, (
+            date_str,
+            long_names_str,
+            short_names_str,
+            len(long_names),
+            len(short_names)
+        ))
+        
+        conn.commit()
+        logger.info(f"成功记录 {date_str} 的推荐：做多 {len(long_names)} 个，做空 {len(short_names)} 个")
+        return True
+        
+    except Exception as e:
+        logger.error(f"记录每日推荐失败: {e}")
+        conn.rollback()
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def calculate_recommendation(df, target_date_index):
+    """
+    基于技术指标计算推荐操作
+    只为指定日期（通常是最新日期）计算推荐
+    
+    参数:
+    - df: 包含技术指标的DataFrame
+    - target_date_index: 要计算推荐的日期在DataFrame中的索引
+    
+    返回:
+    - str: '做多', '做空', '观察'
+    """
+    try:
+        if df.empty or target_date_index >= len(df) or target_date_index < 0:
+            return '观察'
+        
+        # 获取目标日期的数据
+        current_row = df.iloc[target_date_index]
+        
+        # 确保有足够的历史数据进行分析（至少需要5天数据）
+        if target_date_index < 4:
+            return '观察'
+        
+        # 获取前几天的数据用于趋势分析
+        prev_row = df.iloc[target_date_index - 1] if target_date_index > 0 else current_row
+        prev_2_row = df.iloc[target_date_index - 2] if target_date_index > 1 else current_row
+        
+        # 初始化评分系统
+        bullish_score = 0  # 做多信号评分
+        bearish_score = 0  # 做空信号评分
+        
+        # 1. MACD信号分析
+        if pd.notna(current_row.get('macd_dif')) and pd.notna(current_row.get('macd_dea')):
+            macd_dif = current_row['macd_dif']
+            macd_dea = current_row['macd_dea']
+            macd_histogram = current_row.get('macd_histogram', 0)
+            
+            # MACD金叉/死叉
+            if pd.notna(prev_row.get('macd_dif')) and pd.notna(prev_row.get('macd_dea')):
+                prev_dif = prev_row['macd_dif']
+                prev_dea = prev_row['macd_dea']
+                
+                # 金叉：DIF上穿DEA
+                if prev_dif <= prev_dea and macd_dif > macd_dea:
+                    bullish_score += 3
+                # 死叉：DIF下穿DEA
+                elif prev_dif >= prev_dea and macd_dif < macd_dea:
+                    bearish_score += 3
+            
+            # MACD柱状图趋势
+            if macd_histogram > 0:
+                bullish_score += 1
+            elif macd_histogram < 0:
+                bearish_score += 1
+        
+        # 2. RSI超买超卖分析
+        if pd.notna(current_row.get('rsi_14')):
+            rsi = current_row['rsi_14']
+            
+            if rsi < 30:  # 超卖
+                bullish_score += 2
+            elif rsi > 70:  # 超买
+                bearish_score += 2
+            elif 30 <= rsi <= 40:  # 偏超卖
+                bullish_score += 1
+            elif 60 <= rsi <= 70:  # 偏超买
+                bearish_score += 1
+        
+        # 3. KDJ分析
+        if (pd.notna(current_row.get('kdj_k')) and 
+            pd.notna(current_row.get('kdj_d')) and 
+            pd.notna(current_row.get('kdj_j'))):
+            
+            k = current_row['kdj_k']
+            d = current_row['kdj_d']
+            j = current_row['kdj_j']
+            
+            # KDJ金叉/死叉
+            if pd.notna(prev_row.get('kdj_k')) and pd.notna(prev_row.get('kdj_d')):
+                prev_k = prev_row['kdj_k']
+                prev_d = prev_row['kdj_d']
+                
+                # K线上穿D线
+                if prev_k <= prev_d and k > d:
+                    bullish_score += 2
+                # K线下穿D线
+                elif prev_k >= prev_d and k < d:
+                    bearish_score += 2
+            
+            # KDJ超买超卖
+            if k < 20 and d < 20:  # 超卖
+                bullish_score += 1
+            elif k > 80 and d > 80:  # 超买
+                bearish_score += 1
+        
+        # 4. 布林带分析
+        if (pd.notna(current_row.get('bb_upper')) and 
+            pd.notna(current_row.get('bb_middle')) and 
+            pd.notna(current_row.get('bb_lower'))):
+            
+            close_price = current_row['收盘']
+            bb_upper = current_row['bb_upper']
+            bb_middle = current_row['bb_middle']
+            bb_lower = current_row['bb_lower']
+            
+            # 价格突破布林带
+            if close_price <= bb_lower:  # 触及下轨，可能反弹
+                bullish_score += 2
+            elif close_price >= bb_upper:  # 触及上轨，可能回调
+                bearish_score += 2
+            elif close_price > bb_middle:  # 在中轨上方
+                bullish_score += 1
+            elif close_price < bb_middle:  # 在中轨下方
+                bearish_score += 1
+        
+        # 5. 价格趋势分析
+        close_price = current_row['收盘']
+        prev_close = prev_row['收盘'] if pd.notna(prev_row.get('收盘')) else close_price
+        prev_2_close = prev_2_row['收盘'] if pd.notna(prev_2_row.get('收盘')) else close_price
+        
+        # 连续上涨
+        if close_price > prev_close > prev_2_close:
+            bullish_score += 1
+        # 连续下跌
+        elif close_price < prev_close < prev_2_close:
+            bearish_score += 1
+        
+        # 6. 成交量分析（如果有数据）
+        if pd.notna(current_row.get('成交量')) and pd.notna(prev_row.get('成交量')):
+            volume = current_row['成交量']
+            prev_volume = prev_row['成交量']
+            
+            # 放量上涨
+            if close_price > prev_close and volume > prev_volume * 1.2:
+                bullish_score += 1
+            # 放量下跌
+            elif close_price < prev_close and volume > prev_volume * 1.2:
+                bearish_score += 1
+        
+        # 根据评分决定推荐
+        score_diff = bullish_score - bearish_score
+        
+        if score_diff >= 3:  # 明显的做多信号
+            return f'做多 ({score_diff})'
+        elif score_diff <= -3:  # 明显的做空信号
+            return f'做空 ({score_diff})'
+        else:  # 信号不明确
+            return f'观察 ({score_diff})'
+            
+    except Exception as e:
+        logger.error(f"推荐计算失败: {e}")
+        return '观察'
 
 def filter_main_contracts(contracts_df):
     """筛选主连合约"""
@@ -731,15 +1014,21 @@ def fetch_and_store_history_with_retry(symbol, start_date, end_date, timeout_sec
                         def handle_nan(value):
                             return None if pd.isna(value) else float(value)
                         
+                        # 计算推荐操作（仅为最新日期，即最后一条记录）
+                        recommendation = None
+                        if idx == len(hist_df) - 1:  # 最后一条记录（最新日期）
+                            recommendation = calculate_recommendation(hist_df, idx)
+                            logger.info(f"{symbol} 最新日期 {row['时间']} 推荐操作: {recommendation}")
+                        
                         cursor.execute(f"""
                             INSERT INTO {table_name} 
                             (trade_date, open_price, high_price, low_price, close_price, 
                              volume, open_interest, turnover, price_change, change_pct,
                              macd_dif, macd_dea, macd_histogram, rsi_14,
                              kdj_k, kdj_d, kdj_j,
-                             bb_upper, bb_middle, bb_lower, bb_width, source_ts)
+                             bb_upper, bb_middle, bb_lower, bb_width, recommendation, source_ts)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                             ON DUPLICATE KEY UPDATE
                             open_price = VALUES(open_price),
                             high_price = VALUES(high_price),
@@ -761,6 +1050,7 @@ def fetch_and_store_history_with_retry(symbol, start_date, end_date, timeout_sec
                             bb_middle = VALUES(bb_middle),
                             bb_lower = VALUES(bb_lower),
                             bb_width = VALUES(bb_width),
+                            recommendation = VALUES(recommendation),
                             ingest_ts = NOW()
                         """, (
                             row['时间'],
@@ -783,7 +1073,8 @@ def fetch_and_store_history_with_retry(symbol, start_date, end_date, timeout_sec
                             handle_nan(row.get('bb_upper')),
                             handle_nan(row.get('bb_middle')),
                             handle_nan(row.get('bb_lower')),
-                            handle_nan(row.get('bb_width'))
+                            handle_nan(row.get('bb_width')),
+                            recommendation
                         ))
                         success_rows += 1
                     except Exception as row_error:
@@ -804,6 +1095,9 @@ def fetch_and_store_history_with_retry(symbol, start_date, end_date, timeout_sec
                 conn.commit()
                 
                 logger.info(f"成功更新 {symbol}: {success_rows} 行数据，重试次数: {retry_count}")
+                
+                # 注意：推荐记录将在批量更新完成后统一处理
+                
                 return True
                 
             except Exception as e:
@@ -920,6 +1214,14 @@ def update_all_history():
                         logger.error(f"任务执行异常: {e}")
             
             logger.info("批量更新历史数据完成")
+            
+            # 批量更新完成后，记录当日推荐
+            try:
+                # 使用结束日期作为推荐记录的日期
+                record_daily_recommendations(date_end)
+                logger.info(f"已记录 {date_end} 的推荐操作")
+            except Exception as e:
+                logger.error(f"记录推荐操作失败: {e}")
         
         # 在后台线程中执行
         threading.Thread(target=run_update_task, daemon=True).start()
@@ -1197,7 +1499,8 @@ def get_history_data():
                 bb_upper,
                 bb_middle,
                 bb_lower,
-                bb_width
+                bb_width,
+                recommendation
             FROM {table_name}
             WHERE trade_date >= %s AND trade_date <= %s
             ORDER BY trade_date DESC
@@ -1245,6 +1548,7 @@ def get_history_data():
                         'width': float(row['bb_width']) if row['bb_width'] else None
                     }
                 },
+                'recommendation': row['recommendation'] if row['recommendation'] else None,
                 # 原始数据用于表格显示
                 'raw': {
                     'trade_date': row['trade_date'].strftime('%Y-%m-%d') if row['trade_date'] else '',
@@ -1267,7 +1571,8 @@ def get_history_data():
                     'bb_upper': float(row['bb_upper']) if row['bb_upper'] else None,
                     'bb_middle': float(row['bb_middle']) if row['bb_middle'] else None,
                     'bb_lower': float(row['bb_lower']) if row['bb_lower'] else None,
-                    'bb_width': float(row['bb_width']) if row['bb_width'] else None
+                    'bb_width': float(row['bb_width']) if row['bb_width'] else None,
+                    'recommendation': row['recommendation'] if row['recommendation'] else None
                 }
             })
         
@@ -1411,6 +1716,105 @@ def get_intraday_contracts():
             'code': 1,
             'message': f'获取失败: {str(e)}'
         })
+
+@app.route('/api/recommendations/record', methods=['POST'])
+def record_recommendations():
+    """手动记录当日推荐"""
+    data = request.get_json()
+    date_str = data.get('date')
+    
+    if not date_str:
+        # 如果没有提供日期，使用当前日期
+        date_str = datetime.now().date().strftime('%Y-%m-%d')
+    
+    try:
+        success = record_daily_recommendations(date_str)
+        
+        if success:
+            return jsonify({
+                'code': 0,
+                'message': f'成功记录 {date_str} 的推荐操作'
+            })
+        else:
+            return jsonify({
+                'code': 1,
+                'message': f'记录 {date_str} 的推荐操作失败'
+            })
+    except Exception as e:
+        logger.error(f"记录推荐操作失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'记录失败: {str(e)}'
+        })
+
+@app.route('/api/recommendations/list', methods=['GET'])
+def get_recommendations_list():
+    """获取推荐记录列表"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    # 设置默认日期范围（最近一个月）
+    if not start_date or not end_date:
+        end_date = datetime.now().date().strftime('%Y-%m-%d')
+        start_date = (datetime.now().date() - timedelta(days=30)).strftime('%Y-%m-%d')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        cursor.execute("""
+            SELECT 
+                date,
+                long_names,
+                short_names,
+                total_long_count,
+                total_short_count,
+                created_at,
+                updated_at
+            FROM recommendation_log 
+            WHERE date >= %s AND date <= %s
+            ORDER BY date DESC
+        """, (start_date, end_date))
+        
+        recommendations = cursor.fetchall()
+        
+        # 格式化数据
+        formatted_data = []
+        for rec in recommendations:
+            formatted_data.append({
+                'date': rec['date'].strftime('%Y-%m-%d') if rec['date'] else '',
+                'long_names': rec['long_names'] or '',
+                'short_names': rec['short_names'] or '',
+                'total_long_count': rec['total_long_count'] or 0,
+                'total_short_count': rec['total_short_count'] or 0,
+                'created_at': rec['created_at'].strftime('%Y-%m-%d %H:%M:%S') if rec['created_at'] else '',
+                'updated_at': rec['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if rec['updated_at'] else '',
+                # 格式化显示文本
+                'display_text': f"{rec['date'].strftime('%m月%d日') if rec['date'] else ''} " +
+                               (f"多：{rec['long_names']}" if rec['long_names'] else "多：无") +
+                               (f"，空：{rec['short_names']}" if rec['short_names'] else "，空：无")
+            })
+        
+        return jsonify({
+            'code': 0,
+            'message': '获取成功',
+            'data': {
+                'recommendations': formatted_data,
+                'total': len(formatted_data),
+                'start_date': start_date,
+                'end_date': end_date
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取推荐记录失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.route('/api/intraday/data', methods=['GET'])
 def get_intraday_data():

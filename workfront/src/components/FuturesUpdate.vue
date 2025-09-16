@@ -436,6 +436,18 @@
           <el-table-column prop="raw.bb_middle" label="布林带中轨" width="100" />
           <el-table-column prop="raw.bb_lower" label="布林带下轨" width="100" />
           <el-table-column prop="raw.bb_width" label="布林带宽度" width="100" />
+          <el-table-column label="推荐操作" width="100">
+            <template #default="scope">
+              <el-tag 
+                v-if="scope.row.raw.recommendation"
+                :type="getRecommendationType(scope.row.raw.recommendation)"
+                size="small"
+              >
+                {{ scope.row.raw.recommendation }}
+              </el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
         </el-table>
       </div>
     </el-card>
@@ -586,6 +598,163 @@
       </div>
     </el-card>
 
+    <!-- 多空推荐查询区块 -->
+    <el-card class="recommendation-display-card">
+      <template #header>
+        <div class="card-header">
+          <span>多空推荐查询</span>
+        </div>
+      </template>
+
+      <!-- 控制面板 -->
+      <div class="control-panel">
+        <el-row :gutter="20">
+          <!-- 日期范围选择 -->
+          <el-col :span="8">
+            <el-form-item label="查询日期范围">
+              <el-date-picker
+                v-model="recommendationDateRange"
+                type="daterange"
+                range-separator="至"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+
+          <!-- 查询按钮 -->
+          <el-col :span="4">
+            <el-form-item label=" ">
+              <el-button
+                type="primary"
+                @click="queryRecommendations"
+                :loading="recommendationsLoading"
+                icon="Search"
+                style="width: 100%"
+              >
+                查询
+              </el-button>
+            </el-form-item>
+          </el-col>
+
+          <!-- 手动记录按钮 -->
+          <el-col :span="4">
+            <el-form-item label=" ">
+              <el-button
+                type="success"
+                @click="recordTodayRecommendations"
+                :loading="recordingRecommendation"
+                icon="Plus"
+                style="width: 100%"
+              >
+                记录当日推荐
+              </el-button>
+            </el-form-item>
+          </el-col>
+
+          <!-- 说明文字 -->
+          <el-col :span="8">
+            <el-form-item label="说明">
+              <div class="help-text">
+                <p style="margin: 0; color: #606266; font-size: 13px;">
+                  • 系统会在每日数据更新完成后自动记录推荐<br>
+                  • 也可手动点击"记录当日推荐"按钮生成当日推荐
+                </p>
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </div>
+
+      <!-- 推荐记录表格 -->
+      <div class="data-table-container">
+        <!-- 表格标题 -->
+        <div class="table-title">
+          多空推荐记录
+          <span v-if="recommendationsData.length" class="data-count">
+            （共{{ recommendationsData.length }}条记录）
+          </span>
+        </div>
+
+        <!-- 数据表格 -->
+        <el-table
+          :data="recommendationsData"
+          v-loading="recommendationsLoading"
+          stripe
+          border
+          style="width: 100%"
+          max-height="500"
+          empty-text="请选择日期范围并查询数据"
+        >
+          <el-table-column type="index" label="序号" width="60" :index="(index) => index + 1" />
+          <el-table-column prop="date" label="日期" width="120" />
+          <el-table-column label="推荐做多品种" min-width="200">
+            <template #default="scope">
+              <div v-if="scope.row.long_names" class="recommendation-content long">
+                <el-tag type="success" size="small" style="margin-right: 5px;">
+                  多 ({{ scope.row.total_long_count }})
+                </el-tag>
+                {{ scope.row.long_names }}
+              </div>
+              <span v-else class="no-recommendation">无</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="推荐做空品种" min-width="200">
+            <template #default="scope">
+              <div v-if="scope.row.short_names" class="recommendation-content short">
+                <el-tag type="danger" size="small" style="margin-right: 5px;">
+                  空 ({{ scope.row.total_short_count }})
+                </el-tag>
+                {{ scope.row.short_names }}
+              </div>
+              <span v-else class="no-recommendation">无</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="记录时间" width="180" />
+          <el-table-column label="汇总显示" min-width="300">
+            <template #default="scope">
+              <div class="summary-display">
+                {{ scope.row.display_text }}
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 统计信息 -->
+        <div class="recommendation-summary" style="margin-top: 20px;">
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <div class="summary-item">
+                <div class="summary-label">总记录数</div>
+                <div class="summary-value">{{ recommendationsData.length }}</div>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="summary-item">
+                <div class="summary-label">平均做多品种数</div>
+                <div class="summary-value success">
+                  {{ recommendationsData.length > 0 ? 
+                      (recommendationsData.reduce((sum, item) => sum + item.total_long_count, 0) / recommendationsData.length).toFixed(1) : 0 }}
+                </div>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="summary-item">
+                <div class="summary-label">平均做空品种数</div>
+                <div class="summary-value danger">
+                  {{ recommendationsData.length > 0 ? 
+                      (recommendationsData.reduce((sum, item) => sum + item.total_short_count, 0) / recommendationsData.length).toFixed(1) : 0 }}
+                </div>
+              </div>
+            </el-col>
+          </el-row>
+        </div>
+      </div>
+    </el-card>
+
     <!-- 历史数据列选择对话框 -->
     <el-dialog
       v-model="columnSelectorVisible"
@@ -665,7 +834,9 @@ import {
   getHistoryLogsApi,
   getHistoryDataApi,
   getIntradayContractsApi,
-  getIntradayDataApi
+  getIntradayDataApi,
+  recordRecommendationsApi,
+  getRecommendationsListApi
 } from '@/api'
 
 export default {
@@ -719,7 +890,7 @@ export default {
       
       // 列选择相关
       columnSelectorVisible: false,
-      selectAllColumns: true,
+      selectAllColumns: false, // 因为推荐操作列默认不选中，所以全选状态为false
       selectedColumns: {},
       columnOptions: [
         { key: 'trade_date', label: '交易日期' },
@@ -742,7 +913,8 @@ export default {
         { key: 'bb_upper', label: '布林带上轨' },
         { key: 'bb_middle', label: '布林带中轨' },
         { key: 'bb_lower', label: '布林带下轨' },
-        { key: 'bb_width', label: '布林带宽度' }
+        { key: 'bb_width', label: '布林带宽度' },
+        { key: 'recommendation', label: '推荐操作' }
       ],
       
       // 分时行情数据相关
@@ -775,7 +947,13 @@ export default {
         { key: 'close', label: '收盘价' },
         { key: 'volume', label: '成交量' },
         { key: 'hold', label: '持仓量' }
-      ]
+      ],
+      
+      // 推荐记录相关
+      recommendationDateRange: [], // 推荐查询日期范围
+      recommendationsData: [], // 推荐数据
+      recommendationsLoading: false, // 推荐数据加载状态
+      recordingRecommendation: false // 记录推荐状态
     }
   },
   
@@ -838,6 +1016,7 @@ export default {
     this.initDateRange()
     this.initDataDateRange()
     this.initIntradayDateRange()
+    this.initRecommendationDateRange()
     this.parseTimeString()
     this.initSelectedColumns()
     this.initIntradaySelectedColumns()
@@ -845,6 +1024,7 @@ export default {
     await this.loadHistoryLogs()
     await this.loadContractsList()
     await this.loadIntradayContractsList()
+    await this.loadRecommendationsList()
     // 默认不启动定时器，由用户手动开启
   },
   
@@ -1101,6 +1281,16 @@ export default {
       return index + 1
     },
 
+    // 获取推荐操作的标签类型
+    getRecommendationType(recommendation) {
+      const typeMap = {
+        '做多': 'success',
+        '做空': 'danger', 
+        '观察': 'warning'
+      }
+      return typeMap[recommendation] || 'info'
+    },
+
     // 初始化数据查询日期范围（默认最近一个月）
     initDataDateRange() {
       const end = new Date()
@@ -1113,11 +1303,12 @@ export default {
       ]
     },
 
-    // 初始化选中的列（默认全选）
+    // 初始化选中的列（默认全选，但推荐操作列除外）
     initSelectedColumns() {
       this.selectedColumns = {}
       this.columnOptions.forEach(column => {
-        this.selectedColumns[column.key] = true
+        // 推荐操作列默认不选中
+        this.selectedColumns[column.key] = column.key !== 'recommendation'
       })
     },
 
@@ -1287,6 +1478,9 @@ export default {
           if (this.selectedColumns.bb_middle) result.indicators.bollinger.middle = item.indicators.bollinger.middle
           if (this.selectedColumns.bb_lower) result.indicators.bollinger.lower = item.indicators.bollinger.lower
 
+          // 推荐操作
+          if (this.selectedColumns.recommendation) result.recommendation = item.recommendation
+
           // 删除空的对象
           if (Object.keys(result.price).length === 0) delete result.price
           if (Object.keys(result.volume).length === 0) delete result.volume
@@ -1344,7 +1538,8 @@ export default {
           bb_upper: '布林带上轨',
           bb_middle: '布林带中轨',
           bb_lower: '布林带下轨',
-          bb_width: '布林带宽度'
+          bb_width: '布林带宽度',
+          recommendation: '推荐操作'
         }
 
         Object.keys(headerMap).forEach(key => {
@@ -1603,6 +1798,79 @@ export default {
         console.error('复制失败:', error)
         this.$message.error('复制失败')
       }
+    },
+
+    // === 推荐记录相关方法 ===
+
+    // 初始化推荐查询日期范围（默认最近一个月）
+    initRecommendationDateRange() {
+      const end = new Date()
+      const start = new Date()
+      start.setDate(start.getDate() - 30)
+      
+      this.recommendationDateRange = [
+        start.toISOString().split('T')[0],
+        end.toISOString().split('T')[0]
+      ]
+    },
+
+    // 加载推荐记录列表
+    async loadRecommendationsList() {
+      this.recommendationsLoading = true
+      try {
+        const params = new URLSearchParams()
+        if (this.recommendationDateRange && this.recommendationDateRange.length === 2) {
+          params.append('start_date', this.recommendationDateRange[0])
+          params.append('end_date', this.recommendationDateRange[1])
+        }
+
+        const response = await request.get(`${getRecommendationsListApi}?${params}`)
+        
+        if (response.code === 0) {
+          this.recommendationsData = response.data.recommendations || []
+        } else {
+          this.$message.error(`获取推荐记录失败: ${response.message}`)
+        }
+      } catch (error) {
+        console.error('获取推荐记录失败:', error)
+        this.$message.error(`获取推荐记录失败: ${error.message}`)
+      } finally {
+        this.recommendationsLoading = false
+      }
+    },
+
+    // 查询推荐记录
+    async queryRecommendations() {
+      if (!this.recommendationDateRange || this.recommendationDateRange.length !== 2) {
+        this.$message.warning('请选择查询日期范围')
+        return
+      }
+      
+      await this.loadRecommendationsList()
+      this.$message.success(`查询成功，获取到 ${this.recommendationsData.length} 条推荐记录`)
+    },
+
+    // 手动记录当日推荐
+    async recordTodayRecommendations() {
+      this.recordingRecommendation = true
+      try {
+        const response = await request.post(recordRecommendationsApi, {
+          date: new Date().toISOString().split('T')[0] // 当前日期
+        })
+        
+        if (response.code === 0) {
+          this.$message.success(response.message)
+          // 重新加载推荐记录
+          await this.loadRecommendationsList()
+        } else {
+          this.$message.error(`记录失败: ${response.message}`)
+        }
+      } catch (error) {
+        console.error('记录推荐失败:', error)
+        this.$message.error(`记录推荐失败: ${error.message}`)
+      } finally {
+        this.recordingRecommendation = false
+      }
     }
   }
 }
@@ -1617,7 +1885,8 @@ export default {
 .contracts-card,
 .history-card,
 .data-display-card,
-.intraday-display-card {
+.intraday-display-card,
+.recommendation-display-card {
   margin-bottom: 20px;
 }
 
@@ -1736,5 +2005,39 @@ export default {
     width: 100%;
     margin-bottom: 5px;
   }
+}
+
+/* 推荐记录相关样式 */
+.recommendation-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.recommendation-content.long {
+  color: #67c23a;
+}
+
+.recommendation-content.short {
+  color: #f56c6c;
+}
+
+.no-recommendation {
+  color: #909399;
+  font-style: italic;
+}
+
+.summary-display {
+  font-size: 14px;
+  line-height: 1.4;
+  color: #303133;
+}
+
+.help-text {
+  padding: 8px 12px;
+  background-color: #f0f9ff;
+  border-left: 3px solid #409eff;
+  border-radius: 4px;
 }
 </style>

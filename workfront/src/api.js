@@ -43,6 +43,10 @@ export const getHistoryDataApi = `${BASE_URL_API_A}/history/data`;
 export const getIntradayContractsApi = `${BASE_URL_API_A}/intraday/contracts`;
 export const getIntradayDataApi = `${BASE_URL_API_A}/intraday/data`;
 
+// 推荐记录接口
+export const recordRecommendationsApi = `${BASE_URL_API_A}/recommendations/record`;
+export const getRecommendationsListApi = `${BASE_URL_API_A}/recommendations/list`;
+
 
 // 导出端口配置，方便组件使用
 export const API_PORTS = {
