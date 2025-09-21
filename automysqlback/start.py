@@ -16,8 +16,8 @@ from pathlib import Path
 # 加载环境变量
 try:
     from dotenv import load_dotenv
-    # 查找上级目录的.env文件
-    env_path = Path(__file__).parent.parent / '.env'
+    # 查找当前目录的.env文件
+    env_path = Path(__file__).parent / '.env'
     if env_path.exists():
         load_dotenv(env_path)
         logging.info(f"已加载环境配置文件: {env_path}")
@@ -36,12 +36,12 @@ logger = logging.getLogger(__name__)
 def is_development_environment():
     """检测是否为开发环境"""
     environment = os.environ.get('ENVIRONMENT', '').lower()
-    return environment == 'development'
+    return environment in ['development', 'dev']
 
 def is_production_environment():
     """检测是否为生产环境"""
     environment = os.environ.get('ENVIRONMENT', '').lower()
-    return environment == 'production'
+    return environment in ['production', 'prod']
 
 def check_browser_environment():
     """检查浏览器运行环境"""
