@@ -47,6 +47,11 @@ export const getIntradayDataApi = `${BASE_URL_API_A}/intraday/data`;
 export const recordRecommendationsApi = `${BASE_URL_API_A}/recommendations/record`;
 export const getRecommendationsListApi = `${BASE_URL_API_A}/recommendations/list`;
 
+// 财联社新闻接口
+export const crawlClsNewsApi = `${BASE_URL_API_A}/news/crawl`;
+export const getClsNewsListApi = `${BASE_URL_API_A}/news/list`;
+export const getClsNewsStatsApi = `${BASE_URL_API_A}/news/stats`;
+
 
 // 导出端口配置，方便组件使用
 export const API_PORTS = {

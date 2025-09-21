@@ -23,6 +23,16 @@ import logging
 import ta
 import numpy as np
 import re
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import os
+import sys
+import requests
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -133,6 +143,20 @@ def init_database():
                 UNIQUE KEY unique_date (date),
                 INDEX idx_date (date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='每日多空推荐记录表'
+        """)
+        
+        # 6. 财联社加红电报新闻表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS news_red_telegraph (
+                id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                ctime BIGINT UNIQUE NOT NULL COMMENT '新闻时间戳（用于去重）',
+                title VARCHAR(500) NOT NULL COMMENT '新闻标题',
+                content TEXT NOT NULL COMMENT '新闻内容',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                INDEX idx_ctime (ctime),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='财联社加红电报新闻表'
         """)
         
         conn.commit()
@@ -1962,6 +1986,493 @@ def setup_scheduler():
             logger.info("自动更新已禁用")
     except Exception as e:
         logger.error(f"设置定时任务失败: {e}")
+
+# ========== 财联社新闻API接口 ==========
+
+def save_news_to_db(news_data):
+    """保存新闻数据到数据库"""
+    if not news_data:
+        return 0, 0
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    new_count = 0
+    duplicate_count = 0
+    
+    try:
+        for news_item in news_data:
+            ctime = news_item.get('ctime')
+            title = news_item.get('title', '')
+            content = news_item.get('content', '')
+            
+            if not ctime or not title:
+                continue
+                
+            try:
+                # 清理HTML标签
+                title = re.sub(r'<[^>]+>', '', title)
+                content = re.sub(r'<[^>]+>', '', content)
+                
+                cursor.execute("""
+                    INSERT INTO news_red_telegraph (ctime, title, content)
+                    VALUES (%s, %s, %s)
+                """, (ctime, title, content))
+                
+                new_count += 1
+                logger.info(f"保存新闻: {title[:50]}...")
+                
+            except pymysql.IntegrityError as e:
+                if e.args[0] == 1062:  # Duplicate entry
+                    duplicate_count += 1
+                    logger.debug(f"新闻已存在，跳过: {title[:50]}...")
+                else:
+                    logger.error(f"保存新闻时出错: {e}")
+        
+        conn.commit()
+        logger.info(f"新闻保存完成: 新增{new_count}条, 重复{duplicate_count}条")
+        return new_count, duplicate_count
+        
+    except Exception as e:
+        logger.error(f"保存新闻数据失败: {e}")
+        conn.rollback()
+        return 0, 0
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/crawl', methods=['POST'])
+def crawl_cls_news():
+    """爬取财联社加红电报新闻"""
+    def crawl_task():
+        """后台爬取任务"""
+        crawler = None
+        try:
+            logger.info("开始财联社新闻爬取任务")
+            
+            # 创建爬虫实例
+            crawler = ClsNewsCrawler(headless=True)
+            crawler.setup_driver()
+            
+            # 爬取新闻
+            news_data = crawler.crawl_news()
+            
+            if news_data:
+                # 保存到数据库
+                new_count, duplicate_count = save_news_to_db(news_data)
+                logger.info(f"爬取任务完成: 获取{len(news_data)}条新闻, 新增{new_count}条, 重复{duplicate_count}条")
+            else:
+                logger.warning("未获取到新闻数据")
+                
+        except Exception as e:
+            logger.error(f"爬取任务执行失败: {e}")
+            logger.error(traceback.format_exc())
+        finally:
+            if crawler:
+                crawler.close()
+    
+    try:
+        # 在后台线程中执行爬取任务
+        threading.Thread(target=crawl_task, daemon=True).start()
+        
+        return jsonify({
+            'code': 0,
+            'message': '财联社新闻爬取已启动，请稍后查看结果'
+        })
+        
+    except Exception as e:
+        logger.error(f"启动爬取任务失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'启动爬取任务失败: {str(e)}'
+        })
+
+@app.route('/api/news/list', methods=['GET'])
+def get_cls_news_list():
+    """分页查询财联社新闻"""
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+    
+    # 限制分页参数
+    page = max(1, page)
+    page_size = max(1, min(100, page_size))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 查询总数
+        cursor.execute("SELECT COUNT(*) as total FROM news_red_telegraph")
+        total = cursor.fetchone()['total']
+        
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
+        # 查询新闻列表（按ctime倒序，最新的在前面）
+        cursor.execute("""
+            SELECT 
+                id,
+                ctime,
+                title,
+                content,
+                FROM_UNIXTIME(ctime) as formatted_time,
+                created_at,
+                updated_at
+            FROM news_red_telegraph 
+            ORDER BY ctime DESC 
+            LIMIT %s OFFSET %s
+        """, (page_size, offset))
+        
+        news_list = cursor.fetchall()
+        
+        # 格式化数据
+        formatted_news = []
+        for news in news_list:
+            formatted_news.append({
+                'id': news['id'],
+                'ctime': news['ctime'],
+                'title': news['title'],
+                'content': news['content'],
+                'time': news['formatted_time'].strftime('%Y-%m-%d %H:%M:%S') if news['formatted_time'] else '',
+                'created_at': news['created_at'].strftime('%Y-%m-%d %H:%M:%S') if news['created_at'] else '',
+                'updated_at': news['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if news['updated_at'] else ''
+            })
+        
+        # 计算分页信息
+        total_pages = (total + page_size - 1) // page_size
+        
+        return jsonify({
+            'code': 0,
+            'message': '查询成功',
+            'data': {
+                'news_list': formatted_news,
+                'pagination': {
+                    'page': page,
+                    'page_size': page_size,
+                    'total': total,
+                    'total_pages': total_pages,
+                    'has_prev': page > 1,
+                    'has_next': page < total_pages
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"查询新闻列表失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'查询失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/stats', methods=['GET'])
+def get_cls_news_stats():
+    """获取新闻统计信息"""
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 总新闻数
+        cursor.execute("SELECT COUNT(*) as total FROM news_red_telegraph")
+        total = cursor.fetchone()['total']
+        
+        # 今日新闻数
+        cursor.execute("""
+            SELECT COUNT(*) as today_count 
+            FROM news_red_telegraph 
+            WHERE DATE(created_at) = CURDATE()
+        """)
+        today_count = cursor.fetchone()['today_count']
+        
+        # 最新新闻时间
+        cursor.execute("""
+            SELECT FROM_UNIXTIME(MAX(ctime)) as latest_time 
+            FROM news_red_telegraph
+        """)
+        latest_result = cursor.fetchone()
+        latest_time = latest_result['latest_time'].strftime('%Y-%m-%d %H:%M:%S') if latest_result['latest_time'] else ''
+        
+        # 最早新闻时间
+        cursor.execute("""
+            SELECT FROM_UNIXTIME(MIN(ctime)) as earliest_time 
+            FROM news_red_telegraph
+        """)
+        earliest_result = cursor.fetchone()
+        earliest_time = earliest_result['earliest_time'].strftime('%Y-%m-%d %H:%M:%S') if earliest_result['earliest_time'] else ''
+        
+        return jsonify({
+            'code': 0,
+            'message': '统计信息获取成功',
+            'data': {
+                'total': total,
+                'today_count': today_count,
+                'latest_time': latest_time,
+                'earliest_time': earliest_time
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取统计信息失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取统计信息失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+class ClsNewsCrawler:
+    """财联社加红电报新闻爬虫"""
+    
+    def __init__(self, headless=True):
+        self.driver = None
+        self.headless = headless
+        self.network_logs = []
+        
+    def setup_driver(self):
+        """设置Chrome驱动"""
+        chrome_options = Options()
+        
+        if self.headless:
+            chrome_options.add_argument('--headless')
+        
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-plugins')
+        chrome_options.add_argument('--disable-images')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        
+        # 启用网络日志记录
+        chrome_options.add_argument('--enable-logging')
+        chrome_options.add_argument('--log-level=0')
+        chrome_options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+        
+        # 尝试不同的Chrome路径
+        chrome_paths = [
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium'
+        ]
+        
+        for chrome_path in chrome_paths:
+            if os.path.exists(chrome_path):
+                logger.info(f"找到Chrome浏览器: {chrome_path}")
+                chrome_options.binary_location = chrome_path
+                break
+        
+        try:
+            self.driver = webdriver.Chrome(options=chrome_options)
+            logger.info("Chrome驱动初始化成功")
+        except Exception as e:
+            logger.error(f"Chrome驱动初始化失败: {e}")
+            try:
+                from webdriver_manager.chrome import ChromeDriverManager
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                logger.info("使用webdriver-manager初始化Chrome驱动成功")
+            except Exception as e2:
+                logger.error(f"webdriver-manager也失败: {e2}")
+                raise
+        
+        self.driver.set_page_load_timeout(30)
+        self.driver.implicitly_wait(10)
+    
+    def get_network_logs(self):
+        """获取网络请求日志"""
+        try:
+            logs = self.driver.get_log('performance')
+            network_requests = []
+            
+            for log in logs:
+                try:
+                    message = json.loads(log['message'])
+                    if message['message']['method'] == 'Network.responseReceived':
+                        url = message['message']['params']['response']['url']
+                        if 'cls.cn/v1/roll/get_roll_list' in url:
+                            network_requests.append({
+                                'url': url,
+                                'timestamp': log['timestamp'],
+                                'response': message['message']['params']['response']
+                            })
+                except (json.JSONDecodeError, KeyError):
+                    continue
+            
+            return network_requests
+        except Exception as e:
+            logger.error(f"获取网络日志失败: {e}")
+            return []
+    
+    def extract_params_from_url(self, url):
+        """从URL中提取参数"""
+        params = {}
+        if '?' in url:
+            query_string = url.split('?')[1]
+            for param in query_string.split('&'):
+                if '=' in param:
+                    key, value = param.split('=', 1)
+                    params[key] = value
+        return params
+    
+    def click_jiahong_button(self):
+        """点击加红按钮"""
+        logger.info("开始寻找并点击'加红'按钮...")
+        
+        # 等待页面加载完成
+        try:
+            WebDriverWait(self.driver, 15).until(
+                lambda driver: driver.execute_script("return document.readyState") == "complete"
+            )
+        except Exception as e:
+            logger.warning(f"等待页面加载完成失败: {e}")
+        
+        # 多种选择器策略
+        selectors = [
+            "//a[contains(text(), '加红')]",
+            "//h3[contains(@class, 'level-2-nav')]//a[contains(text(), '加红')]",
+            "//h3[@class='f-l f-s-17 level-2-nav']//a[@class='p-r d-b w-94 c-p c-ef9524']",
+            "//a[@class='p-r d-b w-94 c-p c-ef9524']",
+            "//a[contains(@class, 'c-ef9524')]"
+        ]
+        
+        for i, selector in enumerate(selectors):
+            try:
+                logger.info(f"尝试选择器 {i+1}: {selector}")
+                elements = self.driver.find_elements(By.XPATH, selector)
+                
+                if elements:
+                    element = elements[0]
+                    logger.info(f"找到元素: {element.text[:50]}")
+                    
+                    # 滚动到元素位置
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                    time.sleep(1)
+                    
+                    # 尝试点击
+                    try:
+                        element.click()
+                        logger.info("成功点击'加红'按钮")
+                        return True
+                    except:
+                        # 使用JavaScript点击
+                        self.driver.execute_script("arguments[0].click();", element)
+                        logger.info("使用JavaScript成功点击'加红'按钮")
+                        return True
+                        
+            except Exception as e:
+                logger.warning(f"选择器 {i+1} 执行失败: {e}")
+                continue
+        
+        logger.error("未能找到或点击'加红'按钮")
+        return False
+    
+    def make_api_request(self, url):
+        """使用浏览器的cookies和headers发起API请求"""
+        try:
+            # 获取浏览器的cookies
+            cookies = self.driver.get_cookies()
+            cookie_dict = {cookie['name']: cookie['value'] for cookie in cookies}
+            
+            # 设置请求头
+            headers = {
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'zh-CN,zh;q=0.9',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Content-Type': 'application/json;charset=utf-8',
+                'Pragma': 'no-cache',
+                'Referer': 'https://www.cls.cn/telegraph',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin',
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            
+            logger.info(f"发起API请求: {url[:100]}...")
+            response = requests.get(url, headers=headers, cookies=cookie_dict, timeout=15)
+            response.raise_for_status()
+            
+            json_data = response.json()
+            logger.info("API请求成功")
+            return json_data
+            
+        except Exception as e:
+            logger.error(f"API请求失败: {e}")
+            return None
+    
+    def crawl_news(self):
+        """爬取财联社加红电报新闻"""
+        try:
+            logger.info("开始爬取财联社加红电报新闻")
+            
+            # 访问页面
+            url = "https://www.cls.cn/telegraph"
+            logger.info(f"访问页面: {url}")
+            self.driver.get(url)
+            
+            # 等待页面加载
+            WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            logger.info("页面加载完成，等待6秒...")
+            time.sleep(6)
+            
+            # 点击加红按钮
+            click_success = self.click_jiahong_button()
+            
+            if click_success:
+                logger.info("点击成功，等待网络请求...")
+                time.sleep(5)
+            else:
+                logger.warning("点击失败，尝试其他方式...")
+                # 尝试滚动页面触发请求
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(3)
+                self.driver.execute_script("window.scrollTo(0, 0);")
+                time.sleep(2)
+            
+            # 获取网络请求日志
+            network_requests = self.get_network_logs()
+            logger.info(f"捕获到 {len(network_requests)} 个网络请求")
+            
+            # 处理API数据
+            news_data = []
+            for request in network_requests:
+                url = request['url']
+                params = self.extract_params_from_url(url)
+                
+                if params.get('sign'):
+                    logger.info(f"发现API请求，sign: {params.get('sign')}")
+                    
+                    # 尝试获取数据
+                    try:
+                        response = self.make_api_request(url)
+                        if response and response.get('errno') == 0:
+                            roll_data = response.get('data', {}).get('roll_data', [])
+                            news_data.extend(roll_data)
+                            logger.info(f"成功获取 {len(roll_data)} 条新闻")
+                    except Exception as e:
+                        logger.warning(f"API请求失败: {e}")
+            
+            return news_data
+            
+        except Exception as e:
+            logger.error(f"爬取新闻失败: {e}")
+            return []
+    
+    def close(self):
+        """关闭浏览器"""
+        if self.driver:
+            try:
+                self.driver.quit()
+                logger.info("浏览器已关闭")
+            except Exception as e:
+                logger.warning(f"关闭浏览器时出错: {e}")
 
 
 

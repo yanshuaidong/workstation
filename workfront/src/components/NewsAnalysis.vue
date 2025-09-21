@@ -1,153 +1,194 @@
 <template>
   <div class="news-analysis">
-    <el-card class="analysis-card">
+    <!-- 标题栏 -->
+    <el-card class="header-card">
       <template #header>
         <div class="card-header">
-          <span class="card-title">消息面分析</span>
+          <span>财联社加红电报新闻爬虫系统</span>
+          <el-tag :type="systemStatus.type">{{ systemStatus.text }}</el-tag>
         </div>
       </template>
-      
-      <div class="content-area">
-        <!-- 查询控制面板 -->
-        <div class="query-panel">
-          <el-form :model="queryForm" label-width="100px" inline>
-            <el-form-item label="新闻提供商">
-              <el-select 
-                v-model="queryForm.provider" 
-                placeholder="请选择新闻提供商"
-                @change="onProviderChange"
-                :loading="loadingProviders"
-                :disabled="loadingProviders"
-                style="width: 250px"
-              >
-                <el-option
-                  v-for="provider in providers"
-                  :key="provider.id"
-                  :label="provider.name"
-                  :value="provider.id"
-                  :disabled="!provider.enabled"
-                >
-                  <span>{{ provider.name }}</span>
-                  <span style="color: #8492a6; font-size: 13px">{{ provider.description }}</span>
-                </el-option>
-              </el-select>
-            </el-form-item>
-            
-            <el-form-item label="期货品种">
-              <el-select 
-                v-model="queryForm.variety" 
-                placeholder="请选择期货品种"
-                :disabled="!queryForm.provider || loadingVarieties"
-                :loading="loadingVarieties"
-                filterable
-                clearable
-                style="width: 250px"
-              >
-                <el-option
-                  v-for="variety in varieties"
-                  :key="variety.name"
-                  :label="variety.name"
-                  :value="variety.name"
-                />
-              </el-select>
-            </el-form-item>
-            
-            <el-form-item label="关键词">
-              <el-input 
-                v-model="queryForm.keyword" 
-                placeholder="可选，过滤关键词"
-                style="width: 250px"
-                :disabled="loadingNews"
-              />
-            </el-form-item>
-            
-            <el-form-item label="等待时间">
-              <el-select v-model="queryForm.waitTime" placeholder="选择等待时间" :disabled="loadingNews" style="width: 250px">
-                <el-option label="30秒" :value="30000" />
-                <el-option label="1分钟" :value="60000" />
-                <el-option label="2分钟" :value="120000" />
-                <el-option label="3分钟" :value="180000" />
-              </el-select>
-            </el-form-item>
-            
-            <el-form-item>
-              <el-button 
-                type="primary" 
-                @click="fetchNews"
-                :loading="loadingNews"
-                :disabled="!queryForm.provider || !queryForm.variety || loadingNews"
-              >
-                查询新闻
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </div>
 
-        <!-- 新闻列表 -->
-        <div class="news-list">
-          <el-alert
-            v-if="loadingNews"
-            title="正在抓取新闻数据，请耐心等待..."
-            type="info"
-            :closable="false"
-            show-icon
-          />
-          
-          <div v-if="newsList.length > 0" class="news-results">
-            <div class="results-header">
-              <span class="results-count">共找到 {{ newsList.length }} 条新闻</span>
-              <div class="header-controls">
-                <el-checkbox 
-                  v-model="showActions" 
-                  size="small"
-                >
-                  显示操作列
-                </el-checkbox>
-                <span class="update-time">更新时间: {{ lastUpdateTime }}</span>
+      <!-- 操作控制区 -->
+      <el-row :gutter="20" class="control-row">
+        <!-- 爬取操作 -->
+        <el-col :span="8">
+          <el-card shadow="never" class="operation-card">
+            <template #header>数据爬取</template>
+            <div class="operation-content">
+              <el-button
+                type="primary"
+                size="large"
+                @click="startCrawling"
+                :loading="crawlLoading"
+                icon="Download"
+                style="width: 100%; margin-bottom: 15px;"
+              >
+                {{ crawlLoading ? '正在爬取新闻...' : '开始爬取新闻' }}
+              </el-button>
+              <div class="operation-description">
+                <p>点击此按钮开始爬取财联社加红电报最新新闻</p>
+                <p class="text-muted">• 自动访问财联社网站</p>
+                <p class="text-muted">• 模拟点击"加红"按钮</p>
+                <p class="text-muted">• 获取并保存最新新闻数据</p>
               </div>
             </div>
-            
-            <el-table :data="newsList" style="width: 100%" stripe v-loading="loadingNews">
-              <el-table-column prop="title" label="新闻标题" min-width="400">
-                <template #default="scope">
-                  <span class="news-title">{{ scope.row.title }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="time" label="发布时间" width="180" />
-              <el-table-column v-if="showActions" label="操作" width="120">
-                <template #header>
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span>操作</span>
-                    <el-checkbox 
-                      v-model="showActions" 
-                      size="small"
-                      style="margin-left: 8px;"
-                    >
-                      显示
-                    </el-checkbox>
-                  </div>
-                </template>
-                <template #default="scope">
-                  <el-button 
-                    link 
-                    size="small"
-                    @click="openNewsLink(scope.row.link)"
-                  >
-                    查看
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+          </el-card>
+        </el-col>
+
+        <!-- 查询操作 -->
+        <el-col :span="8">
+          <el-card shadow="never" class="operation-card">
+            <template #header>数据查询</template>
+            <div class="operation-content">
+              <el-button
+                type="success"
+                size="large"
+                @click="loadNewsList"
+                :loading="newsLoading"
+                icon="Search"
+                style="width: 100%; margin-bottom: 15px;"
+              >
+                {{ newsLoading ? '正在查询新闻...' : '查询新闻数据' }}
+              </el-button>
+              <div class="operation-description">
+                <p>查询数据库中已存储的新闻数据</p>
+                <p class="text-muted">• 分页展示新闻列表</p>
+                <p class="text-muted">• 支持跳转到指定页面</p>
+                <p class="text-muted">• 显示新闻详细内容</p>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+
+        <!-- 统计信息 -->
+        <el-col :span="8">
+          <el-card shadow="never" class="stats-card">
+            <template #header>统计信息</template>
+            <div class="stats-content">
+              <div class="stat-item">
+                <div class="stat-label">总新闻数</div>
+                <div class="stat-value">{{ stats.total }}</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">今日新增</div>
+                <div class="stat-value success">{{ stats.today_count }}</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">最新时间</div>
+                <div class="stat-time">{{ stats.latest_time || '暂无数据' }}</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+      </el-row>
+    </el-card>
+
+    <!-- 新闻列表展示区块 -->
+    <el-card class="news-list-card">
+      <template #header>
+        <div class="card-header">
+          <span>新闻列表</span>
+          <div class="header-controls">
+            <el-button
+              type="info"
+              size="small"
+              @click="loadStats"
+              :loading="statsLoading"
+              icon="Refresh"
+            >
+              刷新统计
+            </el-button>
+            <el-button
+              type="primary"
+              size="small"
+              @click="loadNewsList"
+              :loading="newsLoading"
+              icon="Refresh"
+            >
+              刷新列表
+            </el-button>
           </div>
-          
-          <el-empty 
-            v-else-if="!loadingNews && hasSearched" 
-            description="未找到相关新闻" 
-          />
-          
-          <el-empty 
-            v-else-if="!loadingNews && !hasSearched" 
-            description="请选择新闻提供商和期货品种，然后点击查询按钮" 
+        </div>
+      </template>
+
+      <!-- 新闻列表 -->
+      <div class="news-list-container">
+        <!-- 列表为空时的提示 -->
+        <el-empty
+          v-if="!newsLoading && newsList.length === 0"
+          description="暂无新闻数据，请先爬取新闻"
+          :image-size="120"
+        >
+          <el-button type="primary" @click="startCrawling">开始爬取</el-button>
+        </el-empty>
+
+        <!-- 新闻列表 -->
+        <div v-else class="news-items">
+          <el-card
+            v-for="news in newsList"
+            :key="news.id"
+            class="news-item"
+            shadow="hover"
+          >
+            <template #header>
+              <div class="news-header">
+                <div class="news-time">
+                  <el-icon><Clock /></el-icon>
+                  {{ news.time }}
+                </div>
+                <div class="news-id">ID: {{ news.id }}</div>
+              </div>
+            </template>
+
+            <div class="news-content">
+              <h3 class="news-title">{{ news.title }}</h3>
+              <div class="news-body">
+                <el-text
+                  :line-clamp="3"
+                  class="news-text"
+                  :title="news.content"
+                >
+                  {{ news.content }}
+                </el-text>
+              </div>
+              
+              <!-- 展开/收起按钮 -->
+              <div class="news-actions">
+                <el-button
+                  type="text"
+                  size="small"
+                  @click="toggleNewsExpansion(news.id)"
+                >
+                  {{ expandedNews.includes(news.id) ? '收起' : '展开全文' }}
+                </el-button>
+              </div>
+
+              <!-- 完整内容（展开时显示） -->
+              <div v-if="expandedNews.includes(news.id)" class="news-full-content">
+                <el-divider />
+                <div class="full-text">{{ news.content }}</div>
+                <div class="news-meta">
+                  <span class="meta-item">创建时间: {{ news.created_at }}</span>
+                  <span class="meta-item">更新时间: {{ news.updated_at }}</span>
+                  <span class="meta-item">时间戳: {{ news.ctime }}</span>
+                </div>
+              </div>
+            </div>
+          </el-card>
+        </div>
+
+        <!-- 分页器 -->
+        <div v-if="pagination.total > 0" class="pagination-container">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.page_size"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="pagination.total"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="handleSizeChange"
+            @current-change="handleCurrentChange"
+            background
           />
         </div>
       </div>
@@ -156,197 +197,154 @@
 </template>
 
 <script>
-import { requestWithPort } from '../utils/request'
+import request from '@/utils/request'
+import { crawlClsNewsApi, getClsNewsListApi, getClsNewsStatsApi } from '@/api'
+import { ElMessage } from 'element-plus'
+import { Clock } from '@element-plus/icons-vue'
 
 export default {
   name: 'NewsAnalysis',
+  components: {
+    Clock
+  },
   data() {
     return {
-      queryForm: {
-        provider: '',
-        variety: '',
-        keyword: '',
-        waitTime: 60000 // 默认1分钟
+      // 系统状态
+      systemStatus: {
+        type: 'success',
+        text: '系统正常'
       },
-      providers: [],
-      varieties: [],
+      
+      // 爬取状态
+      crawlLoading: false,
+      
+      // 新闻列表
       newsList: [],
-      loadingProviders: false,
-      loadingVarieties: false,
-      loadingNews: false,
-      hasSearched: false,
-      lastUpdateTime: '',
-      // 添加组件状态管理
-      isComponentMounted: false,
-      currentRequestId: 0,
-      showActions: true // 默认显示操作按钮
+      newsLoading: false,
+      
+      // 统计信息
+      stats: {
+        total: 0,
+        today_count: 0,
+        latest_time: '',
+        earliest_time: ''
+      },
+      statsLoading: false,
+      
+      // 分页信息
+      pagination: {
+        page: 1,
+        page_size: 10,
+        total: 0,
+        total_pages: 0,
+        has_prev: false,
+        has_next: false
+      },
+      
+      // 展开的新闻ID列表
+      expandedNews: []
     }
   },
-  mounted() {
-    this.isComponentMounted = true
-    this.loadProviders()
+  
+  async mounted() {
+    await this.loadStats()
+    await this.loadNewsList()
   },
-  beforeUnmount() {
-    // 组件销毁时设置标志
-    this.isComponentMounted = false
-  },
+  
   methods: {
-    // 检查组件是否仍然挂载
-    isComponentAlive() {
-      return this.isComponentMounted && this.$el && this.$el.parentNode
+    // 开始爬取新闻
+    async startCrawling() {
+      this.crawlLoading = true
+      try {
+        const response = await request.post(crawlClsNewsApi)
+        
+        if (response.code === 0) {
+          ElMessage.success(response.message)
+          // 等待一段时间后自动刷新统计和列表
+          setTimeout(async () => {
+            await this.loadStats()
+            await this.loadNewsList()
+          }, 10000) // 10秒后刷新
+        } else {
+          ElMessage.error(`爬取失败: ${response.message}`)
+        }
+      } catch (error) {
+        console.error('爬取新闻失败:', error)
+        ElMessage.error(`爬取新闻失败: ${error.message}`)
+      } finally {
+        this.crawlLoading = false
+      }
     },
-
-    // 安全的数据更新方法
-    safeUpdate(callback) {
-      if (this.isComponentAlive()) {
-        this.$nextTick(() => {
-          if (this.isComponentAlive()) {
-            callback()
-          }
+    
+    // 加载新闻列表
+    async loadNewsList() {
+      this.newsLoading = true
+      try {
+        const params = new URLSearchParams({
+          page: this.pagination.page,
+          page_size: this.pagination.page_size
         })
-      }
-    },
-
-    // 加载新闻提供商列表
-    async loadProviders() {
-      if (!this.isComponentAlive()) return
-      
-      this.loadingProviders = true
-      const requestId = ++this.currentRequestId
-      
-      try {
-        const response = await requestWithPort('/api/get-news-providers', {}, 'post', 3000)
         
-        // 检查请求是否仍然有效
-        if (requestId === this.currentRequestId && this.isComponentAlive()) {
-          this.safeUpdate(() => {
-            this.providers = response || []
-            // 默认选择第一个启用的提供商
-            if (this.providers.length > 0) {
-              const firstEnabledProvider = this.providers.find(provider => provider.enabled)
-              if (firstEnabledProvider) {
-                this.queryForm.provider = firstEnabledProvider.id
-                // 自动加载对应的品种列表
-                this.onProviderChange()
-              }
-            }
-          })
-        }
-      } catch (error) {
-        if (this.isComponentAlive()) {
-          this.$message.error('获取新闻提供商列表失败: ' + (error.message || '未知错误'))
-        }
-      } finally {
-        if (requestId === this.currentRequestId && this.isComponentAlive()) {
-          this.safeUpdate(() => {
-            this.loadingProviders = false
-          })
-        }
-      }
-    },
-
-    // 提供商变更时加载对应的品种列表
-    async onProviderChange() {
-      if (!this.isComponentAlive()) return
-      
-      this.safeUpdate(() => {
-        this.queryForm.variety = ''
-        this.varieties = []
-      })
-      
-      if (!this.queryForm.provider) {
-        return
-      }
-
-      this.loadingVarieties = true
-      const requestId = ++this.currentRequestId
-      
-      try {
-        const response = await requestWithPort('/api/get-varieties-by-provider', {
-          provider: this.queryForm.provider
-        }, 'post', 3000)
+        const response = await request.get(`${getClsNewsListApi}?${params}`)
         
-        if (requestId === this.currentRequestId && this.isComponentAlive()) {
-          this.safeUpdate(() => {
-            this.varieties = response || []
-          })
-        }
-      } catch (error) {
-        if (this.isComponentAlive()) {
-          this.$message.error('获取品种列表失败: ' + (error.message || '未知错误'))
-        }
-      } finally {
-        if (requestId === this.currentRequestId && this.isComponentAlive()) {
-          this.safeUpdate(() => {
-            this.loadingVarieties = false
-          })
-        }
-      }
-    },
-
-    // 获取新闻数据
-    async fetchNews() {
-      if (!this.isComponentAlive()) return
-      
-      if (!this.queryForm.provider || !this.queryForm.variety) {
-        this.$message.warning('请选择新闻提供商和期货品种')
-        return
-      }
-
-      this.loadingNews = true
-      this.hasSearched = true
-      const requestId = ++this.currentRequestId
-      
-      try {
-        const requestData = {
-          provider: this.queryForm.provider,
-          variety: this.queryForm.variety,
-          keyword: this.queryForm.keyword || '',
-          waitTime: this.queryForm.waitTime
-        }
-
-        const response = await requestWithPort('/api/get-futures-news', requestData, 'post', 3000, this.queryForm.waitTime + 5000) // 额外增加5秒缓冲时间
-        
-        if (requestId === this.currentRequestId && this.isComponentAlive()) {
-          this.safeUpdate(() => {
-            this.newsList = response || []
-            this.lastUpdateTime = new Date().toLocaleString()
-          })
+        if (response.code === 0) {
+          this.newsList = response.data.news_list || []
+          this.pagination = { ...this.pagination, ...response.data.pagination }
           
-          if (this.newsList.length === 0) {
-            this.$message.info('未找到相关新闻')
-          } else {
-            this.$message.success(`成功获取 ${this.newsList.length} 条新闻`)
+          if (this.newsList.length > 0) {
+            ElMessage.success(`加载成功，共 ${this.pagination.total} 条新闻`)
           }
+        } else {
+          ElMessage.error(`查询失败: ${response.message}`)
         }
       } catch (error) {
-        if (this.isComponentAlive()) {
-          this.$message.error('获取新闻失败: ' + (error.message || '未知错误'))
-          this.safeUpdate(() => {
-            this.newsList = []
-          })
-        }
+        console.error('查询新闻失败:', error)
+        ElMessage.error(`查询新闻失败: ${error.message}`)
       } finally {
-        if (requestId === this.currentRequestId && this.isComponentAlive()) {
-          this.safeUpdate(() => {
-            this.loadingNews = false
-          })
-        }
+        this.newsLoading = false
       }
     },
-
-    // 打开新闻链接
-    openNewsLink(link) {
-      if (!this.isComponentAlive()) return
-      
-      if (link) {
-        try {
-          window.open(link, '_blank')
-        } catch (error) {
-          this.$message.error('无法打开链接: ' + (error.message || '未知错误'))
+    
+    // 加载统计信息
+    async loadStats() {
+      this.statsLoading = true
+      try {
+        const response = await request.get(getClsNewsStatsApi)
+        
+        if (response.code === 0) {
+          this.stats = response.data
+        } else {
+          console.error('获取统计信息失败:', response.message)
         }
+      } catch (error) {
+        console.error('获取统计信息失败:', error)
+      } finally {
+        this.statsLoading = false
+      }
+    },
+    
+    // 分页大小变化
+    handleSizeChange(newSize) {
+      this.pagination.page_size = newSize
+      this.pagination.page = 1 // 重置到第一页
+      this.loadNewsList()
+    },
+    
+    // 当前页变化
+    handleCurrentChange(newPage) {
+      this.pagination.page = newPage
+      this.loadNewsList()
+    },
+    
+    // 切换新闻展开/收起
+    toggleNewsExpansion(newsId) {
+      const index = this.expandedNews.indexOf(newsId)
+      if (index > -1) {
+        // 收起
+        this.expandedNews.splice(index, 1)
       } else {
-        this.$message.warning('新闻链接无效')
+        // 展开
+        this.expandedNews.push(newsId)
       }
     }
   }
@@ -355,10 +353,11 @@ export default {
 
 <style scoped>
 .news-analysis {
-  width: 100%;
+  padding: 20px;
 }
 
-.analysis-card {
+.header-card,
+.news-list-card {
   margin-bottom: 20px;
 }
 
@@ -366,95 +365,229 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.card-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.content-area {
-  min-height: 400px;
-}
-
-.query-panel {
-  background: #f8f9fa;
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-
-.news-list {
-  margin-top: 20px;
-}
-
-.results-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-  padding: 10px;
-  background: #f0f2f5;
-  border-radius: 4px;
-}
-
-.results-count {
-  font-weight: 600;
-  color: #2c3e50;
+  font-weight: bold;
 }
 
 .header-controls {
   display: flex;
-  align-items: center;
-  gap: 15px;
+  gap: 10px;
 }
 
-.update-time {
-  color: #666;
+.control-row {
+  margin-bottom: 0;
+}
+
+.operation-card,
+.stats-card {
+  height: 280px;
+}
+
+.operation-card .el-card__body,
+.stats-card .el-card__body {
+  padding: 20px;
+}
+
+.operation-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.operation-description {
+  flex: 1;
+  margin-top: 10px;
+}
+
+.operation-description p {
+  margin: 5px 0;
   font-size: 14px;
+  line-height: 1.5;
 }
 
-.news-title {
-  color: #2c3e50;
+.text-muted {
+  color: #909399;
+  font-size: 13px;
+}
+
+.stats-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 20px;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: #333;
+}
+
+.stat-value.success {
+  color: #67c23a;
+}
+
+.stat-time {
+  font-size: 13px;
+  color: #409eff;
   font-weight: 500;
 }
 
-.news-link {
+.news-list-container {
+  min-height: 400px;
+}
+
+.news-items {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.news-item {
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.news-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.news-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.news-time {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   color: #409eff;
-  text-decoration: none;
+  font-weight: 500;
 }
 
-.news-link:hover {
-  color: #66b1ff;
-  text-decoration: underline;
+.news-id {
+  color: #909399;
+  font-size: 12px;
 }
 
-.news-results {
+.news-content {
+  padding: 10px 0;
+}
+
+.news-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #303133;
+  margin: 0 0 15px 0;
+  line-height: 1.4;
+}
+
+.news-body {
+  margin-bottom: 15px;
+}
+
+.news-text {
+  color: #606266;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.news-actions {
+  text-align: right;
+  margin-bottom: 10px;
+}
+
+.news-full-content {
   margin-top: 15px;
 }
 
-/* 响应式设计 */
+.full-text {
+  color: #606266;
+  line-height: 1.8;
+  font-size: 14px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  margin-bottom: 15px;
+}
+
+.news-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 10px;
+  background-color: #fafafa;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.meta-item {
+  white-space: nowrap;
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 30px;
+  padding: 20px 0;
+}
+
+/* 响应式布局 */
+@media (max-width: 1200px) {
+  .control-row .el-col {
+    margin-bottom: 20px;
+  }
+}
+
 @media (max-width: 768px) {
-  .query-panel .el-form {
-    display: block;
+  .news-analysis {
+    padding: 10px;
   }
   
-  .query-panel .el-form-item {
-    display: block;
-    margin-bottom: 15px;
-  }
-  
-  .results-header {
+  .card-header {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 5px;
+    gap: 10px;
   }
   
   .header-controls {
+    justify-content: center;
+  }
+  
+  .news-header {
     flex-direction: column;
+    gap: 5px;
     align-items: flex-start;
+  }
+  
+  .news-meta {
+    flex-direction: column;
     gap: 5px;
   }
 }
-</style> 
+
+/* 加载状态动画 */
+.el-loading-mask {
+  border-radius: 8px;
+}
+
+/* 空状态样式 */
+.el-empty {
+  padding: 40px 20px;
+}
+</style>

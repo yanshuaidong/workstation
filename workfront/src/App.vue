@@ -23,11 +23,11 @@
             text-color="#fff"
             active-text-color="#1890ff"
           >
-            <!-- <el-menu-item index="/news-analysis" class="menu-item">
+            <el-menu-item index="/news-analysis" class="menu-item">
               <el-icon class="menu-icon"><ChatDotRound /></el-icon>
               <span class="menu-text">消息面分析</span>
             </el-menu-item>
-            <el-menu-item index="/technical-analysis" class="menu-item">
+            <!-- <el-menu-item index="/technical-analysis" class="menu-item">
               <el-icon class="menu-icon"><TrendCharts /></el-icon>
               <span class="menu-text">技术面分析</span>
             </el-menu-item>

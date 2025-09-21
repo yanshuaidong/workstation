@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# 1) 换阿里云 Debian 源 + apt 重试 + 装 curl（供健康检查）
+# 1) 换阿里云 Debian 源 + apt 重试 + 装 curl（供健康检查）+ Chrome浏览器
 # 2) 使用 BuildKit 的 apt 缓存（需 DOCKER_BUILDKIT=1）
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt/lists \
@@ -18,6 +18,13 @@ RUN --mount=type=cache,target=/var/cache/apt \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
       gcc g++ pkg-config default-libmysqlclient-dev curl \
+      wget gnupg2 software-properties-common \
+ && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+ && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      google-chrome-stable \
+      xvfb \
  && rm -rf /var/lib/apt/lists/*
 
 # 3) pip 默认源切清华（全局），并缓存 pip 目录（BuildKit）

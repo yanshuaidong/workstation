@@ -2,11 +2,20 @@ import { createRouter, createWebHistory } from 'vue-router'
 // import ApiDataFetcher from '@/components/ApiDataFetcher.vue'
 // import TechnicalAnalysis from '@/components/TechnicalAnalysis.vue'
 import FuturesUpdate from '@/components/FuturesUpdate.vue'
+import NewsAnalysis from '@/components/NewsAnalysis.vue'
 
 const routes = [
   {
     path: '/',
     redirect: '/futures-update'
+  },
+  {
+    path: '/news-analysis',
+    name: 'NewsAnalysis',
+    component: NewsAnalysis,
+    meta: {
+      title: '消息面分析'
+    }
   },
   // {
   //   path: '/position-structure',
