@@ -52,6 +52,11 @@ export const crawlClsNewsApi = `${BASE_URL_API_A}/news/crawl`;
 export const getClsNewsListApi = `${BASE_URL_API_A}/news/list`;
 export const getClsNewsStatsApi = `${BASE_URL_API_A}/news/stats`;
 
+// AI 新闻分析接口
+export const analyzeBatchNewsApi = `${BASE_URL_API_A}/news/analyze-batch`;
+export const analyzeSingleNewsApi = `${BASE_URL_API_A}/news/analyze-single`;
+export const getNewsListWithAnalysisApi = `${BASE_URL_API_A}/news/list-with-analysis`;
+
 
 // 导出端口配置，方便组件使用
 export const API_PORTS = {
