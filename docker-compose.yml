@@ -14,7 +14,6 @@ services:
     depends_on:
       - workfront
       - automysqlback
-      - portainer
     restart: unless-stopped
     networks:
       - futures-network
@@ -34,9 +33,9 @@ services:
     container_name: futures-frontend
     expose:
       - "80"
-    # 运行时内存限制
-    mem_limit: 300m  # 降低前端内存限制
-    memswap_limit: 400m
+    # 运行时内存限制（优化后）
+    mem_limit: 256m
+    memswap_limit: 512m
     restart: unless-stopped
     networks:
       - futures-network
@@ -81,14 +80,14 @@ services:
       context: ./automysqlback
       dockerfile: Dockerfile
       # 构建时的内存限制（适合小内存服务器）
-      shm_size: 512mb
+      shm_size: 256mb
     container_name: futures-backend
     expose:
       - "7001"
-    # 运行时资源限制
-    mem_limit: 1g
-    memswap_limit: 1.5g
-    shm_size: 512mb
+    # 运行时资源限制（优化后）
+    mem_limit: 768m
+    memswap_limit: 1g
+    shm_size: 256mb
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
@@ -119,21 +118,18 @@ services:
       retries: 3
       start_period: 120s  # 增加启动等待时间
 
-  # Docker监控管理面板（低配置优化）
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: futures-portainer
-    expose:
-      - "9000"
-    # Portainer内存限制
-    mem_limit: 128m
-    memswap_limit: 200m
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
-    restart: unless-stopped
-    networks:
-      - futures-network
+# Docker监控管理面板 - 已停用以节省内存
+  # portainer:
+  #   image: portainer/portainer-ce:latest
+  #   container_name: futures-portainer
+  #   expose:
+  #     - "9000"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - portainer_data:/data
+  #   restart: unless-stopped
+  #   networks:
+  #     - futures-network
 
 networks:
   futures-network:
@@ -145,4 +141,4 @@ networks:
 volumes:
   nginx-logs:
   backend-logs:
-  portainer_data:
+  # portainer_data:  # 已停用portainer
