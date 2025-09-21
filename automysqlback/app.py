@@ -33,6 +33,8 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import os
 import sys
 import requests
+import aiohttp
+import asyncio
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -152,12 +154,32 @@ def init_database():
                 ctime BIGINT UNIQUE NOT NULL COMMENT '新闻时间戳（用于去重）',
                 title VARCHAR(500) NOT NULL COMMENT '新闻标题',
                 content TEXT NOT NULL COMMENT '新闻内容',
+                ai_analysis VARCHAR(1000) DEFAULT NULL COMMENT 'AI 对新闻的分析结果',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
                 INDEX idx_ctime (ctime),
                 INDEX idx_created_at (created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='财联社加红电报新闻表'
         """)
+        
+        conn.commit()
+        
+        # 检查并添加 ai_analysis 字段到 news_red_telegraph 表（数据库迁移）
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'news_red_telegraph' 
+            AND COLUMN_NAME = 'ai_analysis'
+        """)
+        if cursor.fetchone()[0] == 0:
+            # 添加 ai_analysis 字段
+            cursor.execute("""
+                ALTER TABLE news_red_telegraph 
+                ADD COLUMN ai_analysis VARCHAR(1000) DEFAULT NULL COMMENT 'AI 对新闻的分析结果' 
+                AFTER content
+            """)
+            logger.info("已为 news_red_telegraph 表添加 ai_analysis 字段")
         
         conn.commit()
         
@@ -2218,6 +2240,383 @@ def get_cls_news_stats():
         return jsonify({
             'code': 1,
             'message': f'获取统计信息失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+# ========== AI 新闻分析接口 ==========
+
+# AI API 配置
+AI_API_KEY = "sk-qVU4OZNspU5cSTPONFBFD000t2Oy8Tq9U8h74Wm5Phnl8tsB"  # 请替换为实际的API Key
+AI_BASE_URL = "https://poloai.top/v1/chat/completions"
+
+async def analyze_single_news_async(session, prompt, news_item):
+    """异步分析单条新闻"""
+    try:
+        payload = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "你是一个财经消息分类助手。"},
+                {"role": "user", "content": f"{prompt}\n\n新闻标题：{news_item['title']}\n新闻内容：{news_item['content']}"}
+            ],
+            "max_tokens": 500,
+            "temperature": 0.7
+        }
+        
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {AI_API_KEY}",
+            'User-Agent': 'PoloAPI/1.0.0 (https://poloai.top)',
+            "Content-Type": "application/json"
+        }
+        
+        async with session.post(AI_BASE_URL, json=payload, headers=headers, timeout=60) as response:
+            if response.status == 200:
+                result = await response.json()
+                analysis_result = result["choices"][0]["message"]["content"]
+                logger.info(f"AI分析完成 - 新闻ID: {news_item['id']}, 结果: {analysis_result[:50]}...")
+                return {
+                    'id': news_item['id'],
+                    'analysis': analysis_result[:1000],  # 限制长度
+                    'success': True
+                }
+            else:
+                logger.error(f"AI请求失败 - 新闻ID: {news_item['id']}, 状态码: {response.status}")
+                return {
+                    'id': news_item['id'],
+                    'analysis': f"AI请求失败: HTTP {response.status}",
+                    'success': False
+                }
+                
+    except asyncio.TimeoutError:
+        logger.warning(f"AI请求超时 - 新闻ID: {news_item['id']}")
+        return {
+            'id': news_item['id'],
+            'analysis': "AI请求超时",
+            'success': False
+        }
+    except Exception as e:
+        logger.error(f"AI分析异常 - 新闻ID: {news_item['id']}, 错误: {e}")
+        return {
+            'id': news_item['id'],
+            'analysis': f"AI分析异常: {str(e)[:100]}",
+            'success': False
+        }
+
+async def batch_analyze_news_async(prompt, news_list):
+    """批量异步分析新闻"""
+    results = []
+    
+    async with aiohttp.ClientSession() as session:
+        # 创建任务列表
+        tasks = []
+        for news_item in news_list:
+            task = analyze_single_news_async(session, prompt, news_item)
+            tasks.append(task)
+        
+        # 批量执行，但控制并发数量
+        semaphore = asyncio.Semaphore(50)  # 限制并发数为50
+        
+        async def bounded_task(task):
+            async with semaphore:
+                return await task
+        
+        bounded_tasks = [bounded_task(task) for task in tasks]
+        results = await asyncio.gather(*bounded_tasks, return_exceptions=True)
+        
+        # 处理异常结果
+        processed_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"任务执行异常 - 新闻ID: {news_list[i]['id']}, 错误: {result}")
+                processed_results.append({
+                    'id': news_list[i]['id'],
+                    'analysis': f"任务执行异常: {str(result)[:100]}",
+                    'success': False
+                })
+            else:
+                processed_results.append(result)
+        
+        return processed_results
+
+def update_news_analysis_results(results):
+    """更新新闻分析结果到数据库"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    success_count = 0
+    failure_count = 0
+    
+    try:
+        for result in results:
+            try:
+                cursor.execute("""
+                    UPDATE news_red_telegraph 
+                    SET ai_analysis = %s, updated_at = NOW()
+                    WHERE id = %s
+                """, (result['analysis'], result['id']))
+                
+                if result['success']:
+                    success_count += 1
+                else:
+                    failure_count += 1
+                    
+            except Exception as e:
+                logger.error(f"更新新闻分析结果失败 - ID: {result['id']}, 错误: {e}")
+                failure_count += 1
+        
+        conn.commit()
+        logger.info(f"批量更新完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+        return success_count, failure_count
+        
+    except Exception as e:
+        logger.error(f"批量更新新闻分析结果失败: {e}")
+        conn.rollback()
+        return 0, len(results)
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/analyze-batch', methods=['POST'])
+def analyze_news_batch():
+    """批量分析新闻"""
+    def analyze_task():
+        """后台分析任务"""
+        try:
+            logger.info(f"开始批量AI分析任务 - 数量: {count}, 提示词长度: {len(prompt)}")
+            
+            # 获取最新的未分析新闻
+            conn = get_db_connection()
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+            
+            cursor.execute("""
+                SELECT id, title, content 
+                FROM news_red_telegraph 
+                WHERE ai_analysis IS NULL 
+                ORDER BY ctime DESC 
+                LIMIT %s
+            """, (count,))
+            
+            news_list = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            if not news_list:
+                logger.warning("没有找到需要分析的新闻")
+                return
+            
+            logger.info(f"获取到 {len(news_list)} 条待分析新闻")
+            
+            # 异步批量分析
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                results = loop.run_until_complete(batch_analyze_news_async(prompt, news_list))
+                
+                # 更新数据库
+                success_count, failure_count = update_news_analysis_results(results)
+                logger.info(f"批量AI分析任务完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+                
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            logger.error(f"批量分析任务执行失败: {e}")
+            logger.error(traceback.format_exc())
+    
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt', '请分析这条财经新闻是硬消息还是软消息，并简要说明原因。')
+        count = data.get('count', 5)
+        
+        # 验证参数
+        if not prompt or not isinstance(prompt, str):
+            return jsonify({
+                'code': 1,
+                'message': '提示词不能为空'
+            })
+        
+        if not isinstance(count, int) or count <= 0 or count > 100:
+            return jsonify({
+                'code': 1,
+                'message': '分析数量必须是1-100之间的整数'
+            })
+        
+        # 在后台线程中执行分析任务
+        threading.Thread(target=analyze_task, daemon=True).start()
+        
+        return jsonify({
+            'code': 0,
+            'message': f'批量AI分析已启动，将分析最新 {count} 条未分析的新闻'
+        })
+        
+    except Exception as e:
+        logger.error(f"启动批量分析任务失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'启动分析任务失败: {str(e)}'
+        })
+
+@app.route('/api/news/analyze-single', methods=['POST'])
+def analyze_news_single():
+    """单条新闻分析"""
+    def analyze_task():
+        """后台分析任务"""
+        try:
+            logger.info(f"开始单条AI分析任务 - 新闻ID: {news_id}")
+            
+            # 获取指定新闻
+            conn = get_db_connection()
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+            
+            cursor.execute("""
+                SELECT id, title, content 
+                FROM news_red_telegraph 
+                WHERE id = %s
+            """, (news_id,))
+            
+            news_item = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if not news_item:
+                logger.warning(f"未找到新闻ID: {news_id}")
+                return
+            
+            # 异步分析
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                async def run_single_analysis():
+                    async with aiohttp.ClientSession() as session:
+                        return await analyze_single_news_async(session, prompt, news_item)
+                
+                result = loop.run_until_complete(run_single_analysis())
+                
+                # 更新数据库
+                success_count, failure_count = update_news_analysis_results([result])
+                logger.info(f"单条AI分析任务完成: 新闻ID {news_id}, 成功: {success_count}, 失败: {failure_count}")
+                
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            logger.error(f"单条分析任务执行失败: {e}")
+            logger.error(traceback.format_exc())
+    
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt', '请分析这条财经新闻是硬消息还是软消息，并简要说明原因。')
+        news_id = data.get('news_id')
+        
+        # 验证参数
+        if not prompt or not isinstance(prompt, str):
+            return jsonify({
+                'code': 1,
+                'message': '提示词不能为空'
+            })
+        
+        if not news_id or not isinstance(news_id, int):
+            return jsonify({
+                'code': 1,
+                'message': '新闻ID不能为空且必须是整数'
+            })
+        
+        # 在后台线程中执行分析任务
+        threading.Thread(target=analyze_task, daemon=True).start()
+        
+        return jsonify({
+            'code': 0,
+            'message': f'单条新闻AI分析已启动，新闻ID: {news_id}'
+        })
+        
+    except Exception as e:
+        logger.error(f"启动单条分析任务失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'启动分析任务失败: {str(e)}'
+        })
+
+@app.route('/api/news/list-with-analysis', methods=['GET'])
+def get_news_list_with_analysis():
+    """获取包含AI分析结果的新闻列表（显示所有新闻，不管是否有AI分析）"""
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 10, type=int)
+    
+    # 限制分页参数
+    page = max(1, page)
+    page_size = max(1, min(100, page_size))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 查询总数（所有新闻）
+        cursor.execute("SELECT COUNT(*) as total FROM news_red_telegraph")
+        total = cursor.fetchone()['total']
+        
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
+        # 查询新闻列表（按ctime倒序，最新的在前面，返回所有新闻包括没有AI分析的）
+        cursor.execute("""
+            SELECT 
+                id,
+                ctime,
+                title,
+                content,
+                ai_analysis,
+                FROM_UNIXTIME(ctime) as formatted_time,
+                created_at,
+                updated_at
+            FROM news_red_telegraph 
+            ORDER BY ctime DESC 
+            LIMIT %s OFFSET %s
+        """, (page_size, offset))
+        
+        news_list = cursor.fetchall()
+        
+        # 格式化数据
+        formatted_news = []
+        for news in news_list:
+            formatted_news.append({
+                'id': news['id'],
+                'ctime': news['ctime'],
+                'title': news['title'],
+                'content': news['content'],
+                'ai_analysis': news['ai_analysis'],  # 可能为 None
+                'time': news['formatted_time'].strftime('%Y-%m-%d %H:%M:%S') if news['formatted_time'] else '',
+                'created_at': news['created_at'].strftime('%Y-%m-%d %H:%M:%S') if news['created_at'] else '',
+                'updated_at': news['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if news['updated_at'] else ''
+            })
+        
+        # 计算分页信息
+        total_pages = (total + page_size - 1) // page_size
+        
+        return jsonify({
+            'code': 0,
+            'message': '查询成功',
+            'data': {
+                'news_list': formatted_news,
+                'pagination': {
+                    'page': page,
+                    'page_size': page_size,
+                    'total': total,
+                    'total_pages': total_pages,
+                    'has_prev': page > 1,
+                    'has_next': page < total_pages
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"查询新闻分析列表失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'查询失败: {str(e)}'
         })
     finally:
         cursor.close()

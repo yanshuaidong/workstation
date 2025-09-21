@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 期货数据系统后端启动脚本
-- 检查浏览器环境
-- 启动虚拟显示
+- 检查浏览器环境（仅生产环境）
+- 启动虚拟显示（仅生产环境）
 - 启动Flask应用
 """
 
@@ -13,12 +13,35 @@ import logging
 import time
 from pathlib import Path
 
+# 加载环境变量
+try:
+    from dotenv import load_dotenv
+    # 查找上级目录的.env文件
+    env_path = Path(__file__).parent.parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        logging.info(f"已加载环境配置文件: {env_path}")
+    else:
+        logging.warning(f".env文件不存在: {env_path}")
+except ImportError:
+    logging.warning("python-dotenv未安装，将使用系统环境变量")
+
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+def is_development_environment():
+    """检测是否为开发环境"""
+    environment = os.environ.get('ENVIRONMENT', '').lower()
+    return environment == 'development'
+
+def is_production_environment():
+    """检测是否为生产环境"""
+    environment = os.environ.get('ENVIRONMENT', '').lower()
+    return environment == 'production'
 
 def check_browser_environment():
     """检查浏览器运行环境"""
@@ -88,7 +111,10 @@ def optimize_system():
         os.environ['PYTHONHASHSEED'] = '0'
         
         # 创建日志目录
-        log_dir = Path('/app/logs')
+        if is_production_environment():
+            log_dir = Path('/app/logs')
+        else:
+            log_dir = Path('./logs')
         log_dir.mkdir(exist_ok=True)
         
         logger.info("✓ 系统优化完成")
@@ -102,13 +128,32 @@ def main():
     """主启动函数"""
     logger.info("=== 期货数据系统后端启动 ===")
     
-    # 1. 检查浏览器环境
-    if not check_browser_environment():
-        logger.error("浏览器环境检查失败，退出")
-        sys.exit(1)
+    # 获取环境配置
+    environment = os.environ.get('ENVIRONMENT', '').lower()
     
-    # 2. 设置虚拟显示
-    setup_virtual_display()
+    if not environment:
+        logger.warning("未设置ENVIRONMENT环境变量，默认使用开发环境模式")
+        environment = 'development'
+    
+    logger.info(f"当前运行环境: {environment}")
+    
+    if is_development_environment():
+        logger.info("开发环境模式 - 跳过浏览器环境检查和虚拟显示设置")
+        logger.info("注意：开发环境下爬虫功能将不可用")
+    elif is_production_environment():
+        logger.info("生产环境模式 - 进行完整的环境初始化")
+        
+        # 1. 检查浏览器环境
+        if not check_browser_environment():
+            logger.error("浏览器环境检查失败，退出")
+            sys.exit(1)
+        
+        # 2. 设置虚拟显示
+        setup_virtual_display()
+    else:
+        logger.error(f"未知的环境配置: {environment}")
+        logger.error("ENVIRONMENT环境变量必须设置为 'development' 或 'production'")
+        sys.exit(1)
     
     # 3. 系统优化
     optimize_system()
