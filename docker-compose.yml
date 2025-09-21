@@ -60,6 +60,7 @@ services:
     memswap_limit: 1g
     shm_size: 256mb
     environment:
+      - ENVIRONMENT=production
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
       # 浏览器配置
@@ -77,6 +78,8 @@ services:
       - ./logs/backend:/app/logs
       # 挂载 /dev/shm 避免chromium内存问题
       - /dev/shm:/dev/shm
+      # 挂载环境配置文件
+      - ./.env:/app/.env
     restart: unless-stopped
     networks:
       - futures-network
