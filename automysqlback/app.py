@@ -2232,19 +2232,26 @@ class ClsNewsCrawler:
         self.network_logs = []
         
     def setup_driver(self):
-        """设置Chrome驱动"""
+        """设置Chrome驱动（使用预装的chromium）"""
         chrome_options = Options()
         
         if self.headless:
-            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--headless=new')
         
+        # 轻量级配置，适合2GB内存服务器
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--disable-plugins')
         chrome_options.add_argument('--disable-images')
-        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--disable-javascript')  # 财联社主要是API请求，可以禁用JS
+        chrome_options.add_argument('--disable-css')  # 禁用CSS加载
+        chrome_options.add_argument('--disable-web-security')
+        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+        chrome_options.add_argument('--memory-pressure-off')
+        chrome_options.add_argument('--max_old_space_size=512')  # 限制内存使用
+        chrome_options.add_argument('--window-size=1280,720')  # 较小窗口
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
         # 启用网络日志记录
@@ -2252,32 +2259,36 @@ class ClsNewsCrawler:
         chrome_options.add_argument('--log-level=0')
         chrome_options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
         
-        # 尝试不同的Chrome路径
-        chrome_paths = [
-            '/usr/bin/google-chrome-stable',
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium-browser',
-            '/usr/bin/chromium'
-        ]
+        # 使用预装的chromium路径
+        chrome_bin = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
+        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/bin/chromedriver')
         
-        for chrome_path in chrome_paths:
-            if os.path.exists(chrome_path):
-                logger.info(f"找到Chrome浏览器: {chrome_path}")
-                chrome_options.binary_location = chrome_path
-                break
+        if os.path.exists(chrome_bin):
+            chrome_options.binary_location = chrome_bin
+            logger.info(f"使用预装浏览器: {chrome_bin}")
+        else:
+            logger.warning(f"预装浏览器不存在: {chrome_bin}")
         
         try:
-            self.driver = webdriver.Chrome(options=chrome_options)
-            logger.info("Chrome驱动初始化成功")
+            # 使用预装的chromedriver
+            if os.path.exists(chromedriver_path):
+                service = Service(executable_path=chromedriver_path)
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                logger.info(f"使用预装驱动初始化成功: {chromedriver_path}")
+            else:
+                # 降级方案：不指定service路径
+                self.driver = webdriver.Chrome(options=chrome_options)
+                logger.info("使用默认驱动初始化成功")
+                
         except Exception as e:
             logger.error(f"Chrome驱动初始化失败: {e}")
+            # 最后的降级方案：尝试系统PATH中的chromedriver
             try:
-                from webdriver_manager.chrome import ChromeDriverManager
-                service = Service(ChromeDriverManager().install())
+                service = Service()  # 使用系统PATH
                 self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                logger.info("使用webdriver-manager初始化Chrome驱动成功")
+                logger.info("使用系统PATH驱动初始化成功")
             except Exception as e2:
-                logger.error(f"webdriver-manager也失败: {e2}")
+                logger.error(f"所有驱动初始化方案都失败: {e2}")
                 raise
         
         self.driver.set_page_load_timeout(30)
@@ -2476,7 +2487,11 @@ class ClsNewsCrawler:
 
 
 
+# 注意：应用启动逻辑已移至 start.py
+# 如果直接运行此文件，将使用简化启动模式
 if __name__ == '__main__':
+    logger.warning("直接运行app.py，建议使用 'python start.py' 启动")
+    
     # 初始化数据库
     init_database()
     

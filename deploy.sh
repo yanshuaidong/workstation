@@ -40,6 +40,63 @@ compose() {
     fi
 }
 
+# 检查系统资源
+check_system_resources() {
+    if command -v free >/dev/null 2>&1; then
+        local total_memory=$(free -m | awk 'NR==2{printf "%.0f", $2}')
+        local available_memory=$(free -m | awk 'NR==2{printf "%.0f", $7}')
+        local swap_total=$(free -m | awk 'NR==3{printf "%.0f", $2}')
+        local swap_used=$(free -m | awk 'NR==3{printf "%.0f", $3}')
+        
+        print_info "系统内存状态:"
+        print_info "  总内存: ${total_memory}MB"
+        print_info "  可用内存: ${available_memory}MB"
+        print_info "  Swap总量: ${swap_total}MB"
+        print_info "  Swap已用: ${swap_used}MB"
+        
+        # 内存不足警告
+        if [ "$available_memory" -lt 1024 ]; then
+            print_warning "可用内存不足1GB，构建可能失败"
+            
+            # 检查是否有足够的swap
+            local swap_available=$((swap_total - swap_used))
+            if [ "$swap_available" -lt 1024 ]; then
+                print_warning "Swap空间也不足，强烈建议增加swap空间"
+                print_info "增加swap命令示例:"
+                print_info "  sudo fallocate -l 2G /swapfile"
+                print_info "  sudo chmod 600 /swapfile"
+                print_info "  sudo mkswap /swapfile"
+                print_info "  sudo swapon /swapfile"
+            fi
+            
+            print_info "正在尝试释放内存..."
+            # 清理Docker缓存
+            docker system prune -f --volumes >/dev/null 2>&1 || true
+            # 清理系统缓存
+            sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1 || true
+        fi
+    fi
+}
+
+# 测试浏览器环境
+test_browser_environment() {
+    print_info "测试浏览器环境..."
+    
+    # 检查后端容器是否运行
+    if ! docker ps | grep -q "futures-backend"; then
+        print_warning "后端容器未运行，跳过浏览器测试"
+        return
+    fi
+    
+    # 在容器内运行浏览器测试
+    if docker exec futures-backend python test_browser.py >/dev/null 2>&1; then
+        print_success "浏览器环境测试通过"
+    else
+        print_warning "浏览器环境测试失败，财联社新闻爬取功能可能不可用"
+        print_info "可以手动运行测试: docker exec futures-backend python test_browser.py"
+    fi
+}
+
 # 部署更新（拉代码+重启）
 deploy_update() {
     local branch=${1:-main}
@@ -93,29 +150,34 @@ deploy_update() {
     export DOCKER_BUILDKIT=1
     export BUILDKIT_PROGRESS=plain
     
-    # 检查系统内存
-    if command -v free >/dev/null 2>&1; then
-        local available_memory=$(free -m | awk 'NR==2{printf "%.0f", $7}')
-        if [ "$available_memory" -lt 2048 ]; then
-            print_warning "系统可用内存较低 (${available_memory}MB)，构建可能较慢"
-            print_info "建议关闭其他应用程序或增加 swap 空间"
-        fi
-    fi
+    # 检查系统内存和swap
+    check_system_resources
     
-    # 构建时添加内存限制
-    if ! compose build --no-cache --memory=2g; then
-        print_error "构建失败，尝试使用更小的内存限制重新构建..."
-        compose build --no-cache --memory=1g
+    # 构建时添加内存限制（适合2GB内存服务器）
+    print_info "开始构建镜像（使用内存优化配置）..."
+    if ! compose build --no-cache --memory=1g --parallel 1; then
+        print_warning "构建失败，尝试使用更保守的内存限制重新构建..."
+        # 释放一些内存
+        docker system prune -f --volumes || true
+        # 使用更小的内存限制重新构建
+        if ! compose build --no-cache --memory=512m --parallel 1; then
+            print_error "构建仍然失败，请检查系统资源"
+            print_info "建议: 1) 关闭其他应用 2) 增加swap空间 3) 重启服务器"
+            exit 1
+        fi
     fi
     
     compose up -d
     
     # 等待服务启动
     print_info "等待服务启动..."
-    sleep 10
+    sleep 15
     
     # 检查服务状态
     check_services
+    
+    # 测试浏览器环境（可选）
+    test_browser_environment
     
     print_success "部署完成！"
 }
@@ -265,6 +327,9 @@ main() {
         "add-service")
             add_service "$@"
             ;;
+        "test-browser")
+            test_browser_environment
+            ;;
         "help"|"-h"|"--help")
             echo "期货数据系统部署脚本"
             echo ""
@@ -278,6 +343,7 @@ main() {
             echo "  status          - 查看服务状态"
             echo "  logs [service]  - 查看日志 (可指定服务名)"
             echo "  add-service <name> <port> - 添加新服务指导"
+            echo "  test-browser    - 测试浏览器环境"
             echo ""
             echo "常用场景:"
             echo "  修改代码后部署: $0 deploy"
