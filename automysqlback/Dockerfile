@@ -1,15 +1,17 @@
-# 后端服务 Dockerfile（极速国内源 + BuildKit 缓存）
+# 后端服务 Dockerfile（轻量级chromium + 预装驱动方案）
 FROM python:3.10-slim
 
-# 环境
+# 环境变量
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     PIP_NO_CACHE_DIR=1 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    CHROME_BIN=/usr/bin/chromium \
+    CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
 WORKDIR /app
 
-# 1) 换阿里云 Debian 源 + apt 重试 + 装 curl（供健康检查）
+# 1) 换阿里云 Debian 源 + 安装轻量级 chromium 和 chromedriver
 # 2) 使用 BuildKit 的 apt 缓存（需 DOCKER_BUILDKIT=1）
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt/lists \
@@ -17,8 +19,12 @@ RUN --mount=type=cache,target=/var/cache/apt \
  && printf 'Acquire::Retries "3"; Acquire::http::Timeout "15"; Acquire::https::Timeout "15";\n' > /etc/apt/apt.conf.d/99retries \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-      gcc g++ pkg-config default-libmysqlclient-dev curl \
- && rm -rf /var/lib/apt/lists/*
+      gcc g++ pkg-config default-libmysqlclient-dev curl wget \
+      chromium chromium-driver \
+      fonts-liberation fonts-dejavu-core ca-certificates \
+      xvfb dbus-x11 \
+ && rm -rf /var/lib/apt/lists/* \
+ && ln -sf /usr/bin/chromium /usr/bin/google-chrome
 
 # 3) pip 默认源切清华（全局），并缓存 pip 目录（BuildKit）
 RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple

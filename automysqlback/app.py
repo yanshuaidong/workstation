@@ -2233,22 +2233,26 @@ class ClsNewsCrawler:
         self.network_logs = []
         
     def setup_driver(self):
-        """设置Chrome驱动"""
+        """设置Chrome驱动（使用预装的chromium）"""
         chrome_options = Options()
         
         if self.headless:
             chrome_options.add_argument('--headless=new')
         
+        # 轻量级配置，适合2GB内存服务器
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--disable-plugins')
         chrome_options.add_argument('--disable-images')
-        chrome_options.add_argument('--disable-logging')
-        chrome_options.add_argument('--disable-background-timer-throttling')
-        chrome_options.add_argument('--disable-renderer-backgrounding')
-        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--disable-javascript')  # 财联社主要是API请求，可以禁用JS
+        chrome_options.add_argument('--disable-css')  # 禁用CSS加载
+        chrome_options.add_argument('--disable-web-security')
+        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+        chrome_options.add_argument('--memory-pressure-off')
+        chrome_options.add_argument('--max_old_space_size=512')  # 限制内存使用
+        chrome_options.add_argument('--window-size=1280,720')  # 较小窗口
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
         # 启用网络日志记录
@@ -2256,86 +2260,37 @@ class ClsNewsCrawler:
         chrome_options.add_argument('--log-level=0')
         chrome_options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
         
-        # 检查是否有远程Selenium服务URL
-        selenium_remote_url = os.environ.get('SELENIUM_REMOTE_URL')
+        # 使用预装的chromium路径
+        chrome_bin = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
+        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/bin/chromedriver')
+        
+        if os.path.exists(chrome_bin):
+            chrome_options.binary_location = chrome_bin
+            logger.info(f"使用预装浏览器: {chrome_bin}")
+        else:
+            logger.warning(f"预装浏览器不存在: {chrome_bin}")
         
         try:
-            if selenium_remote_url:
-                logger.info(f"使用远程Selenium服务: {selenium_remote_url}")
-                
-                # 首先检查Selenium Grid状态
-                max_retries = 5
-                retry_delay = 10
-                
-                for attempt in range(max_retries):
-                    try:
-                        # 检查Grid状态
-                        status_url = selenium_remote_url.replace('/wd/hub', '/wd/hub/status')
-                        logger.info(f"检查Selenium Grid状态 (第{attempt + 1}次): {status_url}")
-                        
-                        import requests
-                        response = requests.get(status_url, timeout=10)
-                        response.raise_for_status()
-                        
-                        status_data = response.json()
-                        grid_ready = status_data.get('value', {}).get('ready', False)
-                        
-                        if grid_ready:
-                            logger.info("Selenium Grid 已就绪")
-                            break
-                        else:
-                            logger.warning(f"Selenium Grid 未就绪，等待 {retry_delay} 秒后重试...")
-                            if attempt < max_retries - 1:
-                                time.sleep(retry_delay)
-                            
-                    except Exception as e:
-                        logger.warning(f"检查Selenium Grid状态失败 (第{attempt + 1}次): {e}")
-                        if attempt < max_retries - 1:
-                            logger.info(f"等待 {retry_delay} 秒后重试...")
-                            time.sleep(retry_delay)
-                        else:
-                            raise Exception(f"Selenium Grid 在 {max_retries} 次尝试后仍无法连接")
-                
-                # 创建远程WebDriver
-                logger.info("创建远程WebDriver会话...")
-                self.driver = webdriver.Remote(
-                    command_executor=selenium_remote_url,
-                    options=chrome_options
-                )
-                logger.info("远程Selenium Chrome驱动初始化成功")
+            # 使用预装的chromedriver
+            if os.path.exists(chromedriver_path):
+                service = Service(executable_path=chromedriver_path)
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                logger.info(f"使用预装驱动初始化成功: {chromedriver_path}")
             else:
-                logger.info("使用本地Chrome驱动")
-                # 本地模式 - 尝试不同的Chrome路径
-                chrome_paths = [
-                    '/usr/bin/google-chrome-stable',
-                    '/usr/bin/google-chrome',
-                    '/usr/bin/chromium-browser',
-                    '/usr/bin/chromium'
-                ]
+                # 降级方案：不指定service路径
+                self.driver = webdriver.Chrome(options=chrome_options)
+                logger.info("使用默认驱动初始化成功")
                 
-                for chrome_path in chrome_paths:
-                    if os.path.exists(chrome_path):
-                        logger.info(f"找到Chrome浏览器: {chrome_path}")
-                        chrome_options.binary_location = chrome_path
-                        break
-                
-                try:
-                    self.driver = webdriver.Chrome(options=chrome_options)
-                    logger.info("本地Chrome驱动初始化成功")
-                except Exception as e:
-                    logger.error(f"本地Chrome驱动初始化失败: {e}")
-                    try:
-                        from webdriver_manager.chrome import ChromeDriverManager
-                        service = Service(ChromeDriverManager().install())
-                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                        logger.info("使用webdriver-manager初始化Chrome驱动成功")
-                    except Exception as e2:
-                        logger.error(f"webdriver-manager也失败: {e2}")
-                        raise
-        
         except Exception as e:
             logger.error(f"Chrome驱动初始化失败: {e}")
-            raise
+            # 最后的降级方案：尝试系统PATH中的chromedriver
+            try:
+                service = Service()  # 使用系统PATH
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                logger.info("使用系统PATH驱动初始化成功")
+            except Exception as e2:
+                logger.error(f"所有驱动初始化方案都失败: {e2}")
+                raise
         
         self.driver.set_page_load_timeout(30)
         self.driver.implicitly_wait(10)
@@ -2533,7 +2488,11 @@ class ClsNewsCrawler:
 
 
 
+# 注意：应用启动逻辑已移至 start.py
+# 如果直接运行此文件，将使用简化启动模式
 if __name__ == '__main__':
+    logger.warning("直接运行app.py，建议使用 'python start.py' 启动")
+    
     # 初始化数据库
     init_database()
     

@@ -80,15 +80,22 @@ services:
     build:
       context: ./automysqlback
       dockerfile: Dockerfile
+      # 构建时的内存限制（适合小内存服务器）
+      shm_size: 512mb
     container_name: futures-backend
     expose:
       - "7001"
-    # 后端内存限制
-    mem_limit: 600m
-    memswap_limit: 800m
+    # 运行时资源限制
+    mem_limit: 1g
+    memswap_limit: 1.5g
+    shm_size: 512mb
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
+      # 浏览器配置
+      - CHROME_BIN=/usr/bin/chromium
+      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+      - DISPLAY=:99
       # 数据库配置通过环境变量传入
       - DB_HOST=${DB_HOST:-rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com}
       - DB_PORT=${DB_PORT:-3306}
@@ -100,9 +107,8 @@ services:
     volumes:
       # 挂载日志目录
       - ./logs/backend:/app/logs
-    depends_on:
-      selenium-chrome:
-        condition: service_healthy  # 等待 Selenium 服务健康后再启动
+      # 挂载 /dev/shm 避免chromium内存问题
+      - /dev/shm:/dev/shm
     restart: unless-stopped
     networks:
       - futures-network
