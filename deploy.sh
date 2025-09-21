@@ -54,26 +54,45 @@ check_system_resources() {
         print_info "  Swap总量: ${swap_total}MB"
         print_info "  Swap已用: ${swap_used}MB"
         
-        # 内存不足警告
+        # 内存不足警告和自动创建swap
         if [ "$available_memory" -lt 1024 ]; then
             print_warning "可用内存不足1GB，构建可能失败"
             
             # 检查是否有足够的swap
             local swap_available=$((swap_total - swap_used))
             if [ "$swap_available" -lt 1024 ]; then
-                print_warning "Swap空间也不足，强烈建议增加swap空间"
-                print_info "增加swap命令示例:"
-                print_info "  sudo fallocate -l 2G /swapfile"
-                print_info "  sudo chmod 600 /swapfile"
-                print_info "  sudo mkswap /swapfile"
-                print_info "  sudo swapon /swapfile"
+                print_warning "Swap空间不足，尝试自动创建swap空间..."
+                
+                # 检查是否已存在swapfile
+                if [ ! -f "/swapfile" ]; then
+                    print_info "创建2GB swap文件..."
+                    if fallocate -l 2G /swapfile 2>/dev/null && \
+                       chmod 600 /swapfile && \
+                       mkswap /swapfile >/dev/null 2>&1 && \
+                       swapon /swapfile 2>/dev/null; then
+                        print_success "Swap空间创建成功"
+                        # 添加到fstab以便重启后自动挂载
+                        if ! grep -q "/swapfile" /etc/fstab 2>/dev/null; then
+                            echo "/swapfile none swap sw 0 0" >> /etc/fstab 2>/dev/null || true
+                        fi
+                    else
+                        print_warning "自动创建swap失败，请手动创建:"
+                        print_info "  sudo fallocate -l 2G /swapfile"
+                        print_info "  sudo chmod 600 /swapfile"
+                        print_info "  sudo mkswap /swapfile"
+                        print_info "  sudo swapon /swapfile"
+                    fi
+                else
+                    print_info "Swap文件已存在，尝试启用..."
+                    swapon /swapfile 2>/dev/null || true
+                fi
             fi
             
             print_info "正在尝试释放内存..."
             # 清理Docker缓存
             docker system prune -f --volumes >/dev/null 2>&1 || true
             # 清理系统缓存
-            sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1 || true
+            sync && echo 3 | tee /proc/sys/vm/drop_caches >/dev/null 2>&1 || true
         fi
     fi
 }
@@ -155,14 +174,21 @@ deploy_update() {
     
     # 构建时添加内存限制（适合2GB内存服务器）
     print_info "开始构建镜像（使用内存优化配置）..."
-    if ! compose build --no-cache --memory=1g --parallel 1; then
-        print_warning "构建失败，尝试使用更保守的内存限制重新构建..."
-        # 释放一些内存
+    # 先尝试逐个构建服务以减少内存压力
+    if ! compose build --no-cache workfront; then
+        print_warning "前端构建失败，尝试释放内存后重试..."
         docker system prune -f --volumes || true
-        # 使用更小的内存限制重新构建
-        if ! compose build --no-cache --memory=512m --parallel 1; then
-            print_error "构建仍然失败，请检查系统资源"
-            print_info "建议: 1) 关闭其他应用 2) 增加swap空间 3) 重启服务器"
+        if ! compose build --no-cache workfront; then
+            print_error "前端构建仍然失败"
+            exit 1
+        fi
+    fi
+    
+    if ! compose build --no-cache automysqlback; then
+        print_warning "后端构建失败，尝试释放内存后重试..."
+        docker system prune -f --volumes || true
+        if ! compose build --no-cache automysqlback; then
+            print_error "后端构建仍然失败"
             exit 1
         fi
     fi
@@ -244,7 +270,7 @@ check_services() {
     print_info "访问地址:"
     print_info "  前端: http://localhost"
     print_info "  后端API: http://localhost/api-a/"
-    print_info "  监控面板: http://localhost/monitor/"
+    # print_info "  监控面板: http://localhost/monitor/"  # 已停用portainer
 }
 
 # 查看日志
