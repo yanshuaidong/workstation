@@ -125,13 +125,75 @@ deploy_update() {
     print_success "部署完成！"
 }
 
+# 等待服务健康
+wait_for_service() {
+    local service_name=$1
+    local check_url=$2
+    local max_wait=${3:-120}
+    local wait_time=0
+    
+    print_info "等待 $service_name 服务启动..."
+    
+    while [ $wait_time -lt $max_wait ]; do
+        if curl -f -s "$check_url" > /dev/null 2>&1; then
+            print_success "$service_name 服务已就绪"
+            return 0
+        else
+            printf "."
+            sleep 5
+            wait_time=$((wait_time + 5))
+        fi
+    done
+    
+    echo ""
+    print_error "$service_name 服务启动超时 (${max_wait}秒)"
+    return 1
+}
+
+# 检查容器状态
+check_container() {
+    local container_name=$1
+    local max_wait=${2:-60}
+    local wait_time=0
+    
+    print_info "检查容器 $container_name 状态..."
+    
+    while [ $wait_time -lt $max_wait ]; do
+        local status=$(docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null || echo "not_found")
+        
+        case "$status" in
+            "running")
+                print_success "容器 $container_name 正在运行"
+                return 0
+                ;;
+            "not_found")
+                print_info "容器 $container_name 不存在，等待创建..."
+                ;;
+            "exited"|"dead")
+                print_error "容器 $container_name 已退出，状态: $status"
+                return 1
+                ;;
+            *)
+                print_info "容器 $container_name 状态: $status，继续等待..."
+                ;;
+        esac
+        
+        sleep 5
+        wait_time=$((wait_time + 5))
+    done
+    
+    print_error "容器 $container_name 检查超时"
+    return 1
+}
+
 # 启动服务
 start_services() {
-    print_info "启动服务..."
+    print_info "启动期货数据系统服务..."
     
     # 检查环境配置
     if [ ! -f ".env" ]; then
         if [ -f "env.production" ]; then
+            print_info "复制生产环境配置..."
             cp env.production .env
         else
             print_error "环境配置文件不存在"
@@ -139,9 +201,53 @@ start_services() {
         fi
     fi
     
-    compose up -d
-    sleep 5
+    # 1. 首先启动 Selenium 服务
+    print_info "第1步: 启动 Selenium Chrome 服务..."
+    compose up -d selenium-chrome
+    
+    # 等待 Selenium 容器启动
+    if ! check_container "futures-selenium" 90; then
+        print_error "Selenium 容器启动失败"
+        compose logs selenium-chrome
+        return 1
+    fi
+    
+    # 等待 Selenium Grid 就绪
+    if ! wait_for_service "Selenium Grid" "http://localhost:4444/wd/hub/status" 120; then
+        print_error "Selenium Grid 启动失败"
+        print_info "查看日志:"
+        compose logs --tail=20 selenium-chrome
+        return 1
+    fi
+    
+    # 2. 启动后端服务
+    print_info "第2步: 启动后端 API 服务..."
+    compose up -d automysqlback
+    
+    # 等待后端容器启动
+    if ! check_container "futures-backend" 120; then
+        print_error "后端容器启动失败"
+        compose logs automysqlback
+        return 1
+    fi
+    
+    # 3. 启动其他服务
+    print_info "第3步: 启动前端和监控服务..."
+    compose up -d workfront portainer
+    
+    # 4. 最后启动 Nginx 代理
+    print_info "第4步: 启动 Nginx 反向代理..."
+    compose up -d nginx
+    
+    # 等待前端服务
+    print_info "第5步: 等待服务完全启动..."
+    sleep 15
+    
+    # 检查服务状态
     check_services
+    
+    print_success "所有服务启动完成！"
+    print_info "建议运行 '$0 test-selenium' 测试 Selenium 连接"
 }
 
 # 停止服务
@@ -188,6 +294,7 @@ check_services() {
         print_success "Selenium服务正常"
     else
         print_warning "Selenium服务异常"
+        print_info "  建议运行: $0 test-selenium 进行详细诊断"
     fi
     
     echo ""
@@ -259,21 +366,72 @@ add_service() {
 test_selenium() {
     print_info "测试Selenium服务连接..."
     
+    # 检查Selenium容器状态
     if ! compose ps | grep -q "futures-selenium.*Up"; then
         print_error "Selenium服务未运行，请先启动服务"
         return 1
     fi
     
+    # 检查Selenium健康状态
+    print_info "检查Selenium服务健康状态..."
+    local max_wait=60
+    local wait_time=0
+    
+    while [ $wait_time -lt $max_wait ]; do
+        if curl -f -s http://localhost:4444/wd/hub/status > /dev/null 2>&1; then
+            print_success "Selenium Grid 服务正常"
+            break
+        else
+            print_info "等待Selenium服务启动... ($wait_time/$max_wait 秒)"
+            sleep 5
+            wait_time=$((wait_time + 5))
+        fi
+    done
+    
+    if [ $wait_time -ge $max_wait ]; then
+        print_error "Selenium服务启动超时"
+        print_info "查看Selenium日志:"
+        compose logs --tail=20 selenium-chrome
+        return 1
+    fi
+    
+    # 检查后端容器状态
+    if ! compose ps | grep -q "futures-backend.*Up"; then
+        print_error "后端服务未运行，请先启动服务"
+        return 1
+    fi
+    
     # 在后端容器中运行Selenium测试
-    print_info "在后端容器中执行Selenium测试..."
-    if compose exec automysqlback python test_selenium.py; then
-        print_success "Selenium测试通过"
+    print_info "在后端容器中执行Selenium连接测试..."
+    if compose exec -T automysqlback python test_selenium.py; then
+        print_success "Selenium连接测试通过"
+        return 0
     else
-        print_error "Selenium测试失败"
+        print_error "Selenium连接测试失败"
+        print_info "诊断信息:"
+        
+        # 显示容器状态
+        print_info "容器状态:"
+        compose ps
+        
+        # 显示网络信息
+        print_info "网络信息:"
+        docker network ls | grep futures
+        
+        # 显示最近的日志
+        print_info "Selenium服务日志:"
+        compose logs --tail=10 selenium-chrome
+        
+        print_info "后端服务日志:"
+        compose logs --tail=10 automysqlback
+        
         print_info "请检查:"
-        print_info "  1. Selenium服务是否正常运行"
+        print_info "  1. Selenium容器是否正常运行"
         print_info "  2. 网络连接是否正常"
         print_info "  3. 容器间网络通信是否正常"
+        print_info "  4. 系统内存是否充足"
+        
+        return 1
     fi
 }
 
@@ -311,7 +469,7 @@ main() {
             echo ""
             echo "主要命令:"
             echo "  deploy [branch]  - 拉取代码并部署更新 (默认main分支)"
-            echo "  start           - 启动所有服务"
+            echo "  start           - 分步启动所有服务并等待健康检查"
             echo "  stop            - 停止所有服务"
             echo "  restart         - 重启所有服务"
             echo "  status          - 查看服务状态"
@@ -319,12 +477,19 @@ main() {
             echo "  add-service <name> <port> - 添加新服务指导"
             echo "  test-selenium   - 测试Selenium服务连接"
             echo ""
+            echo "服务启动顺序:"
+            echo "  1. Selenium Chrome 服务"
+            echo "  2. 后端 API 服务 (等待Selenium就绪)"
+            echo "  3. 前端和监控服务"
+            echo "  4. Nginx 反向代理"
+            echo ""
             echo "常用场景:"
             echo "  修改代码后部署: $0 deploy"
-            echo "  添加新服务: $0 add-service newapi 7002"
+            echo "  首次启动系统: $0 start"
+            echo "  查看服务状态: $0 status"
+            echo "  测试Selenium: $0 test-selenium"
             echo "  查看日志: $0 logs"
             echo "  重启服务: $0 restart"
-            echo "  测试Selenium: $0 test-selenium"
             ;;
         *)
             print_error "未知命令: $1"

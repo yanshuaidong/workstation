@@ -2245,6 +2245,9 @@ class ClsNewsCrawler:
         chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--disable-plugins')
         chrome_options.add_argument('--disable-images')
+        chrome_options.add_argument('--disable-logging')
+        chrome_options.add_argument('--disable-background-timer-throttling')
+        chrome_options.add_argument('--disable-renderer-backgrounding')
         chrome_options.add_argument('--window-size=1920,1080')
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
@@ -2259,7 +2262,42 @@ class ClsNewsCrawler:
         try:
             if selenium_remote_url:
                 logger.info(f"使用远程Selenium服务: {selenium_remote_url}")
-                # 使用远程WebDriver
+                
+                # 首先检查Selenium Grid状态
+                max_retries = 5
+                retry_delay = 10
+                
+                for attempt in range(max_retries):
+                    try:
+                        # 检查Grid状态
+                        status_url = selenium_remote_url.replace('/wd/hub', '/wd/hub/status')
+                        logger.info(f"检查Selenium Grid状态 (第{attempt + 1}次): {status_url}")
+                        
+                        import requests
+                        response = requests.get(status_url, timeout=10)
+                        response.raise_for_status()
+                        
+                        status_data = response.json()
+                        grid_ready = status_data.get('value', {}).get('ready', False)
+                        
+                        if grid_ready:
+                            logger.info("Selenium Grid 已就绪")
+                            break
+                        else:
+                            logger.warning(f"Selenium Grid 未就绪，等待 {retry_delay} 秒后重试...")
+                            if attempt < max_retries - 1:
+                                time.sleep(retry_delay)
+                            
+                    except Exception as e:
+                        logger.warning(f"检查Selenium Grid状态失败 (第{attempt + 1}次): {e}")
+                        if attempt < max_retries - 1:
+                            logger.info(f"等待 {retry_delay} 秒后重试...")
+                            time.sleep(retry_delay)
+                        else:
+                            raise Exception(f"Selenium Grid 在 {max_retries} 次尝试后仍无法连接")
+                
+                # 创建远程WebDriver
+                logger.info("创建远程WebDriver会话...")
                 self.driver = webdriver.Remote(
                     command_executor=selenium_remote_url,
                     options=chrome_options

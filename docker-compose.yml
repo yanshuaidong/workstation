@@ -55,10 +55,13 @@ services:
     memswap_limit: 1g  # 允许使用swap
     environment:
       - SE_NODE_MAX_SESSIONS=1  # 只允许1个并发会话
-      - SE_SESSION_TIMEOUT=180  # 缩短会话超时时间
+      - SE_SESSION_TIMEOUT=300  # 增加会话超时时间
       - SE_VNC_NO_PASSWORD=1
+      - SE_START_XVFB=true
+      - SE_SCREEN_WIDTH=1920
+      - SE_SCREEN_HEIGHT=1080
       # Chrome性能优化参数
-      - SE_OPTS=--disable-gpu --disable-dev-shm-usage --no-sandbox --disable-extensions
+      - SE_OPTS=--disable-gpu --disable-dev-shm-usage --no-sandbox --disable-extensions --disable-logging --disable-background-timer-throttling --disable-renderer-backgrounding
     ports:
       - "4444:4444"  # Selenium Grid端口
       # - "7900:7900"  # 注释掉VNC端口以节省资源
@@ -67,9 +70,10 @@ services:
       - futures-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
-      interval: 60s  # 增加检查间隔
-      timeout: 15s
-      retries: 2
+      interval: 30s  # 减少检查间隔，更快发现问题
+      timeout: 10s
+      retries: 5  # 增加重试次数
+      start_period: 30s  # 启动等待时间
 
   # 后端API服务
   automysqlback:
@@ -97,16 +101,17 @@ services:
       # 挂载日志目录
       - ./logs/backend:/app/logs
     depends_on:
-      - selenium-chrome
+      selenium-chrome:
+        condition: service_healthy  # 等待 Selenium 服务健康后再启动
     restart: unless-stopped
     networks:
       - futures-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7001/api/settings"]
-      interval: 60s  # 增加检查间隔
-      timeout: 15s
-      retries: 2
-      start_period: 60s
+      interval: 30s  # 减少检查间隔
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # 增加启动等待时间
 
   # Docker监控管理面板（低配置优化）
   portainer:
