@@ -29,6 +29,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import os
 import sys
@@ -2236,7 +2237,7 @@ class ClsNewsCrawler:
         chrome_options = Options()
         
         if self.headless:
-            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--headless=new')
         
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
@@ -2252,33 +2253,51 @@ class ClsNewsCrawler:
         chrome_options.add_argument('--log-level=0')
         chrome_options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
         
-        # 尝试不同的Chrome路径
-        chrome_paths = [
-            '/usr/bin/google-chrome-stable',
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium-browser',
-            '/usr/bin/chromium'
-        ]
-        
-        for chrome_path in chrome_paths:
-            if os.path.exists(chrome_path):
-                logger.info(f"找到Chrome浏览器: {chrome_path}")
-                chrome_options.binary_location = chrome_path
-                break
+        # 检查是否有远程Selenium服务URL
+        selenium_remote_url = os.environ.get('SELENIUM_REMOTE_URL')
         
         try:
-            self.driver = webdriver.Chrome(options=chrome_options)
-            logger.info("Chrome驱动初始化成功")
+            if selenium_remote_url:
+                logger.info(f"使用远程Selenium服务: {selenium_remote_url}")
+                # 使用远程WebDriver
+                self.driver = webdriver.Remote(
+                    command_executor=selenium_remote_url,
+                    options=chrome_options
+                )
+                logger.info("远程Selenium Chrome驱动初始化成功")
+            else:
+                logger.info("使用本地Chrome驱动")
+                # 本地模式 - 尝试不同的Chrome路径
+                chrome_paths = [
+                    '/usr/bin/google-chrome-stable',
+                    '/usr/bin/google-chrome',
+                    '/usr/bin/chromium-browser',
+                    '/usr/bin/chromium'
+                ]
+                
+                for chrome_path in chrome_paths:
+                    if os.path.exists(chrome_path):
+                        logger.info(f"找到Chrome浏览器: {chrome_path}")
+                        chrome_options.binary_location = chrome_path
+                        break
+                
+                try:
+                    self.driver = webdriver.Chrome(options=chrome_options)
+                    logger.info("本地Chrome驱动初始化成功")
+                except Exception as e:
+                    logger.error(f"本地Chrome驱动初始化失败: {e}")
+                    try:
+                        from webdriver_manager.chrome import ChromeDriverManager
+                        service = Service(ChromeDriverManager().install())
+                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                        logger.info("使用webdriver-manager初始化Chrome驱动成功")
+                    except Exception as e2:
+                        logger.error(f"webdriver-manager也失败: {e2}")
+                        raise
+        
         except Exception as e:
             logger.error(f"Chrome驱动初始化失败: {e}")
-            try:
-                from webdriver_manager.chrome import ChromeDriverManager
-                service = Service(ChromeDriverManager().install())
-                self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                logger.info("使用webdriver-manager初始化Chrome驱动成功")
-            except Exception as e2:
-                logger.error(f"webdriver-manager也失败: {e2}")
-                raise
+            raise
         
         self.driver.set_page_load_timeout(30)
         self.driver.implicitly_wait(10)

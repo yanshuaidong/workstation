@@ -96,16 +96,21 @@ deploy_update() {
     # 检查系统内存
     if command -v free >/dev/null 2>&1; then
         local available_memory=$(free -m | awk 'NR==2{printf "%.0f", $7}')
-        if [ "$available_memory" -lt 2048 ]; then
-            print_warning "系统可用内存较低 (${available_memory}MB)，构建可能较慢"
+        if [ "$available_memory" -lt 1024 ]; then
+            print_warning "系统可用内存很低 (${available_memory}MB)，将使用最小配置构建"
             print_info "建议关闭其他应用程序或增加 swap 空间"
+        elif [ "$available_memory" -lt 2048 ]; then
+            print_warning "系统可用内存较低 (${available_memory}MB)，使用低配置构建"
         fi
     fi
     
-    # 构建时添加内存限制
-    if ! compose build --no-cache --memory=2g; then
-        print_error "构建失败，尝试使用更小的内存限制重新构建..."
-        compose build --no-cache --memory=1g
+    # 构建时添加内存限制（适配低配置服务器）
+    if ! compose build --no-cache --memory=800m; then
+        print_error "构建失败，尝试使用最小内存限制重新构建..."
+        if ! compose build --no-cache --memory=512m; then
+            print_error "最小配置构建也失败，请检查系统资源"
+            exit 1
+        fi
     fi
     
     compose up -d
@@ -178,11 +183,20 @@ check_services() {
         print_warning "后端API服务异常"
     fi
     
+    # 检查Selenium服务
+    if curl -f -s http://localhost:4444/wd/hub/status > /dev/null 2>&1; then
+        print_success "Selenium服务正常"
+    else
+        print_warning "Selenium服务异常"
+    fi
+    
     echo ""
     print_info "访问地址:"
     print_info "  前端: http://localhost"
     print_info "  后端API: http://localhost/api-a/"
     print_info "  监控面板: http://localhost/monitor/"
+    print_info "  Selenium Grid: http://localhost:4444"
+    print_info "  VNC调试(可选): http://localhost:7900"
 }
 
 # 查看日志
@@ -241,6 +255,28 @@ add_service() {
     fi
 }
 
+# 测试Selenium服务
+test_selenium() {
+    print_info "测试Selenium服务连接..."
+    
+    if ! compose ps | grep -q "futures-selenium.*Up"; then
+        print_error "Selenium服务未运行，请先启动服务"
+        return 1
+    fi
+    
+    # 在后端容器中运行Selenium测试
+    print_info "在后端容器中执行Selenium测试..."
+    if compose exec automysqlback python test_selenium.py; then
+        print_success "Selenium测试通过"
+    else
+        print_error "Selenium测试失败"
+        print_info "请检查:"
+        print_info "  1. Selenium服务是否正常运行"
+        print_info "  2. 网络连接是否正常"
+        print_info "  3. 容器间网络通信是否正常"
+    fi
+}
+
 # 主函数
 main() {
     case "${1:-help}" in
@@ -265,6 +301,9 @@ main() {
         "add-service")
             add_service "$@"
             ;;
+        "test-selenium")
+            test_selenium
+            ;;
         "help"|"-h"|"--help")
             echo "期货数据系统部署脚本"
             echo ""
@@ -278,12 +317,14 @@ main() {
             echo "  status          - 查看服务状态"
             echo "  logs [service]  - 查看日志 (可指定服务名)"
             echo "  add-service <name> <port> - 添加新服务指导"
+            echo "  test-selenium   - 测试Selenium服务连接"
             echo ""
             echo "常用场景:"
             echo "  修改代码后部署: $0 deploy"
             echo "  添加新服务: $0 add-service newapi 7002"
             echo "  查看日志: $0 logs"
             echo "  重启服务: $0 restart"
+            echo "  测试Selenium: $0 test-selenium"
             ;;
         *)
             print_error "未知命令: $1"

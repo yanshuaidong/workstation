@@ -29,22 +29,47 @@ services:
     build:
       context: ./workfront
       dockerfile: Dockerfile
-      # 构建时的内存限制
-      shm_size: 1gb
+      # 构建时的内存限制（降低以适应低配置）
+      shm_size: 256m
     container_name: futures-frontend
     expose:
       - "80"
     # 运行时内存限制
-    mem_limit: 512m
-    memswap_limit: 1g
+    mem_limit: 300m  # 降低前端内存限制
+    memswap_limit: 400m
     restart: unless-stopped
     networks:
       - futures-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 60s  # 增加检查间隔
+      timeout: 15s
+      retries: 2
+
+  # Selenium Chrome服务（低配置优化）
+  selenium-chrome:
+    image: selenium/standalone-chrome:latest
+    container_name: futures-selenium
+    shm_size: 512m  # 降低共享内存，适应2GB总内存
+    mem_limit: 800m  # 限制最大内存使用
+    memswap_limit: 1g  # 允许使用swap
+    environment:
+      - SE_NODE_MAX_SESSIONS=1  # 只允许1个并发会话
+      - SE_SESSION_TIMEOUT=180  # 缩短会话超时时间
+      - SE_VNC_NO_PASSWORD=1
+      # Chrome性能优化参数
+      - SE_OPTS=--disable-gpu --disable-dev-shm-usage --no-sandbox --disable-extensions
+    ports:
+      - "4444:4444"  # Selenium Grid端口
+      # - "7900:7900"  # 注释掉VNC端口以节省资源
+    restart: unless-stopped
+    networks:
+      - futures-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 60s  # 增加检查间隔
+      timeout: 15s
+      retries: 2
 
   # 后端API服务
   automysqlback:
@@ -54,6 +79,9 @@ services:
     container_name: futures-backend
     expose:
       - "7001"
+    # 后端内存限制
+    mem_limit: 600m
+    memswap_limit: 800m
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
@@ -63,25 +91,32 @@ services:
       - DB_USER=${DB_USER:-ysd}
       - DB_PASSWORD=${DB_PASSWORD:-Yan1234567}
       - DB_DATABASE=${DB_DATABASE:-futures}
+      # Selenium配置
+      - SELENIUM_REMOTE_URL=http://selenium-chrome:4444/wd/hub
     volumes:
       # 挂载日志目录
       - ./logs/backend:/app/logs
+    depends_on:
+      - selenium-chrome
     restart: unless-stopped
     networks:
       - futures-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7001/api/settings"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      interval: 60s  # 增加检查间隔
+      timeout: 15s
+      retries: 2
+      start_period: 60s
 
-  # Docker监控管理面板
+  # Docker监控管理面板（低配置优化）
   portainer:
     image: portainer/portainer-ce:latest
     container_name: futures-portainer
     expose:
       - "9000"
+    # Portainer内存限制
+    mem_limit: 128m
+    memswap_limit: 200m
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
