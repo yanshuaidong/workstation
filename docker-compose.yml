@@ -45,34 +45,7 @@ services:
       timeout: 15s
       retries: 2
 
-  # Selenium Chrome服务（低配置优化）
-  selenium-chrome:
-    image: selenium/standalone-chromium:latest
-    container_name: futures-selenium
-    shm_size: 512m  # 降低共享内存，适应2GB总内存
-    mem_limit: 800m  # 限制最大内存使用
-    memswap_limit: 1g  # 允许使用swap
-    environment:
-      - SE_NODE_MAX_SESSIONS=1  # 只允许1个并发会话
-      - SE_SESSION_TIMEOUT=300  # 增加会话超时时间
-      - SE_VNC_NO_PASSWORD=1
-      - SE_START_XVFB=true
-      - SE_SCREEN_WIDTH=1920
-      - SE_SCREEN_HEIGHT=1080
-      # Chrome性能优化参数
-      - SE_OPTS=--disable-gpu --disable-dev-shm-usage --no-sandbox --disable-extensions --disable-logging --disable-background-timer-throttling --disable-renderer-backgrounding
-    ports:
-      - "4444:4444"  # Selenium Grid端口
-      # - "7900:7900"  # 注释掉VNC端口以节省资源
-    restart: unless-stopped
-    networks:
-      - futures-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
-      interval: 30s  # 减少检查间隔，更快发现问题
-      timeout: 10s
-      retries: 5  # 增加重试次数
-      start_period: 30s  # 启动等待时间
+  # Selenium Chrome服务已移除 - 爬虫功能已迁移到 spiderx 项目（本地运行）
 
   # 后端API服务
   automysqlback:
@@ -92,23 +65,15 @@ services:
       - ENVIRONMENT=production
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
-      # 浏览器配置
-      - CHROME_BIN=/usr/bin/chromium
-      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
-      - DISPLAY=:99
       # 数据库配置通过环境变量传入
       - DB_HOST=${DB_HOST:-rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com}
       - DB_PORT=${DB_PORT:-3306}
       - DB_USER=${DB_USER:-ysd}
       - DB_PASSWORD=${DB_PASSWORD:-Yan1234567}
       - DB_DATABASE=${DB_DATABASE:-futures}
-      # Selenium配置
-      - SELENIUM_REMOTE_URL=http://selenium-chrome:4444/wd/hub
     volumes:
       # 挂载日志目录
       - ./logs/backend:/app/logs
-      # 挂载 /dev/shm 避免chromium内存问题
-      - /dev/shm:/dev/shm
       # 挂载环境配置文件
       - ./.env:/app/.env
     restart: unless-stopped

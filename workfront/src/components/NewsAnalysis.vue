@@ -1,159 +1,48 @@
 <template>
   <div class="news-analysis">
-    <!-- 标题栏 -->
+    <!-- 统计信息区 -->
     <el-card class="header-card">
       <template #header>
         <div class="card-header">
-          <span>财联社加红电报新闻爬虫系统</span>
-          <el-tag :type="systemStatus.type">{{ systemStatus.text }}</el-tag>
+          <span>财联社新闻管理系统</span>
+          <el-tag type="success">运行中</el-tag>
         </div>
       </template>
 
-      <!-- 操作控制区 -->
-      <el-row :gutter="20" class="control-row">
-        <!-- 爬取操作 -->
+      <!-- 统计信息展示 -->
+      <el-row :gutter="20" class="stats-row">
         <el-col :span="6">
-          <el-card shadow="never" class="operation-card">
-            <template #header>数据爬取</template>
-            <div class="operation-content">
-              <el-button
-                type="primary"
-                size="large"
-                @click="startCrawling"
-                :loading="crawlLoading"
-                icon="Download"
-                style="width: 100%; margin-bottom: 15px;"
-              >
-                {{ crawlLoading ? '正在爬取新闻...' : '开始爬取新闻' }}
-              </el-button>
-              <div class="operation-description">
-                <p>点击此按钮开始爬取财联社加红电报最新新闻</p>
-                <p class="text-muted">• 自动访问财联社网站</p>
-                <p class="text-muted">• 模拟点击"加红"按钮</p>
-                <p class="text-muted">• 获取并保存最新新闻数据</p>
-              </div>
-            </div>
-          </el-card>
+          <div class="stat-card">
+            <div class="stat-value">{{ stats.total }}</div>
+            <div class="stat-label">总新闻数</div>
+          </div>
         </el-col>
-
-        <!-- AI 分析操作 -->
         <el-col :span="6">
-          <el-card shadow="never" class="operation-card">
-            <template #header>AI 分析</template>
-            <div class="operation-content">
-              <el-input-number
-                v-model="analysisCount"
-                :min="1"
-                :max="100"
-                size="large"
-                style="width: 100%; margin-bottom: 10px;"
-                placeholder="分析数量"
-              />
-              <el-button
-                type="warning"
-                size="large"
-                @click="startBatchAnalysis"
-                :loading="analysisLoading"
-                icon="BrainIcon"
-                style="width: 100%; margin-bottom: 15px;"
-              >
-                {{ analysisLoading ? '正在AI分析...' : '批量AI分析' }}
-              </el-button>
-              <div class="operation-description">
-                <p>对最新的未分析新闻进行AI分析</p>
-                <p class="text-muted">• 判断硬消息/软消息</p>
-                <p class="text-muted">• 自动保存分析结果</p>
-              </div>
-            </div>
-          </el-card>
+          <div class="stat-card">
+            <div class="stat-value success">{{ stats.today_count }}</div>
+            <div class="stat-label">今日新增</div>
+          </div>
         </el-col>
-
-        <!-- 查询操作 -->
         <el-col :span="6">
-          <el-card shadow="never" class="operation-card">
-            <template #header>数据查询</template>
-            <div class="operation-content">
-              <el-button
-                type="success"
-                size="large"
-                @click="loadAnalysisResults"
-                :loading="analysisResultsLoading"
-                icon="Search"
-                style="width: 100%; margin-bottom: 15px;"
-              >
-                {{ analysisResultsLoading ? '正在查询...' : '查询分析结果' }}
-              </el-button>
-              <div class="operation-description">
-                <p>查询数据库中已分析的新闻数据</p>
-                <p class="text-muted">• 分页展示分析结果</p>
-                <p class="text-muted">• 支持单独分析操作</p>
-                <p class="text-muted">• 显示AI分析内容</p>
-              </div>
-            </div>
-          </el-card>
+          <div class="stat-card">
+            <div class="stat-time">{{ stats.latest_time || '暂无数据' }}</div>
+            <div class="stat-label">最新时间</div>
+          </div>
         </el-col>
-
-        <!-- 统计信息 -->
         <el-col :span="6">
-          <el-card shadow="never" class="stats-card">
-            <template #header>统计信息</template>
-            <div class="stats-content">
-              <div class="stat-item">
-                <div class="stat-label">总新闻数</div>
-                <div class="stat-value">{{ stats.total }}</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">今日新增</div>
-                <div class="stat-value success">{{ stats.today_count }}</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">最新时间</div>
-                <div class="stat-time">{{ stats.latest_time || '暂无数据' }}</div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 提示词管理区块 -->
-      <el-row :gutter="20" class="control-row" style="margin-top: 20px;">
-        <el-col :span="24">
-          <el-card shadow="never" class="prompt-card">
-            <template #header>AI 分析提示词管理</template>
-            <div class="prompt-content">
-              <el-input
-                v-model="aiPrompt"
-                type="textarea"
-                :rows="3"
-                placeholder="请输入AI分析提示词，例如：请分析这条财经新闻是硬消息还是软消息，并简要说明原因。"
-                style="width: 100%; margin-bottom: 15px;"
-              />
-              <el-button
-                type="primary"
-                @click="savePrompt"
-                icon="DocumentAdd"
-                style="margin-right: 10px;"
-              >
-                保存提示词
-              </el-button>
-              <el-button
-                type="info"
-                @click="resetPrompt"
-                icon="RefreshRight"
-              >
-                重置为默认
-              </el-button>
-            </div>
-          </el-card>
+          <div class="stat-card">
+            <div class="stat-time">{{ stats.earliest_time || '暂无数据' }}</div>
+            <div class="stat-label">最早时间</div>
+          </div>
         </el-col>
       </el-row>
     </el-card>
 
-    <!-- AI 分析结果展示区块 -->
+    <!-- 新闻列表展示区块 -->
     <el-card class="news-list-card">
       <template #header>
         <div class="card-header">
-          <span>AI 分析结果</span>
+          <span>新闻列表</span>
           <div class="header-controls">
             <el-button
               type="info"
@@ -167,42 +56,43 @@
             <el-button
               type="primary"
               size="small"
-              @click="loadAnalysisResults"
-              :loading="analysisResultsLoading"
+              @click="loadNewsList"
+              :loading="newsLoading"
               icon="Refresh"
             >
-              刷新结果
+              刷新列表
             </el-button>
           </div>
         </div>
       </template>
 
       <!-- 数据表格 -->
-      <div class="analysis-table-container">
+      <div class="news-table-container">
         <!-- 表格为空时的提示 -->
         <el-empty
-          v-if="!analysisResultsLoading && analysisResults.length === 0"
-          description="暂无AI分析结果，请先进行AI分析"
+          v-if="!newsLoading && newsList.length === 0"
+          description="暂无新闻数据"
           :image-size="120"
-        >
-          <el-button type="warning" @click="startBatchAnalysis">开始AI分析</el-button>
-        </el-empty>
+        />
 
-        <!-- 分析结果表格 -->
+        <!-- 新闻列表表格 -->
         <el-table
           v-else
-          :data="analysisResults"
-          v-loading="analysisResultsLoading"
+          :data="newsList"
+          v-loading="newsLoading"
           stripe
           border
           style="width: 100%"
           max-height="600"
-          empty-text="暂无分析结果"
+          empty-text="暂无新闻数据"
         >
-          <el-table-column type="index" label="序号" width="60" :index="(index) => index + 1" />
+          <!-- 第1列：序号 -->
+          <el-table-column type="index" label="序号" width="60" :index="(index) => (pagination.page - 1) * pagination.page_size + index + 1" />
           
-          <el-table-column prop="time" label="时间" width="180" />
+          <!-- 第2列：发布时间 -->
+          <el-table-column prop="time" label="发布时间" width="180" />
           
+          <!-- 第3列：标题 -->
           <el-table-column label="标题" min-width="200">
             <template #default="scope">
               <el-tooltip
@@ -215,60 +105,58 @@
             </template>
           </el-table-column>
           
-          <el-table-column label="AI 分析结果" min-width="300">
+          <!-- 第4列：内容 -->
+          <el-table-column label="内容" min-width="250">
             <template #default="scope">
-              <div class="analysis-result">
+              <el-text
+                :line-clamp="3"
+                class="content-text"
+                :title="scope.row.content"
+              >
+                {{ scope.row.content }}
+              </el-text>
+            </template>
+          </el-table-column>
+          
+          <!-- 第5列：AI分析 -->
+          <el-table-column label="AI分析" min-width="200">
+            <template #default="scope">
+              <div class="ai-analysis-cell">
                 <el-text
-                  :line-clamp="2"
-                  class="analysis-text"
-                  :title="scope.row.ai_analysis"
+                  :line-clamp="3"
+                  class="ai-analysis-text"
+                  :title="scope.row.ai_analysis || '暂无分析结果'"
                 >
                   {{ scope.row.ai_analysis || '暂无分析结果' }}
                 </el-text>
-                <div class="analysis-actions" style="margin-top: 8px;">
-                  <el-button
-                    size="small"
-                    type="text"
-                    @click="toggleAnalysisExpansion(scope.row.id)"
-                  >
-                    {{ expandedAnalysis.includes(scope.row.id) ? '收起' : '展开' }}
-                  </el-button>
-                  <el-button
-                    size="small"
-                    type="primary"
-                    @click="analyzeSingleNews(scope.row)"
-                    :loading="scope.row.analyzing"
-                  >
-                    单独分析
-                  </el-button>
-                </div>
-                
-                <!-- 展开的完整分析内容 -->
-                <div v-if="expandedAnalysis.includes(scope.row.id)" class="full-analysis">
-                  <el-divider />
-                  <div class="full-analysis-text">{{ scope.row.ai_analysis }}</div>
-                  <div class="news-meta">
-                    <p><strong>完整标题:</strong> {{ scope.row.title }}</p>
-                    <p><strong>新闻内容:</strong> {{ scope.row.content }}</p>
-                    <p><strong>创建时间:</strong> {{ scope.row.created_at }}</p>
-                    <p><strong>更新时间:</strong> {{ scope.row.updated_at }}</p>
-                  </div>
-                </div>
               </div>
+            </template>
+          </el-table-column>
+          
+          <!-- 第6列：软硬标记 -->
+          <el-table-column label="消息类型" width="100" align="center">
+            <template #default="scope">
+              <el-tag
+                :type="getNewsType(scope.row.ai_analysis).type"
+                size="small"
+                effect="dark"
+              >
+                {{ getNewsType(scope.row.ai_analysis).label }}
+              </el-tag>
             </template>
           </el-table-column>
         </el-table>
 
         <!-- 分页器 -->
-        <div v-if="analysisPagination.total > 0" class="pagination-container">
+        <div v-if="pagination.total > 0" class="pagination-container">
           <el-pagination
-            v-model:current-page="analysisPagination.page"
-            v-model:page-size="analysisPagination.page_size"
+            :current-page="pagination.page"
+            :page-size="pagination.page_size"
             :page-sizes="[10, 20, 50, 100]"
-            :total="analysisPagination.total"
+            :total="pagination.total"
             layout="total, sizes, prev, pager, next, jumper"
-            @size-change="handleAnalysisSizeChange"
-            @current-change="handleAnalysisCurrentChange"
+            @size-change="handleSizeChange"
+            @current-change="handleCurrentChange"
             background
           />
         </div>
@@ -279,34 +167,16 @@
 
 <script>
 import request from '@/utils/request'
-import { crawlClsNewsApi, getClsNewsListApi, getClsNewsStatsApi, analyzeBatchNewsApi, analyzeSingleNewsApi, getNewsListWithAnalysisApi } from '@/api'
+import { getClsNewsListApi, getClsNewsStatsApi } from '@/api'
 import { ElMessage } from 'element-plus'
 
 export default {
   name: 'NewsAnalysis',
   data() {
     return {
-      // 系统状态
-      systemStatus: {
-        type: 'success',
-        text: '系统正常'
-      },
-      
-      // 爬取状态
-      crawlLoading: false,
-      
       // 新闻列表
       newsList: [],
       newsLoading: false,
-      
-      // AI 分析相关
-      analysisCount: 5, // 默认分析5条
-      analysisLoading: false,
-      aiPrompt: '', // AI 分析提示词
-      
-      // AI 分析结果
-      analysisResults: [],
-      analysisResultsLoading: false,
       
       // 统计信息
       stats: {
@@ -317,7 +187,7 @@ export default {
       },
       statsLoading: false,
       
-      // 分页信息（原有新闻列表）
+      // 分页信息
       pagination: {
         page: 1,
         page_size: 10,
@@ -325,58 +195,16 @@ export default {
         total_pages: 0,
         has_prev: false,
         has_next: false
-      },
-      
-      // AI 分析结果分页信息
-      analysisPagination: {
-        page: 1,
-        page_size: 10,
-        total: 0,
-        total_pages: 0,
-        has_prev: false,
-        has_next: false
-      },
-      
-      // 展开的新闻ID列表
-      expandedNews: [],
-      
-      // 展开的分析结果ID列表
-      expandedAnalysis: []
+      }
     }
   },
   
   async mounted() {
     await this.loadStats()
     await this.loadNewsList()
-    await this.loadAnalysisResults()
-    this.initializeAiPrompt()
   },
   
   methods: {
-    // 开始爬取新闻
-    async startCrawling() {
-      this.crawlLoading = true
-      try {
-        const response = await request.post(crawlClsNewsApi)
-        
-        if (response.code === 0) {
-          ElMessage.success(response.message)
-          // 等待一段时间后自动刷新统计和列表
-          setTimeout(async () => {
-            await this.loadStats()
-            await this.loadNewsList()
-          }, 10000) // 10秒后刷新
-        } else {
-          ElMessage.error(`爬取失败: ${response.message}`)
-        }
-      } catch (error) {
-        console.error('爬取新闻失败:', error)
-        ElMessage.error(`爬取新闻失败: ${error.message}`)
-      } finally {
-        this.crawlLoading = false
-      }
-    },
-    
     // 加载新闻列表
     async loadNewsList() {
       this.newsLoading = true
@@ -437,164 +265,53 @@ export default {
       this.loadNewsList()
     },
     
-    // 切换新闻展开/收起
-    toggleNewsExpansion(newsId) {
-      const index = this.expandedNews.indexOf(newsId)
-      if (index > -1) {
-        // 收起
-        this.expandedNews.splice(index, 1)
+    // 判断消息类型（软消息/硬消息）
+    getNewsType(aiAnalysis) {
+      if (!aiAnalysis) {
+        return { type: 'info', label: '未知' }
+      }
+      
+      // 硬消息关键词（这些通常是重要的、有影响力的消息）
+      const hardKeywords = [
+        '重大', '突破', '暴涨', '暴跌', '崩盘', '涨停', '跌停',
+        '政策', '央行', '降准', '加息', '降息', '监管',
+        '并购', '重组', '收购', '上市', '退市',
+        '业绩', '财报', '盈利', '亏损', '增长',
+        '违规', '处罚', '调查', '停牌', '复牌',
+        '合作', '签约', '协议', '投资',
+        '创新高', '新低', '突破', '跳水'
+      ]
+      
+      // 软消息关键词（这些通常是一般性的、影响相对较小的消息）
+      const softKeywords = [
+        '预期', '可能', '或将', '有望', '计划',
+        '消息', '传闻', '市场', '分析师', '观点',
+        '建议', '推荐', '关注', '提示',
+        '一般', '常规', '正常', '稳定',
+        '讨论', '会议', '发布会', '活动'
+      ]
+      
+      const analysisText = aiAnalysis.toLowerCase()
+      
+      // 检查硬消息关键词
+      const hasHardKeyword = hardKeywords.some(keyword => 
+        analysisText.includes(keyword.toLowerCase())
+      )
+      
+      // 检查软消息关键词
+      const hasSoftKeyword = softKeywords.some(keyword => 
+        analysisText.includes(keyword.toLowerCase())
+      )
+      
+      // 优先判断为硬消息，如果都没有匹配则默认为软消息
+      if (hasHardKeyword) {
+        return { type: 'success', label: '硬消息' }
+      } else if (hasSoftKeyword) {
+        return { type: 'info', label: '软消息' }
       } else {
-        // 展开
-        this.expandedNews.push(newsId)
+        // 默认为软消息
+        return { type: 'info', label: '软消息' }
       }
-    },
-    
-    // === AI 分析相关方法 ===
-    
-    // 初始化AI提示词
-    initializeAiPrompt() {
-      const savedPrompt = localStorage.getItem('ai_analysis_prompt')
-      if (savedPrompt) {
-        this.aiPrompt = savedPrompt
-      } else {
-        this.aiPrompt = '请分析这条财经新闻是硬消息还是软消息，并简要说明原因。'
-      }
-    },
-    
-    // 保存提示词
-    savePrompt() {
-      if (!this.aiPrompt.trim()) {
-        ElMessage.warning('提示词不能为空')
-        return
-      }
-      
-      localStorage.setItem('ai_analysis_prompt', this.aiPrompt.trim())
-      ElMessage.success('提示词已保存')
-    },
-    
-    // 重置提示词为默认值
-    resetPrompt() {
-      this.aiPrompt = '请分析这条财经新闻是硬消息还是软消息，并简要说明原因。'
-      localStorage.setItem('ai_analysis_prompt', this.aiPrompt)
-      ElMessage.success('提示词已重置为默认值')
-    },
-    
-    // 开始批量AI分析
-    async startBatchAnalysis() {
-      if (!this.aiPrompt.trim()) {
-        ElMessage.warning('请先设置AI分析提示词')
-        return
-      }
-      
-      this.analysisLoading = true
-      try {
-        const response = await request.post(analyzeBatchNewsApi, {
-          prompt: this.aiPrompt.trim(),
-          count: this.analysisCount
-        })
-        
-        if (response.code === 0) {
-          ElMessage.success(response.message)
-          // 等待一段时间后自动刷新分析结果
-          setTimeout(async () => {
-            await this.loadAnalysisResults()
-          }, 15000) // 15秒后刷新
-        } else {
-          ElMessage.error(`分析失败: ${response.message}`)
-        }
-      } catch (error) {
-        console.error('批量AI分析失败:', error)
-        ElMessage.error(`批量AI分析失败: ${error.message}`)
-      } finally {
-        this.analysisLoading = false
-      }
-    },
-    
-    // 单条新闻分析
-    async analyzeSingleNews(newsItem) {
-      if (!this.aiPrompt.trim()) {
-        ElMessage.warning('请先设置AI分析提示词')
-        return
-      }
-      
-      // 设置该条新闻的加载状态
-      newsItem.analyzing = true
-      
-      try {
-        const response = await request.post(analyzeSingleNewsApi, {
-          prompt: this.aiPrompt.trim(),
-          news_id: newsItem.id
-        })
-        
-        if (response.code === 0) {
-          ElMessage.success(response.message)
-          // 等待一段时间后自动刷新这条新闻的分析结果
-          setTimeout(async () => {
-            await this.loadAnalysisResults()
-          }, 10000) // 10秒后刷新
-        } else {
-          ElMessage.error(`分析失败: ${response.message}`)
-        }
-      } catch (error) {
-        console.error('单条AI分析失败:', error)
-        ElMessage.error(`单条AI分析失败: ${error.message}`)
-      } finally {
-        newsItem.analyzing = false
-      }
-    },
-    
-    // 加载AI分析结果
-    async loadAnalysisResults() {
-      this.analysisResultsLoading = true
-      try {
-        const params = new URLSearchParams({
-          page: this.analysisPagination.page,
-          page_size: this.analysisPagination.page_size
-        })
-        
-        const response = await request.get(`${getNewsListWithAnalysisApi}?${params}`)
-        
-        if (response.code === 0) {
-          this.analysisResults = response.data.news_list || []
-          this.analysisPagination = { ...this.analysisPagination, ...response.data.pagination }
-          
-          if (this.analysisResults.length > 0) {
-            ElMessage.success(`加载成功，共 ${this.analysisPagination.total} 条分析结果`)
-          }
-        } else {
-          ElMessage.error(`查询失败: ${response.message}`)
-        }
-      } catch (error) {
-        console.error('查询分析结果失败:', error)
-        ElMessage.error(`查询分析结果失败: ${error.message}`)
-      } finally {
-        this.analysisResultsLoading = false
-      }
-    },
-    
-    // 切换分析结果展开/收起
-    toggleAnalysisExpansion(newsId) {
-      const index = this.expandedAnalysis.indexOf(newsId)
-      if (index > -1) {
-        // 收起
-        this.expandedAnalysis.splice(index, 1)
-      } else {
-        // 展开
-        this.expandedAnalysis.push(newsId)
-      }
-    },
-    
-    // AI 分析结果分页大小变化
-    handleAnalysisSizeChange(newSize) {
-      this.analysisPagination.page_size = newSize
-      this.analysisPagination.page = 1 // 重置到第一页
-      this.loadAnalysisResults()
-    },
-    
-    // AI 分析结果当前页变化
-    handleAnalysisCurrentChange(newPage) {
-      this.analysisPagination.page = newPage
-      this.loadAnalysisResults()
     }
   }
 }
@@ -622,174 +339,91 @@ export default {
   gap: 10px;
 }
 
-.control-row {
+/* 统计信息样式 */
+.stats-row {
   margin-bottom: 0;
 }
 
-.operation-card,
-.stats-card {
-  height: 280px;
-}
-
-.operation-card .el-card__body,
-.stats-card .el-card__body {
-  padding: 20px;
-}
-
-.operation-content {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.operation-description {
-  flex: 1;
-  margin-top: 10px;
-}
-
-.operation-description p {
-  margin: 5px 0;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.text-muted {
-  color: #909399;
-  font-size: 13px;
-}
-
-.stats-content {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 20px;
-}
-
-.stat-item {
+.stat-card {
   text-align: center;
-  padding: 15px;
-  background-color: #f8f9fa;
-  border-radius: 6px;
+  padding: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+  transition: transform 0.3s ease;
 }
 
-.stat-label {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 8px;
+.stat-card:hover {
+  transform: translateY(-2px);
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: bold;
-  color: #333;
+  margin-bottom: 8px;
 }
 
 .stat-value.success {
   color: #67c23a;
 }
 
-.stat-time {
-  font-size: 13px;
-  color: #409eff;
-  font-weight: 500;
+.stat-label {
+  font-size: 14px;
+  opacity: 0.9;
 }
 
-.news-list-container {
+.stat-time {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+/* 表格样式 */
+.news-table-container {
   min-height: 400px;
 }
 
-.news-items {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.title-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 250px;
 }
 
-.news-item {
-  border-radius: 8px;
-  transition: all 0.3s ease;
-}
-
-.news-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-}
-
-.news-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-}
-
-.news-time {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #409eff;
-  font-weight: 500;
-}
-
-.news-id {
-  color: #909399;
-  font-size: 12px;
-}
-
-.news-content {
-  padding: 10px 0;
-}
-
-.news-title {
-  font-size: 18px;
-  font-weight: bold;
-  color: #303133;
-  margin: 0 0 15px 0;
-  line-height: 1.4;
-}
-
-.news-body {
-  margin-bottom: 15px;
-}
-
-.news-text {
+.content-text {
   color: #606266;
   line-height: 1.6;
   font-size: 14px;
 }
 
-.news-actions {
-  text-align: right;
-  margin-bottom: 10px;
+/* AI分析列样式 */
+.ai-analysis-cell {
+  padding: 5px 0;
 }
 
-.news-full-content {
-  margin-top: 15px;
+.ai-analysis-text {
+  color: #409eff;
+  line-height: 1.6;
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.full-text {
-  color: #606266;
-  line-height: 1.8;
-  font-size: 14px;
-  padding: 15px;
-  background-color: #f8f9fa;
-  border-radius: 6px;
-  margin-bottom: 15px;
+/* 消息类型标签样式 */
+.el-tag.el-tag--success.el-tag--dark {
+  background-color: #67c23a;
+  border-color: #67c23a;
+  color: white;
+  font-weight: 600;
 }
 
-.news-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  padding: 10px;
-  background-color: #fafafa;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #909399;
+.el-tag.el-tag--info.el-tag--dark {
+  background-color: #909399;
+  border-color: #909399;
+  color: white;
+  font-weight: 500;
 }
 
-.meta-item {
-  white-space: nowrap;
-}
-
+/* 分页器样式 */
 .pagination-container {
   display: flex;
   justify-content: center;
@@ -799,7 +433,7 @@ export default {
 
 /* 响应式布局 */
 @media (max-width: 1200px) {
-  .control-row .el-col {
+  .stats-row .el-col {
     margin-bottom: 20px;
   }
 }
@@ -818,15 +452,12 @@ export default {
     justify-content: center;
   }
   
-  .news-header {
-    flex-direction: column;
-    gap: 5px;
-    align-items: flex-start;
+  .stat-card {
+    margin-bottom: 15px;
   }
   
-  .news-meta {
-    flex-direction: column;
-    gap: 5px;
+  .stat-value {
+    font-size: 24px;
   }
 }
 
@@ -838,71 +469,5 @@ export default {
 /* 空状态样式 */
 .el-empty {
   padding: 40px 20px;
-}
-
-/* AI 分析相关样式 */
-.prompt-card {
-  margin-bottom: 20px;
-}
-
-.prompt-content {
-  padding: 10px 0;
-}
-
-.analysis-table-container {
-  min-height: 400px;
-}
-
-.title-cell {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 200px;
-}
-
-.analysis-result {
-  padding: 5px 0;
-}
-
-.analysis-text {
-  color: #606266;
-  line-height: 1.6;
-  font-size: 14px;
-}
-
-.analysis-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.full-analysis {
-  margin-top: 15px;
-  padding: 15px;
-  background-color: #f8f9fa;
-  border-radius: 6px;
-}
-
-.full-analysis-text {
-  color: #303133;
-  line-height: 1.8;
-  font-size: 14px;
-  margin-bottom: 15px;
-  padding: 10px;
-  background-color: #fff;
-  border-radius: 4px;
-  border-left: 4px solid #409eff;
-}
-
-.news-meta p {
-  margin: 8px 0;
-  color: #606266;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.news-meta strong {
-  color: #303133;
-  font-weight: 600;
 }
 </style>

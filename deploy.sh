@@ -97,24 +97,7 @@ check_system_resources() {
     fi
 }
 
-# 测试浏览器环境
-test_browser_environment() {
-    print_info "测试浏览器环境..."
-    
-    # 检查后端容器是否运行
-    if ! docker ps | grep -q "futures-backend"; then
-        print_warning "后端容器未运行，跳过浏览器测试"
-        return
-    fi
-    
-    # 在容器内运行浏览器测试
-    if docker exec futures-backend python test_browser.py >/dev/null 2>&1; then
-        print_success "浏览器环境测试通过"
-    else
-        print_warning "浏览器环境测试失败，财联社新闻爬取功能可能不可用"
-        print_info "可以手动运行测试: docker exec futures-backend python test_browser.py"
-    fi
-}
+# 浏览器环境测试功能已移除 - 爬虫功能已迁移到 spiderx 项目
 
 # 部署更新（拉代码+重启）
 deploy_update() {
@@ -202,8 +185,8 @@ deploy_update() {
     # 检查服务状态
     check_services
     
-    # 测试浏览器环境（可选）
-    test_browser_environment
+    # 浏览器测试已移除 - 爬虫功能已迁移到 spiderx 项目
+    print_info "注意：爬虫功能已迁移到 spiderx 项目，请在本地运行"
     
     print_success "部署完成！"
 }
@@ -271,7 +254,7 @@ check_container() {
 
 # 启动服务
 start_services() {
-    print_info "启动期货数据系统服务..."
+    print_info "启动期货数据系统服务（轻量级版本）..."
     
     # 检查环境配置
     if [ ! -f ".env" ]; then
@@ -284,27 +267,8 @@ start_services() {
         fi
     fi
     
-    # 1. 首先启动 Selenium 服务
-    print_info "第1步: 启动 Selenium Chrome 服务..."
-    compose up -d selenium-chrome
-    
-    # 等待 Selenium 容器启动
-    if ! check_container "futures-selenium" 90; then
-        print_error "Selenium 容器启动失败"
-        compose logs selenium-chrome
-        return 1
-    fi
-    
-    # 等待 Selenium Grid 就绪
-    if ! wait_for_service "Selenium Grid" "http://localhost:4444/wd/hub/status" 120; then
-        print_error "Selenium Grid 启动失败"
-        print_info "查看日志:"
-        compose logs --tail=20 selenium-chrome
-        return 1
-    fi
-    
-    # 2. 启动后端服务
-    print_info "第2步: 启动后端 API 服务..."
+    # 1. 启动后端服务
+    print_info "第1步: 启动后端 API 服务..."
     compose up -d automysqlback
     
     # 等待后端容器启动
@@ -314,23 +278,23 @@ start_services() {
         return 1
     fi
     
-    # 3. 启动其他服务
-    print_info "第3步: 启动前端和监控服务..."
-    compose up -d workfront portainer
+    # 2. 启动前端服务
+    print_info "第2步: 启动前端服务..."
+    compose up -d workfront
     
-    # 4. 最后启动 Nginx 代理
-    print_info "第4步: 启动 Nginx 反向代理..."
+    # 3. 最后启动 Nginx 代理
+    print_info "第3步: 启动 Nginx 反向代理..."
     compose up -d nginx
     
-    # 等待前端服务
-    print_info "第5步: 等待服务完全启动..."
-    sleep 15
+    # 等待服务完全启动
+    print_info "第4步: 等待服务完全启动..."
+    sleep 10
     
     # 检查服务状态
     check_services
     
     print_success "所有服务启动完成！"
-    print_info "建议运行 '$0 test-selenium' 测试 Selenium 连接"
+    print_info "注意：爬虫功能已迁移到 spiderx 项目，请在本地运行"
 }
 
 # 停止服务
@@ -372,13 +336,7 @@ check_services() {
         print_warning "后端API服务异常"
     fi
     
-    # 检查Selenium服务
-    if curl -f -s http://localhost:4444/wd/hub/status > /dev/null 2>&1; then
-        print_success "Selenium服务正常"
-    else
-        print_warning "Selenium服务异常"
-        print_info "  建议运行: $0 test-selenium 进行详细诊断"
-    fi
+    # Selenium服务已移除 - 爬虫功能已迁移到 spiderx 项目
     
     echo ""
     print_info "访问地址:"
@@ -443,78 +401,7 @@ add_service() {
     fi
 }
 
-# 测试Selenium服务
-test_selenium() {
-    print_info "测试Selenium服务连接..."
-    
-    # 检查Selenium容器状态
-    if ! compose ps | grep -q "futures-selenium.*Up"; then
-        print_error "Selenium服务未运行，请先启动服务"
-        return 1
-    fi
-    
-    # 检查Selenium健康状态
-    print_info "检查Selenium服务健康状态..."
-    local max_wait=60
-    local wait_time=0
-    
-    while [ $wait_time -lt $max_wait ]; do
-        if curl -f -s http://localhost:4444/wd/hub/status > /dev/null 2>&1; then
-            print_success "Selenium Grid 服务正常"
-            break
-        else
-            print_info "等待Selenium服务启动... ($wait_time/$max_wait 秒)"
-            sleep 5
-            wait_time=$((wait_time + 5))
-        fi
-    done
-    
-    if [ $wait_time -ge $max_wait ]; then
-        print_error "Selenium服务启动超时"
-        print_info "查看Selenium日志:"
-        compose logs --tail=20 selenium-chrome
-        return 1
-    fi
-    
-    # 检查后端容器状态
-    if ! compose ps | grep -q "futures-backend.*Up"; then
-        print_error "后端服务未运行，请先启动服务"
-        return 1
-    fi
-    
-    # 在后端容器中运行Selenium测试
-    print_info "在后端容器中执行Selenium连接测试..."
-    if compose exec -T automysqlback python test_selenium.py; then
-        print_success "Selenium连接测试通过"
-        return 0
-    else
-        print_error "Selenium连接测试失败"
-        print_info "诊断信息:"
-        
-        # 显示容器状态
-        print_info "容器状态:"
-        compose ps
-        
-        # 显示网络信息
-        print_info "网络信息:"
-        docker network ls | grep futures
-        
-        # 显示最近的日志
-        print_info "Selenium服务日志:"
-        compose logs --tail=10 selenium-chrome
-        
-        print_info "后端服务日志:"
-        compose logs --tail=10 automysqlback
-        
-        print_info "请检查:"
-        print_info "  1. Selenium容器是否正常运行"
-        print_info "  2. 网络连接是否正常"
-        print_info "  3. 容器间网络通信是否正常"
-        print_info "  4. 系统内存是否充足"
-        
-        return 1
-    fi
-}
+# Selenium测试功能已移除 - 爬虫功能已迁移到 spiderx 项目
 
 # 主函数
 main() {
@@ -540,9 +427,6 @@ main() {
         "add-service")
             add_service "$@"
             ;;
-        "test-browser")
-            test_browser_environment
-            ;;
         "help"|"-h"|"--help")
             echo "期货数据系统部署脚本"
             echo ""
@@ -550,21 +434,22 @@ main() {
             echo ""
             echo "主要命令:"
             echo "  deploy [branch]  - 拉取代码并部署更新 (默认main分支)"
-            echo "  start           - 分步启动所有服务并等待健康检查"
+            echo "  start           - 启动所有服务并等待健康检查"
             echo "  stop            - 停止所有服务"
             echo "  restart         - 重启所有服务"
             echo "  status          - 查看服务状态"
             echo "  logs [service]  - 查看日志 (可指定服务名)"
             echo "  add-service <name> <port> - 添加新服务指导"
-            echo "  test-browser    - 测试浏览器环境"
             echo ""
             echo "常用场景:"
             echo "  修改代码后部署: $0 deploy"
             echo "  首次启动系统: $0 start"
             echo "  查看服务状态: $0 status"
-            echo "  测试Selenium: $0 test-selenium"
             echo "  查看日志: $0 logs"
             echo "  重启服务: $0 restart"
+            echo ""
+            echo "注意事项:"
+            echo "  爬虫功能已迁移到 spiderx 项目，请在本地运行"
             ;;
         *)
             print_error "未知命令: $1"
