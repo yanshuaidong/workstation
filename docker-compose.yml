@@ -28,14 +28,9 @@ services:
     build:
       context: ./workfront
       dockerfile: Dockerfile
-      # 构建时的内存限制（降低以适应低配置）
-      shm_size: 256m
     container_name: futures-frontend
     expose:
       - "80"
-    # 运行时内存限制（优化后）
-    mem_limit: 256m
-    memswap_limit: 512m
     restart: unless-stopped
     networks:
       - futures-network
@@ -52,15 +47,9 @@ services:
     build:
       context: ./automysqlback
       dockerfile: Dockerfile
-      # 构建时的内存限制（适合小内存服务器）
-      shm_size: 256mb
     container_name: futures-backend
     expose:
       - "7001"
-    # 运行时资源限制（优化后）
-    mem_limit: 768m
-    memswap_limit: 1g
-    shm_size: 256mb
     environment:
       - ENVIRONMENT=production
       - PYTHONPATH=/app

@@ -97,7 +97,6 @@ check_system_resources() {
     fi
 }
 
-# 浏览器环境测试功能已移除 - 爬虫功能已迁移到 spiderx 项目
 
 # 部署更新（拉代码+重启）
 deploy_update() {
@@ -184,9 +183,6 @@ deploy_update() {
     
     # 检查服务状态
     check_services
-    
-    # 浏览器测试已移除 - 爬虫功能已迁移到 spiderx 项目
-    print_info "注意：爬虫功能已迁移到 spiderx 项目，请在本地运行"
     
     print_success "部署完成！"
 }
@@ -294,7 +290,6 @@ start_services() {
     check_services
     
     print_success "所有服务启动完成！"
-    print_info "注意：爬虫功能已迁移到 spiderx 项目，请在本地运行"
 }
 
 # 停止服务
@@ -336,13 +331,11 @@ check_services() {
         print_warning "后端API服务异常"
     fi
     
-    # Selenium服务已移除 - 爬虫功能已迁移到 spiderx 项目
     
     echo ""
     print_info "访问地址:"
     print_info "  前端: http://localhost"
     print_info "  后端API: http://localhost/api-a/"
-    # print_info "  监控面板: http://localhost/monitor/"  # 已停用portainer
 }
 
 # 查看日志
@@ -401,7 +394,6 @@ add_service() {
     fi
 }
 
-# Selenium测试功能已移除 - 爬虫功能已迁移到 spiderx 项目
 
 # 主函数
 main() {
@@ -449,7 +441,6 @@ main() {
             echo "  重启服务: $0 restart"
             echo ""
             echo "注意事项:"
-            echo "  爬虫功能已迁移到 spiderx 项目，请在本地运行"
             ;;
         *)
             print_error "未知命令: $1"
