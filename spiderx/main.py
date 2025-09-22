@@ -53,6 +53,37 @@ DB_CONFIG = {
 AI_API_KEY = "sk-qVU4OZNspU5cSTPONFBFD000t2Oy8Tq9U8h74Wm5Phnl8tsB"
 AI_BASE_URL = "https://poloai.top/v1/chat/completions"
 
+# AI分析提示词
+PROMPT = """
+请根据以下步骤，判断这条消息的“硬度”：
+
+1. **市场类型识别**  
+   判断消息主要针对【股票市场】还是【期货市场】。
+
+2. **软硬消息分类标准**  
+   - 如果是【股票市场】：  
+     - **硬消息（直接影响公司基本面）**：财报数据、业绩指引、实际订单/合同、并购重组、资产买卖、分红派息、回购计划  
+     - **软消息（间接影响或情绪炒作）**：市场传闻、概念炒作、分析师观点、评级调整、行业趋势、宏观预期  
+
+   - 如果是【期货市场】：  
+     - **硬消息（直接影响供需平衡）**：  
+       - 生产端：限产、检修、安全检查、环保约束  
+       - 流通端：进出口政策调整、关税/配额变化  
+       - 消费端：下游需求突然增减（如补库、停产）  
+     - **软消息（间接影响或情绪炒作）**：  
+       - 政策层：行业倡议、指导意见、会议讲话  
+       - 市场层：传闻、概念联想、模糊预期  
+       - 舆情层：媒体解读、情绪带动  
+
+3. **格式化输出**  
+请用以下格式输出：  
+- 【股票市场/期货市场】，分类：[硬消息/软消息]  
+- 理由：一句简短解释  
+"""
+
+
+
+
 # ==================== 数据库操作函数 ====================
 
 def get_db_connection():
@@ -175,8 +206,12 @@ def update_news_analysis_results(results):
 
 # ==================== AI分析函数 ====================
 
-async def analyze_single_news_async(session, prompt, news_item):
+async def analyze_single_news_async(session, prompt=None, news_item=None):
     """异步分析单条新闻"""
+    # 如果没有提供prompt，使用默认的PROMPT变量
+    if prompt is None:
+        prompt = PROMPT
+    
     try:
         payload = {
             "model": "gpt-4o-mini",
@@ -228,7 +263,7 @@ async def analyze_single_news_async(session, prompt, news_item):
             'success': False
         }
 
-async def batch_analyze_news_async(prompt, news_list):
+async def batch_analyze_news_async(prompt=None, news_list=None):
     """批量异步分析新闻"""
     results = []
     
@@ -236,7 +271,7 @@ async def batch_analyze_news_async(prompt, news_list):
         # 创建任务列表
         tasks = []
         for news_item in news_list:
-            task = analyze_single_news_async(session, prompt, news_item)
+            task = analyze_single_news_async(session, prompt=prompt, news_item=news_item)
             tasks.append(task)
         
         # 批量执行，但控制并发数量
@@ -538,9 +573,9 @@ def crawl_cls_news():
 def analyze_latest_news(count=10, prompt=None):
     """分析最新的未分析新闻"""
     if prompt is None:
-        prompt = "请分析这条财经新闻是硬消息还是软消息，并简要说明原因。"
+        prompt = PROMPT
     
-    try:
+    try:    
         logger.info(f"开始批量AI分析任务 - 数量: {count}")
         
         # 获取最新的未分析新闻
@@ -557,7 +592,7 @@ def analyze_latest_news(count=10, prompt=None):
         asyncio.set_event_loop(loop)
         
         try:
-            results = loop.run_until_complete(batch_analyze_news_async(prompt, news_list))
+            results = loop.run_until_complete(batch_analyze_news_async(prompt=prompt, news_list=news_list))
             
             # 更新数据库
             success_count, failure_count = update_news_analysis_results(results)
