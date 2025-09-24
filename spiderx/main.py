@@ -646,11 +646,19 @@ def main():
             else:
                 logger.info("没有新增新闻，跳过AI分析")
                 
+        elif command == "schedule":
+            # 调度模式：运行10天，每4小时执行一次
+            logger.info("启动调度模式：10天，每4小时执行一次完整流程")
+            from scheduler import NewsScheduler
+            scheduler = NewsScheduler()
+            scheduler.run()
+            
         else:
             print("使用方法:")
             print("  python main.py crawl       - 只爬取新闻")
             print("  python main.py analyze [数量] - 只AI分析最新未分析的新闻")
             print("  python main.py full        - 完整流程：爬取 + AI分析")
+            print("  python main.py schedule    - 调度模式：10天，每4小时执行一次")
             sys.exit(1)
     else:
         # 默认执行完整流程

@@ -118,3 +118,11 @@ data/processed/
 # Cache directories
 .cache/
 __pycache__/ 
+
+# nohup.out 日志文件
+nohup.out
+
+# 运行时文件
+*.pid
+*.seed
+*.pid.lock
