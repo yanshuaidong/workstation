@@ -136,12 +136,15 @@ deploy_update() {
     # 检查环境配置
     if [ ! -f ".env" ]; then
         if [ -f "env.production" ]; then
-            print_info "创建环境配置文件..."
+            print_info "复制生产环境配置文件..."
             cp env.production .env
+            print_warning "请确保 .env 文件中的敏感信息（如OSS密钥）已正确配置"
         else
-            print_error "环境配置文件不存在"
+            print_error "生产环境配置文件 env.production 不存在"
             exit 1
         fi
+    else
+        print_info "使用现有的 .env 配置文件"
     fi
     
     # 重新构建并启动
@@ -255,12 +258,15 @@ start_services() {
     # 检查环境配置
     if [ ! -f ".env" ]; then
         if [ -f "env.production" ]; then
-            print_info "复制生产环境配置..."
+            print_info "复制生产环境配置文件..."
             cp env.production .env
+            print_warning "请确保 .env 文件中的敏感信息（如OSS密钥）已正确配置"
         else
-            print_error "环境配置文件不存在"
+            print_error "生产环境配置文件 env.production 不存在"
             exit 1
         fi
+    else
+        print_info "使用现有的 .env 配置文件"
     fi
     
     # 1. 启动后端服务

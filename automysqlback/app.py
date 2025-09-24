@@ -1,7 +1,6 @@
 """
 期货数据更新系统后端服务
 技术栈：Flask + akshare + pandas + MySQL + APScheduler
-端口：7002
 数据库：阿里云RDS MySQL
 """
 
@@ -35,11 +34,63 @@ import json as json_module
 from dotenv import load_dotenv
 
 # 加载环境变量
-load_dotenv()
+# 优先加载本地 .env 文件，支持多环境配置
+from pathlib import Path
+
+def load_env_config():
+    """智能加载环境配置"""
+    env_files = [
+        '.env',  # 本地配置文件
+        'env.production',  # 生产环境配置
+    ]
+    
+    for env_file in env_files:
+        env_path = Path(env_file)
+        if env_path.exists():
+            load_dotenv(env_path)
+            print(f"已加载环境配置: {env_file}")
+            return env_file
+    
+    print("未找到环境配置文件，使用默认配置")
+    return None
+
+# 加载环境配置
+loaded_config = load_env_config()
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# 输出配置加载信息
+if loaded_config:
+    logger.info(f"环境配置已加载: {loaded_config}")
+else:
+    logger.warning("使用默认配置运行")
+
+# 环境检测
+environment = os.getenv('ENVIRONMENT', 'development')
+logger.info(f"运行环境: {environment}")
+
+# 配置验证
+def validate_config():
+    """验证关键配置项"""
+    critical_vars = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME']
+    missing_vars = []
+    
+    for var in critical_vars:
+        if not os.getenv(var):
+            missing_vars.append(var)
+    
+    if missing_vars:
+        logger.error(f"缺少关键环境变量: {missing_vars}")
+        if environment == 'production':
+            logger.error("生产环境不能缺少关键配置，请检查环境变量")
+            sys.exit(1)
+        else:
+            logger.warning("开发环境缺少配置，将使用默认值")
+
+# 验证配置
+validate_config()
 
 app = Flask(__name__)
 CORS(app)

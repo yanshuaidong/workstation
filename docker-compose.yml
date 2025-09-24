@@ -54,12 +54,6 @@ services:
       - ENVIRONMENT=production
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
-      # 数据库配置通过环境变量传入
-      - DB_HOST=${DB_HOST:-rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com}
-      - DB_PORT=${DB_PORT:-3306}
-      - DB_USER=${DB_USER:-ysd}
-      - DB_PASSWORD=${DB_PASSWORD:-Yan1234567}
-      - DB_DATABASE=${DB_DATABASE:-futures}
     volumes:
       # 挂载日志目录
       - ./logs/backend:/app/logs
