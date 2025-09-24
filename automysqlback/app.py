@@ -23,11 +23,19 @@ import logging
 import ta
 import numpy as np
 import re
-# Selenium相关导入已移除 - 爬虫功能已迁移到 spiderx 项目
 import os
 import sys
 import requests
-# aiohttp和asyncio导入已移除 - AI分析功能已迁移到 spiderx 项目
+import oss2
+from urllib.parse import quote
+import base64
+import hmac
+import hashlib
+import json as json_module
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -38,12 +46,21 @@ CORS(app)
 
 # 数据库配置
 DB_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
+    'host': os.getenv('DB_HOST', 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com'),
+    'port': int(os.getenv('DB_PORT', 3306)),
+    'user': os.getenv('DB_USER', 'ysd'),
+    'password': os.getenv('DB_PASSWORD', 'Yan1234567'),
+    'database': os.getenv('DB_NAME', 'futures'),
     'charset': 'utf8mb4'
+}
+
+# 阿里云OSS配置
+OSS_CONFIG = {
+    'endpoint': os.getenv('OSS_ENDPOINT', 'https://oss-cn-beijing.aliyuncs.com'),
+    'bucket': os.getenv('OSS_BUCKET', 'news-screenshots'),
+    'access_key_id': os.getenv('OSS_ACCESS_KEY_ID'),
+    'access_key_secret': os.getenv('OSS_ACCESS_KEY_SECRET'),
+    'base_url': os.getenv('OSS_BASE_URL', 'https://news-screenshots.oss-cn-beijing.aliyuncs.com')
 }
 
 # 全局变量
@@ -52,6 +69,60 @@ scheduler = BackgroundScheduler()
 def get_db_connection():
     """获取数据库连接"""
     return pymysql.connect(**DB_CONFIG)
+
+def get_oss_bucket():
+    """获取OSS bucket对象"""
+    auth = oss2.Auth(OSS_CONFIG['access_key_id'], OSS_CONFIG['access_key_secret'])
+    bucket = oss2.Bucket(auth, OSS_CONFIG['endpoint'], OSS_CONFIG['bucket'])
+    return bucket
+
+def generate_upload_key(news_id, filename):
+    """生成上传文件的key，按月份组织目录结构"""
+    now = datetime.now()
+    year = now.strftime('%Y')
+    month = now.strftime('%m')
+    day = now.strftime('%d')
+    
+    # 生成唯一文件名
+    file_ext = filename.split('.')[-1] if '.' in filename else 'png'
+    unique_filename = f"news_{news_id}_{int(time.time())}_{hash(filename) % 10000}.{file_ext}"
+    
+    return f"screenshots/{year}/{month}/{day}/{unique_filename}"
+
+def generate_signed_upload_url(object_key, content_type='image/png', expires=3600):
+    """生成带签名的上传URL"""
+    try:
+        bucket = get_oss_bucket()
+        
+        # 生成预签名URL用于上传
+        signed_url = bucket.sign_url('PUT', object_key, expires, 
+                                   headers={'Content-Type': content_type})
+        
+        return {
+            'upload_url': signed_url,
+            'object_key': object_key,
+            'expires': expires
+        }
+    except Exception as e:
+        logger.error(f"生成上传URL失败: {e}")
+        return None
+
+def generate_signed_access_url(object_key, expires=3600):
+    """生成带签名的访问URL"""
+    try:
+        bucket = get_oss_bucket()
+        
+        # 检查对象是否存在
+        if not bucket.object_exists(object_key):
+            return None
+            
+        # 生成预签名URL用于访问
+        signed_url = bucket.sign_url('GET', object_key, expires)
+        
+        return signed_url
+    except Exception as e:
+        logger.error(f"生成访问URL失败: {e}")
+        return None
 
 def init_database():
     """初始化数据库表结构"""
@@ -147,32 +218,144 @@ def init_database():
                 ctime BIGINT UNIQUE NOT NULL COMMENT '新闻时间戳（用于去重）',
                 title VARCHAR(500) NOT NULL COMMENT '新闻标题',
                 content TEXT NOT NULL COMMENT '新闻内容',
-                ai_analysis VARCHAR(1000) DEFAULT NULL COMMENT 'AI 对新闻的分析结果',
+                ai_analysis MEDIUMTEXT DEFAULT NULL COMMENT '中文分析/备注（可写为什么改判定）',
+                message_score TINYINT UNSIGNED DEFAULT NULL COMMENT '0-100，越高越好',
+                message_label ENUM('hard','soft','unknown') NOT NULL DEFAULT 'unknown' COMMENT '消息类型标签',
+                message_type VARCHAR(64) DEFAULT NULL COMMENT '如: 利好政策、并购落地、减持公告',
+                market_react VARCHAR(255) DEFAULT NULL COMMENT '自由文本：大涨/大跌/没反应等',
+                screenshots JSON DEFAULT NULL COMMENT '截图URL数组，如["https://...","..."]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
                 INDEX idx_ctime (ctime),
-                INDEX idx_created_at (created_at)
+                INDEX idx_created_at (created_at),
+                INDEX idx_message_label (message_label),
+                INDEX idx_message_score (message_score)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='财联社加红电报新闻表'
         """)
         
         conn.commit()
         
-        # 检查并添加 ai_analysis 字段到 news_red_telegraph 表（数据库迁移）
+        # 检查并添加新字段到 news_red_telegraph 表（数据库迁移）
+        
+        # 1. 检查并更新 ai_analysis 字段类型
         cursor.execute("""
-            SELECT COUNT(*) 
+            SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH 
             FROM INFORMATION_SCHEMA.COLUMNS 
             WHERE TABLE_SCHEMA = DATABASE() 
             AND TABLE_NAME = 'news_red_telegraph' 
             AND COLUMN_NAME = 'ai_analysis'
         """)
-        if cursor.fetchone()[0] == 0:
+        ai_analysis_info = cursor.fetchone()
+        if ai_analysis_info is None:
             # 添加 ai_analysis 字段
             cursor.execute("""
                 ALTER TABLE news_red_telegraph 
-                ADD COLUMN ai_analysis VARCHAR(1000) DEFAULT NULL COMMENT 'AI 对新闻的分析结果' 
+                ADD COLUMN ai_analysis MEDIUMTEXT DEFAULT NULL COMMENT '中文分析/备注（可写为什么改判定）' 
                 AFTER content
             """)
             logger.info("已为 news_red_telegraph 表添加 ai_analysis 字段")
+        elif ai_analysis_info[0] == 'varchar' and ai_analysis_info[1] == 1000:
+            # 将 VARCHAR(1000) 更改为 MEDIUMTEXT
+            cursor.execute("""
+                ALTER TABLE news_red_telegraph 
+                MODIFY COLUMN ai_analysis MEDIUMTEXT DEFAULT NULL COMMENT '中文分析/备注（可写为什么改判定）'
+            """)
+            logger.info("已将 news_red_telegraph 表的 ai_analysis 字段类型更新为 MEDIUMTEXT")
+        
+        # 2. 检查并添加 message_score 字段
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'news_red_telegraph' 
+            AND COLUMN_NAME = 'message_score'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE news_red_telegraph 
+                ADD COLUMN message_score TINYINT UNSIGNED DEFAULT NULL COMMENT '0-100，越高越好' 
+                AFTER ai_analysis
+            """)
+            logger.info("已为 news_red_telegraph 表添加 message_score 字段")
+        
+        # 3. 检查并添加 message_label 字段
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'news_red_telegraph' 
+            AND COLUMN_NAME = 'message_label'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE news_red_telegraph 
+                ADD COLUMN message_label ENUM('hard','soft','unknown') NOT NULL DEFAULT 'unknown' COMMENT '消息类型标签' 
+                AFTER message_score
+            """)
+            logger.info("已为 news_red_telegraph 表添加 message_label 字段")
+        
+        # 4. 检查并添加 message_type 字段
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'news_red_telegraph' 
+            AND COLUMN_NAME = 'message_type'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE news_red_telegraph 
+                ADD COLUMN message_type VARCHAR(64) DEFAULT NULL COMMENT '如: 利好政策、并购落地、减持公告' 
+                AFTER message_label
+            """)
+            logger.info("已为 news_red_telegraph 表添加 message_type 字段")
+        
+        # 5. 检查并添加 market_react 字段
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'news_red_telegraph' 
+            AND COLUMN_NAME = 'market_react'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE news_red_telegraph 
+                ADD COLUMN market_react VARCHAR(255) DEFAULT NULL COMMENT '自由文本：大涨/大跌/没反应等' 
+                AFTER message_type
+            """)
+            logger.info("已为 news_red_telegraph 表添加 market_react 字段")
+        
+        # 6. 检查并添加 screenshots 字段
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'news_red_telegraph' 
+            AND COLUMN_NAME = 'screenshots'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                ALTER TABLE news_red_telegraph 
+                ADD COLUMN screenshots JSON DEFAULT NULL COMMENT '截图URL数组，如["https://...","..."]' 
+                AFTER market_react
+            """)
+            logger.info("已为 news_red_telegraph 表添加 screenshots 字段")
+        
+        # 7. 添加新的索引
+        try:
+            cursor.execute("ALTER TABLE news_red_telegraph ADD INDEX idx_message_label (message_label)")
+            logger.info("已为 news_red_telegraph 表添加 message_label 索引")
+        except pymysql.Error as e:
+            if e.args[0] != 1061:  # 忽略重复键名错误
+                logger.warning(f"添加 message_label 索引失败: {e}")
+        
+        try:
+            cursor.execute("ALTER TABLE news_red_telegraph ADD INDEX idx_message_score (message_score)")
+            logger.info("已为 news_red_telegraph 表添加 message_score 索引")
+        except pymysql.Error as e:
+            if e.args[0] != 1061:  # 忽略重复键名错误
+                logger.warning(f"添加 message_score 索引失败: {e}")
         
         conn.commit()
         
@@ -2116,9 +2299,11 @@ def get_cls_news_stats():
 
 @app.route('/api/news/list', methods=['GET'])
 def get_cls_news_list():
-    """分页查询财联社新闻（包含AI分析结果）"""
+    """分页查询财联社新闻（包含搜索和筛选功能）"""
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 10, type=int)
+    search = request.args.get('search', '').strip()  # 搜索关键字
+    message_label = request.args.get('message_label', '').strip()  # 消息标签筛选
     
     # 限制分页参数
     page = max(1, page)
@@ -2128,40 +2313,85 @@ def get_cls_news_list():
     cursor = conn.cursor(pymysql.cursors.DictCursor)
     
     try:
+        # 构建WHERE条件
+        where_conditions = []
+        where_params = []
+        
+        # 搜索条件（标题或内容包含关键字）
+        if search:
+            where_conditions.append("(title LIKE %s OR content LIKE %s)")
+            where_params.extend([f"%{search}%", f"%{search}%"])
+        
+        # 消息标签筛选
+        if message_label and message_label in ['hard', 'soft', 'unknown']:
+            where_conditions.append("message_label = %s")
+            where_params.append(message_label)
+        
+        # 构建WHERE子句
+        where_clause = ""
+        if where_conditions:
+            where_clause = "WHERE " + " AND ".join(where_conditions)
+        
         # 查询总数
-        cursor.execute("SELECT COUNT(*) as total FROM news_red_telegraph")
+        count_sql = f"SELECT COUNT(*) as total FROM news_red_telegraph {where_clause}"
+        cursor.execute(count_sql, where_params)
         total = cursor.fetchone()['total']
         
         # 计算偏移量
         offset = (page - 1) * page_size
         
-        # 查询新闻列表（按ctime倒序，最新的在前面，包含AI分析字段）
-        cursor.execute("""
+        # 查询新闻列表（按ctime倒序，最新的在前面，包含所有新字段）
+        list_sql = f"""
             SELECT 
                 id,
                 ctime,
                 title,
                 content,
                 ai_analysis,
+                message_score,
+                message_label,
+                message_type,
+                market_react,
+                screenshots,
                 FROM_UNIXTIME(ctime) as formatted_time,
                 created_at,
                 updated_at
             FROM news_red_telegraph 
+            {where_clause}
             ORDER BY ctime DESC 
             LIMIT %s OFFSET %s
-        """, (page_size, offset))
+        """
+        
+        list_params = where_params + [page_size, offset]
+        cursor.execute(list_sql, list_params)
         
         news_list = cursor.fetchall()
         
         # 格式化数据
         formatted_news = []
         for news in news_list:
+            # 处理 screenshots JSON 数据
+            screenshots_data = []
+            if news['screenshots']:
+                try:
+                    if isinstance(news['screenshots'], str):
+                        screenshots_data = json_module.loads(news['screenshots'])
+                    else:
+                        screenshots_data = news['screenshots']
+                except:
+                    screenshots_data = []
+            
             formatted_news.append({
                 'id': news['id'],
                 'ctime': news['ctime'],
                 'title': news['title'],
                 'content': news['content'],
-                'ai_analysis': news['ai_analysis'],  # AI分析结果，可能为None
+                'ai_analysis': news['ai_analysis'],
+                'message_score': news['message_score'],
+                'message_label': news['message_label'],
+                'message_type': news['message_type'],
+                'market_react': news['market_react'],
+                'screenshots': screenshots_data,
                 'time': news['formatted_time'].strftime('%Y-%m-%d %H:%M:%S') if news['formatted_time'] else '',
                 'created_at': news['created_at'].strftime('%Y-%m-%d %H:%M:%S') if news['created_at'] else '',
                 'updated_at': news['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if news['updated_at'] else ''
@@ -2182,6 +2412,10 @@ def get_cls_news_list():
                     'total_pages': total_pages,
                     'has_prev': page > 1,
                     'has_next': page < total_pages
+                },
+                'filters': {
+                    'search': search,
+                    'message_label': message_label
                 }
             }
         })
@@ -2195,6 +2429,359 @@ def get_cls_news_list():
     finally:
         cursor.close()
         conn.close()
+
+# ========== 新增：新闻CRUD操作接口 ==========
+
+@app.route('/api/news/create', methods=['POST'])
+def create_news():
+    """创建新闻"""
+    data = request.get_json()
+    
+    # 验证必填字段
+    if not data.get('title') or not data.get('content'):
+        return jsonify({
+            'code': 1,
+            'message': '标题和内容为必填字段'
+        })
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 生成ctime（如果没有提供）
+        ctime = data.get('ctime', int(time.time()))
+        
+        # 处理screenshots数据
+        screenshots_json = None
+        if data.get('screenshots'):
+            screenshots_json = json_module.dumps(data['screenshots'])
+        
+        cursor.execute("""
+            INSERT INTO news_red_telegraph 
+            (ctime, title, content, ai_analysis, message_score, message_label, 
+             message_type, market_react, screenshots)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            ctime,
+            data['title'],
+            data['content'],
+            data.get('ai_analysis'),
+            data.get('message_score'),
+            data.get('message_label', 'unknown'),
+            data.get('message_type'),
+            data.get('market_react'),
+            screenshots_json
+        ))
+        
+        news_id = cursor.lastrowid
+        conn.commit()
+        
+        return jsonify({
+            'code': 0,
+            'message': '新闻创建成功',
+            'data': {'id': news_id}
+        })
+        
+    except Exception as e:
+        logger.error(f"创建新闻失败: {e}")
+        conn.rollback()
+        return jsonify({
+            'code': 1,
+            'message': f'创建失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/detail/<int:news_id>', methods=['GET'])
+def get_news_detail(news_id):
+    """获取新闻详情"""
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        cursor.execute("""
+            SELECT 
+                id, ctime, title, content, ai_analysis, message_score,
+                message_label, message_type, market_react, screenshots,
+                FROM_UNIXTIME(ctime) as formatted_time, created_at, updated_at
+            FROM news_red_telegraph 
+            WHERE id = %s
+        """, (news_id,))
+        
+        news = cursor.fetchone()
+        
+        if not news:
+            return jsonify({
+                'code': 1,
+                'message': '新闻不存在'
+            })
+        
+        # 处理 screenshots JSON 数据
+        screenshots_data = []
+        if news['screenshots']:
+            try:
+                if isinstance(news['screenshots'], str):
+                    screenshots_data = json_module.loads(news['screenshots'])
+                else:
+                    screenshots_data = news['screenshots']
+            except:
+                screenshots_data = []
+        
+        # 为每个截图生成访问URL
+        screenshots_with_urls = []
+        for screenshot_key in screenshots_data:
+            access_url = generate_signed_access_url(screenshot_key)
+            screenshots_with_urls.append({
+                'key': screenshot_key,
+                'url': access_url
+            })
+        
+        formatted_data = {
+            'id': news['id'],
+            'ctime': news['ctime'],
+            'title': news['title'],
+            'content': news['content'],
+            'ai_analysis': news['ai_analysis'],
+            'message_score': news['message_score'],
+            'message_label': news['message_label'],
+            'message_type': news['message_type'],
+            'market_react': news['market_react'],
+            'screenshots': screenshots_with_urls,
+            'time': news['formatted_time'].strftime('%Y-%m-%d %H:%M:%S') if news['formatted_time'] else '',
+            'created_at': news['created_at'].strftime('%Y-%m-%d %H:%M:%S') if news['created_at'] else '',
+            'updated_at': news['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if news['updated_at'] else ''
+        }
+        
+        return jsonify({
+            'code': 0,
+            'message': '获取成功',
+            'data': formatted_data
+        })
+        
+    except Exception as e:
+        logger.error(f"获取新闻详情失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/update/<int:news_id>', methods=['PUT'])
+def update_news(news_id):
+    """更新新闻"""
+    data = request.get_json()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 检查新闻是否存在
+        cursor.execute("SELECT id FROM news_red_telegraph WHERE id = %s", (news_id,))
+        if not cursor.fetchone():
+            return jsonify({
+                'code': 1,
+                'message': '新闻不存在'
+            })
+        
+        # 构建更新字段
+        update_fields = []
+        update_values = []
+        
+        updatable_fields = [
+            'title', 'content', 'ai_analysis', 'message_score', 
+            'message_label', 'message_type', 'market_react'
+        ]
+        
+        for field in updatable_fields:
+            if field in data:
+                update_fields.append(f"{field} = %s")
+                update_values.append(data[field])
+        
+        # 处理screenshots字段
+        if 'screenshots' in data:
+            update_fields.append("screenshots = %s")
+            screenshots_json = json_module.dumps(data['screenshots']) if data['screenshots'] else None
+            update_values.append(screenshots_json)
+        
+        if not update_fields:
+            return jsonify({
+                'code': 1,
+                'message': '没有需要更新的字段'
+            })
+        
+        # 添加updated_at字段
+        update_fields.append("updated_at = NOW()")
+        update_values.append(news_id)
+        
+        # 执行更新
+        sql = f"UPDATE news_red_telegraph SET {', '.join(update_fields)} WHERE id = %s"
+        cursor.execute(sql, update_values)
+        
+        conn.commit()
+        
+        return jsonify({
+            'code': 0,
+            'message': '新闻更新成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"更新新闻失败: {e}")
+        conn.rollback()
+        return jsonify({
+            'code': 1,
+            'message': f'更新失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/delete/<int:news_id>', methods=['DELETE'])
+def delete_news(news_id):
+    """删除新闻"""
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 获取新闻信息（用于删除相关的OSS文件）
+        cursor.execute("SELECT screenshots FROM news_red_telegraph WHERE id = %s", (news_id,))
+        news = cursor.fetchone()
+        
+        if not news:
+            return jsonify({
+                'code': 1,
+                'message': '新闻不存在'
+            })
+        
+        # 删除OSS上的截图文件
+        if news['screenshots']:
+            try:
+                screenshots_data = []
+                if isinstance(news['screenshots'], str):
+                    screenshots_data = json_module.loads(news['screenshots'])
+                else:
+                    screenshots_data = news['screenshots']
+                
+                bucket = get_oss_bucket()
+                for screenshot_key in screenshots_data:
+                    try:
+                        bucket.delete_object(screenshot_key)
+                        logger.info(f"已删除OSS文件: {screenshot_key}")
+                    except Exception as e:
+                        logger.warning(f"删除OSS文件失败 {screenshot_key}: {e}")
+            except Exception as e:
+                logger.warning(f"处理screenshots数据失败: {e}")
+        
+        # 删除数据库记录
+        cursor.execute("DELETE FROM news_red_telegraph WHERE id = %s", (news_id,))
+        
+        if cursor.rowcount == 0:
+            return jsonify({
+                'code': 1,
+                'message': '新闻不存在'
+            })
+        
+        conn.commit()
+        
+        return jsonify({
+            'code': 0,
+            'message': '新闻删除成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"删除新闻失败: {e}")
+        conn.rollback()
+        return jsonify({
+            'code': 1,
+            'message': f'删除失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+# ========== OSS相关接口 ==========
+
+@app.route('/api/oss/upload-url', methods=['POST'])
+def get_upload_url():
+    """获取OSS上传签名URL"""
+    data = request.get_json()
+    
+    news_id = data.get('news_id')
+    filename = data.get('filename')
+    content_type = data.get('content_type', 'image/png')
+    
+    if not news_id or not filename:
+        return jsonify({
+            'code': 1,
+            'message': '缺少必要参数: news_id 和 filename'
+        })
+    
+    try:
+        # 生成上传key
+        object_key = generate_upload_key(news_id, filename)
+        
+        # 生成签名URL
+        upload_info = generate_signed_upload_url(object_key, content_type)
+        
+        if not upload_info:
+            return jsonify({
+                'code': 1,
+                'message': '生成上传URL失败'
+            })
+        
+        return jsonify({
+            'code': 0,
+            'message': '获取上传URL成功',
+            'data': upload_info
+        })
+        
+    except Exception as e:
+        logger.error(f"获取上传URL失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取上传URL失败: {str(e)}'
+        })
+
+@app.route('/api/oss/access-url', methods=['POST'])
+def get_access_url():
+    """获取OSS访问URL"""
+    data = request.get_json()
+    
+    object_key = data.get('object_key')
+    expires = data.get('expires', 3600)
+    
+    if not object_key:
+        return jsonify({
+            'code': 1,
+            'message': '缺少必要参数: object_key'
+        })
+    
+    try:
+        access_url = generate_signed_access_url(object_key, expires)
+        
+        if not access_url:
+            return jsonify({
+                'code': 1,
+                'message': '文件不存在或生成访问URL失败'
+            })
+        
+        return jsonify({
+            'code': 0,
+            'message': '获取访问URL成功',
+            'data': {
+                'access_url': access_url,
+                'expires': expires
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取访问URL失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取访问URL失败: {str(e)}'
+        })
 
 # ========== 财联社新闻API接口 ==========
 

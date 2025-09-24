@@ -50,6 +50,14 @@ export const getRecommendationsListApi = `${BASE_URL_API_A}/recommendations/list
 // 财联社新闻接口
 export const getClsNewsListApi = `${BASE_URL_API_A}/news/list`;
 export const getClsNewsStatsApi = `${BASE_URL_API_A}/news/stats`;
+export const createNewsApi = `${BASE_URL_API_A}/news/create`;
+export const getNewsDetailApi = `${BASE_URL_API_A}/news/detail`;  // 需要在调用时添加 /{id}
+export const updateNewsApi = `${BASE_URL_API_A}/news/update`;     // 需要在调用时添加 /{id}
+export const deleteNewsApi = `${BASE_URL_API_A}/news/delete`;     // 需要在调用时添加 /{id}
+
+// OSS文件上传接口
+export const getOssUploadUrlApi = `${BASE_URL_API_A}/oss/upload-url`;
+export const getOssAccessUrlApi = `${BASE_URL_API_A}/oss/access-url`;
 
 
 
