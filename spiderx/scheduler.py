@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 # 导入主模块功能
-from main import crawl_cls_news, analyze_latest_news
+from main import crawl_cls_news, analyze_latest_news, analyze_news_scoring, analyze_news_labeling
 
 
 class NewsScheduler:
@@ -144,11 +144,21 @@ class NewsScheduler:
             new_count, duplicate_count, total_count = crawl_cls_news()
             self.logger.info(f"爬取完成: 总获取 {total_count} 条, 新增 {new_count} 条, 重复 {duplicate_count} 条")
             
-            # 2. AI分析（固定分析20条最新未分析的新闻）
-            self.logger.info("步骤2: 开始AI分析...")
-            analyze_count = 20  # 固定分析20条
-            success_count, failure_count = analyze_latest_news(analyze_count)
-            self.logger.info(f"AI分析完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+            # 2. 完整AI处理（固定处理20条最新新闻）
+            self.logger.info("步骤2: 开始完整AI处理...")
+            analyze_count = 20  # 固定处理20条
+            
+            # 2.1 软硬分析
+            success1, failure1 = analyze_latest_news(analyze_count)
+            self.logger.info(f"软硬分析完成: 成功 {success1} 条, 失败 {failure1} 条")
+            
+            # 2.2 评分
+            success2, failure2 = analyze_news_scoring(analyze_count)
+            self.logger.info(f"AI评分完成: 成功 {success2} 条, 失败 {failure2} 条")
+            
+            # 2.3 标签
+            success3, failure3 = analyze_news_labeling(analyze_count)
+            self.logger.info(f"AI标签完成: 成功 {success3} 条, 失败 {failure3} 条")
             
             # 3. 打印心跳
             self.print_heartbeat()
