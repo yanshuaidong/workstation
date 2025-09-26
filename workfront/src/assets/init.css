@@ -104,6 +104,38 @@ button {
   .container {
     padding: 0 10px;
   }
+  
+  /* 移动端优化 */
+  body {
+    font-size: 13px;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* 移动端表单优化 */
+  input, textarea, select {
+    font-size: 16px; /* 防止iOS缩放 */
+  }
+  
+  /* 移动端按钮优化 */
+  .el-button {
+    min-height: 44px; /* 触摸友好的最小高度 */
+  }
+  
+  /* 移动端卡片间距优化 */
+  .el-card {
+    margin-bottom: 10px;
+  }
+  
+  /* 移动端对话框优化 */
+  .el-dialog {
+    margin: 10px !important;
+    width: calc(100% - 20px) !important;
+    max-width: none !important;
+  }
+  
+  .el-dialog__body {
+    padding: 15px 20px;
+  }
 }
 
 /* 常用工具类 */

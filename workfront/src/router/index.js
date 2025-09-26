@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 // import ApiDataFetcher from '@/components/ApiDataFetcher.vue'
 // import TechnicalAnalysis from '@/components/TechnicalAnalysis.vue'
 import FuturesUpdate from '@/components/FuturesUpdate.vue'
-import NewsAnalysis from '@/components/NewsAnalysis.vue'
+import AdaptiveNewsAnalysis from '@/components/AdaptiveNewsAnalysis.vue'
 
 const routes = [
   {
@@ -12,7 +12,7 @@ const routes = [
   {
     path: '/news-analysis',
     name: 'NewsAnalysis',
-    component: NewsAnalysis,
+    component: AdaptiveNewsAnalysis,
     meta: {
       title: '消息面分析'
     }

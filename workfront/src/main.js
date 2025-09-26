@@ -6,6 +6,7 @@ import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import './assets/init.css'
+import { setMobileViewport } from './utils/deviceDetector'
 
 const app = createApp(App)
 
@@ -21,5 +22,8 @@ app.use(router)
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, markRaw(component))
 }
+
+// 初始化移动端优化设置
+setMobileViewport()
 
 app.mount('#app')
