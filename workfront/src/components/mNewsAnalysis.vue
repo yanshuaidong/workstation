@@ -49,9 +49,9 @@
           style="width: 100px; margin-top: 8px"
         >
           <el-option label="今天" value="today" />
+          <el-option label="3天" value="three_days" />
           <el-option label="7天" value="week" />
           <el-option label="1月" value="month" />
-          <el-option label="3月" value="quarter" />
           <el-option label="全部" value="all" />
         </el-select>
       </div>
@@ -112,6 +112,10 @@
       <el-button type="success" @click="showCreateDialog" size="small" icon="Plus">
         新增
       </el-button>
+      <el-button type="warning" @click="copyCurrentPage" :loading="copyLoading" size="small" icon="DocumentCopy">
+        <!-- 注意：这里使用 icon="DocumentCopy" 属性，不需要在 components 中注册 DocumentCopy 组件 -->
+        复制
+      </el-button>
       <el-button type="info" @click="loadStats" :loading="statsLoading" size="small" icon="Refresh">
         刷新
       </el-button>
@@ -136,7 +140,7 @@
         <div class="m-news-header">
           <span class="m-news-index">{{ (pagination.page - 1) * pagination.page_size + index + 1 }}</span>
           <span class="m-news-time">{{ item.time }}</span>
-          <div class="m-news-actions" @click.stop>
+          <!-- <div class="m-news-actions" @click.stop>
             <el-button
               type="danger"
               size="small"
@@ -144,11 +148,14 @@
               icon="Delete"
               circle
             />
-          </div>
+          </div> -->
         </div>
         
         <!-- 新闻标题 -->
         <div class="m-news-title">{{ item.title }}</div>
+        
+        <!-- 新闻内容 -->
+        <div class="m-news-content">{{ item.content }}</div>
         
         <!-- 新闻标签和评分 -->
         <div class="m-news-meta">
@@ -282,14 +289,26 @@
         </el-form-item>
 
         <el-form-item label="内容" prop="content">
-          <el-input
-            v-model="newsForm.content"
-            type="textarea"
-            :rows="4"
-            placeholder="请输入新闻内容"
-            maxlength="10000"
-            show-word-limit
-          />
+          <div class="m-content-with-copy">
+            <el-input
+              v-model="newsForm.content"
+              type="textarea"
+              :rows="10"
+              placeholder="请输入新闻内容"
+              maxlength="10000"
+              show-word-limit
+            />
+            <el-button
+              type="primary"
+              size="small"
+              @click="copySingleContent"
+              icon="DocumentCopy"
+              style="margin-top: 8px; width: 100%;"
+            >
+              <!-- 注意：这里使用 icon="DocumentCopy" 属性，不需要在 components 中注册 DocumentCopy 组件 -->
+              复制内容
+            </el-button>
+          </div>
         </el-form-item>
 
         <el-form-item label="AI分析/备注">
@@ -455,6 +474,9 @@ export default {
       },
       statsLoading: false,
       
+      // 复制状态
+      copyLoading: false,
+      
       // 分页信息
       pagination: {
         page: 1,
@@ -516,7 +538,8 @@ export default {
 
       // 文件上传相关
       uploadFiles: [],
-      existingScreenshots: []
+      existingScreenshots: [],
+      
     }
   },
   
@@ -687,14 +710,14 @@ export default {
         case 'today':
           startDate = new Date(today)
           break
+        case 'three_days':
+          startDate.setDate(today.getDate() - 3)
+          break
         case 'week':
           startDate.setDate(today.getDate() - 7)
           break
         case 'month':
           startDate.setMonth(today.getMonth() - 1)
-          break
-        case 'quarter':
-          startDate.setMonth(today.getMonth() - 3)
           break
         case 'all':
           this.dateRange = []
@@ -863,6 +886,10 @@ export default {
         if (this.$refs.newsFormRef) {
           this.$refs.newsFormRef.clearValidate()
         }
+        // 清除上传组件中的文件列表
+        if (this.$refs.uploadRef) {
+          this.$refs.uploadRef.clearFiles()
+        }
       })
     },
 
@@ -993,6 +1020,111 @@ export default {
     navigateToItem(index) {
       this.currentEditIndex = index
       this.showEditDialog(this.newsList[index])
+    },
+
+    // 通用复制方法（兼容HTTP和HTTPS）
+    async copyToClipboard(text) {
+      try {
+        // 优先使用现代 Clipboard API（仅在 HTTPS 或 localhost 下可用）
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text)
+          return true
+        } else {
+          // 降级方案：使用传统的 execCommand 方法
+          return this.fallbackCopyTextToClipboard(text)
+        }
+      } catch (error) {
+        console.error('复制失败:', error)
+        // 如果现代API失败，尝试降级方案
+        return this.fallbackCopyTextToClipboard(text)
+      }
+    },
+
+    // 降级复制方案
+    fallbackCopyTextToClipboard(text) {
+      try {
+        // 创建一个临时的 textarea 元素
+        const textArea = document.createElement('textarea')
+        textArea.value = text
+        
+        // 设置样式使其不可见
+        textArea.style.position = 'fixed'
+        textArea.style.top = '0'
+        textArea.style.left = '0'
+        textArea.style.width = '2em'
+        textArea.style.height = '2em'
+        textArea.style.padding = '0'
+        textArea.style.border = 'none'
+        textArea.style.outline = 'none'
+        textArea.style.boxShadow = 'none'
+        textArea.style.background = 'transparent'
+        textArea.style.opacity = '0'
+        
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        
+        // 尝试复制
+        const successful = document.execCommand('copy')
+        document.body.removeChild(textArea)
+        
+        return successful
+      } catch (error) {
+        console.error('降级复制方案也失败了:', error)
+        return false
+      }
+    },
+
+    // 复制当前页新闻内容
+    async copyCurrentPage() {
+      if (!this.newsList.length) {
+        ElMessage.warning('当前页面没有新闻数据可复制')
+        return
+      }
+
+      this.copyLoading = true
+      try {
+        // 构建复制内容
+        const copyContent = this.newsList
+          .map((item, index) => `${index + 1}、${item.content}`)
+          .join('\n\n')
+        
+        const success = await this.copyToClipboard(copyContent)
+        
+        if (success) {
+          ElMessage.success(`成功复制当前页 ${this.newsList.length} 条新闻内容`)
+        } else {
+          ElMessage.error('复制失败，请手动复制内容')
+          console.log('复制的内容:', copyContent)
+        }
+      } catch (error) {
+        console.error('复制失败:', error)
+        ElMessage.error('复制失败')
+      } finally {
+        this.copyLoading = false
+      }
+    },
+
+    // 复制单条新闻内容
+    async copySingleContent() {
+      if (!this.newsForm.content) {
+        ElMessage.warning('当前内容为空，无法复制')
+        return
+      }
+
+      try {
+        const success = await this.copyToClipboard(this.newsForm.content)
+        
+        if (success) {
+          ElMessage.success('新闻内容已复制到剪贴板')
+        } else {
+          ElMessage.error('复制失败，请手动复制内容')
+          console.log('复制的内容:', this.newsForm.content)
+        }
+      } catch (error) {
+        console.error('复制失败:', error)
+        ElMessage.error('复制失败')
+      }
     }
   }
 }
@@ -1262,6 +1394,16 @@ export default {
   box-shadow: 0 6px 16px rgba(144, 147, 153, 0.4);
 }
 
+.m-actions .el-button--warning {
+  background: linear-gradient(135deg, #e6a23c 0%, #f7ba2a 100%);
+  box-shadow: 0 4px 12px rgba(230, 162, 60, 0.3);
+}
+
+.m-actions .el-button--warning:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(230, 162, 60, 0.4);
+}
+
 /* 移动端新闻列表 */
 .m-news-list {
   min-height: 400px;
@@ -1347,6 +1489,23 @@ export default {
   line-height: 1.4;
   margin-bottom: 10px;
   color: #333;
+}
+
+.m-news-content {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #666;
+  margin-bottom: 12px;
+  /* padding: 8px 12px; */
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  /* border-left: 3px solid #409eff; */
+  max-height: 120px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
 }
 
 .m-news-meta {
@@ -1585,5 +1744,22 @@ export default {
 /* 加载状态 */
 .el-loading-mask {
   border-radius: 8px;
+}
+
+/* 移动端内容复制区域样式 */
+:deep(.m-content-with-copy) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+:deep(.m-content-with-copy .el-textarea) {
+  width: 100%;
+  height: 100%;
+}
+
+:deep(.m-content-with-copy .el-textarea__inner) {
+  width: 100%;
 }
 </style>

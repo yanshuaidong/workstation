@@ -12,28 +12,36 @@
       <!-- 统计信息展示 -->
       <el-row :gutter="20" class="stats-row">
         <el-col :span="6">
-          <div class="stat-card">
-            <div class="stat-value">{{ stats.total }}</div>
-            <div class="stat-label">总新闻数</div>
-          </div>
+          <el-card shadow="hover" class="stat-card">
+            <div class="stat-content">
+              <div class="stat-value">{{ stats.total }}</div>
+              <div class="stat-label">总新闻数</div>
+            </div>
+          </el-card>
         </el-col>
         <el-col :span="6">
-          <div class="stat-card">
-            <div class="stat-value success">{{ stats.today_count }}</div>
-            <div class="stat-label">今日新增</div>
-          </div>
+          <el-card shadow="hover" class="stat-card">
+            <div class="stat-content">
+              <div class="stat-value success">{{ stats.today_count }}</div>
+              <div class="stat-label">今日新增</div>
+            </div>
+          </el-card>
         </el-col>
         <el-col :span="6">
-          <div class="stat-card">
-            <div class="stat-time">{{ stats.latest_time || '暂无数据' }}</div>
-            <div class="stat-label">最新时间</div>
-          </div>
+          <el-card shadow="hover" class="stat-card">
+            <div class="stat-content">
+              <div class="stat-value">{{ stats.latest_time || '暂无数据' }}</div>
+              <div class="stat-label">最新时间</div>
+            </div>
+          </el-card>
         </el-col>
         <el-col :span="6">
-          <div class="stat-card">
-            <div class="stat-time">{{ stats.earliest_time || '暂无数据' }}</div>
-            <div class="stat-label">最早时间</div>
-          </div>
+          <el-card shadow="hover" class="stat-card">
+            <div class="stat-content">
+              <div class="stat-value">{{ stats.earliest_time || '暂无数据' }}</div>
+              <div class="stat-label">最早时间</div>
+            </div>
+          </el-card>
         </el-col>
       </el-row>
     </el-card>
@@ -62,9 +70,9 @@
             @change="handleQuickDateRange"
           >
             <el-option label="今天" value="today" />
+            <el-option label="最近3天" value="three_days" />
             <el-option label="最近7天" value="week" />
             <el-option label="最近1个月" value="month" />
-            <el-option label="最近3个月" value="quarter" />
             <el-option label="全部" value="all" />
           </el-select>
         </el-col>
@@ -130,6 +138,16 @@
           <span>新闻列表</span>
           <div class="header-controls">
             <el-button
+              type="warning"
+              size="small"
+              @click="copyCurrentPage"
+              :loading="copyLoading"
+              icon="DocumentCopy"
+            >
+              <!-- 注意：这里使用 icon="DocumentCopy" 属性，不需要在 components 中注册 DocumentCopy 组件 -->
+              复制当前页
+            </el-button>
+            <el-button
               type="info"
               size="small"
               @click="loadStats"
@@ -191,7 +209,7 @@
           </el-table-column>
           
           <!-- 第4列：消息软硬度标签 -->
-          <el-table-column label="消息软硬度" width="120" align="center">
+          <el-table-column label="消息软硬度" width="160" align="center">
             <template #default="scope">
               <el-select
                 v-model="scope.row.message_label"
@@ -213,7 +231,7 @@
           </el-table-column>
           
           <!-- 第5列：消息分数 -->
-          <el-table-column label="分数" width="100" align="center">
+          <el-table-column label="分数" width="120" align="center">
             <template #default="scope">
               <el-input-number
                 v-model="scope.row.message_score"
@@ -278,14 +296,14 @@
               >
                 编辑
               </el-button>
-              <el-button
+              <!-- <el-button
                 type="danger"
                 size="small"
                 @click="confirmDelete(scope.row)"
                 icon="Delete"
               >
                 删除
-              </el-button>
+              </el-button> -->
             </template>
           </el-table-column>
         </el-table>
@@ -361,14 +379,26 @@
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="内容" prop="content">
-              <el-input
-                v-model="newsForm.content"
-                type="textarea"
-                :rows="6"
-                placeholder="请输入新闻内容"
-                maxlength="10000"
-                show-word-limit
-              />
+              <div class="content-with-copy">
+                <el-input
+                  v-model="newsForm.content"
+                  type="textarea"
+                  :rows="10"
+                  placeholder="请输入新闻内容"
+                  maxlength="10000"
+                  show-word-limit
+                />
+                <el-button
+                  type="primary"
+                  size="small"
+                  @click="copySingleContent"
+                  icon="DocumentCopy"
+                  style="margin-top: 8px; align-self: flex-start;"
+                >
+                  <!-- 注意：这里使用 icon="DocumentCopy" 属性，不需要在 components 中注册 DocumentCopy 组件 -->
+                  复制内容
+                </el-button>
+              </div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -557,6 +587,9 @@ export default {
       },
       statsLoading: false,
       
+      // 复制状态
+      copyLoading: false,
+      
       // 分页信息
       pagination: {
         page: 1,
@@ -613,7 +646,8 @@ export default {
 
       // 文件上传相关
       uploadFiles: [],
-      existingScreenshots: []
+      existingScreenshots: [],
+      
     }
   },
   
@@ -743,14 +777,14 @@ export default {
         case 'today':
           startDate = new Date(today)
           break
+        case 'three_days':
+          startDate.setDate(today.getDate() - 3)
+          break
         case 'week':
           startDate.setDate(today.getDate() - 7)
           break
         case 'month':
           startDate.setMonth(today.getMonth() - 1)
-          break
-        case 'quarter':
-          startDate.setMonth(today.getMonth() - 3)
           break
         case 'all':
           this.dateRange = []
@@ -924,6 +958,10 @@ export default {
         if (this.$refs.newsFormRef) {
           this.$refs.newsFormRef.clearValidate()
         }
+        // 清除上传组件中的文件列表
+        if (this.$refs.uploadRef) {
+          this.$refs.uploadRef.clearFiles()
+        }
       })
     },
 
@@ -1064,6 +1102,111 @@ export default {
     navigateToItem(index) {
       this.currentEditIndex = index
       this.showEditDialog(this.newsList[index])
+    },
+
+    // 通用复制方法（兼容HTTP和HTTPS）
+    async copyToClipboard(text) {
+      try {
+        // 优先使用现代 Clipboard API（仅在 HTTPS 或 localhost 下可用）
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text)
+          return true
+        } else {
+          // 降级方案：使用传统的 execCommand 方法
+          return this.fallbackCopyTextToClipboard(text)
+        }
+      } catch (error) {
+        console.error('复制失败:', error)
+        // 如果现代API失败，尝试降级方案
+        return this.fallbackCopyTextToClipboard(text)
+      }
+    },
+
+    // 降级复制方案
+    fallbackCopyTextToClipboard(text) {
+      try {
+        // 创建一个临时的 textarea 元素
+        const textArea = document.createElement('textarea')
+        textArea.value = text
+        
+        // 设置样式使其不可见
+        textArea.style.position = 'fixed'
+        textArea.style.top = '0'
+        textArea.style.left = '0'
+        textArea.style.width = '2em'
+        textArea.style.height = '2em'
+        textArea.style.padding = '0'
+        textArea.style.border = 'none'
+        textArea.style.outline = 'none'
+        textArea.style.boxShadow = 'none'
+        textArea.style.background = 'transparent'
+        textArea.style.opacity = '0'
+        
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        
+        // 尝试复制
+        const successful = document.execCommand('copy')
+        document.body.removeChild(textArea)
+        
+        return successful
+      } catch (error) {
+        console.error('降级复制方案也失败了:', error)
+        return false
+      }
+    },
+
+    // 复制当前页新闻内容
+    async copyCurrentPage() {
+      if (!this.newsList.length) {
+        ElMessage.warning('当前页面没有新闻数据可复制')
+        return
+      }
+
+      this.copyLoading = true
+      try {
+        // 构建复制内容
+        const copyContent = this.newsList
+          .map((item, index) => `${index + 1}、${item.content}`)
+          .join('\n\n')
+        
+        const success = await this.copyToClipboard(copyContent)
+        
+        if (success) {
+          ElMessage.success(`成功复制当前页 ${this.newsList.length} 条新闻内容`)
+        } else {
+          ElMessage.error('复制失败，请手动复制内容')
+          console.log('复制的内容:', copyContent)
+        }
+      } catch (error) {
+        console.error('复制失败:', error)
+        ElMessage.error('复制失败')
+      } finally {
+        this.copyLoading = false
+      }
+    },
+
+    // 复制单条新闻内容
+    async copySingleContent() {
+      if (!this.newsForm.content) {
+        ElMessage.warning('当前内容为空，无法复制')
+        return
+      }
+
+      try {
+        const success = await this.copyToClipboard(this.newsForm.content)
+        
+        if (success) {
+          ElMessage.success('新闻内容已复制到剪贴板')
+        } else {
+          ElMessage.error('复制失败，请手动复制内容')
+          console.log('复制的内容:', this.newsForm.content)
+        }
+      } catch (error) {
+        console.error('复制失败:', error)
+        ElMessage.error('复制失败')
+      }
     }
   }
 }
@@ -1098,31 +1241,33 @@ export default {
 }
 
 .stat-card {
-  text-align: center;
-  padding: 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
-  color: white;
-  transition: transform 0.3s ease;
+  height: 100%;
+  transition: all 0.3s ease;
 }
 
-.stat-card:hover {
-  transform: translateY(-2px);
+.stat-card :deep(.el-card__body) {
+  padding: 20px;
+}
+
+.stat-content {
+  text-align: center;
 }
 
 .stat-value {
-  font-size: 32px;
-  font-weight: bold;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
   margin-bottom: 8px;
+  line-height: 1.2;
 }
 
 .stat-value.success {
-  color: #67c23a;
+  color: var(--el-color-success);
 }
 
 .stat-label {
   font-size: 14px;
-  opacity: 0.9;
+  color: var(--el-text-color-secondary);
 }
 
 .stat-time {
@@ -1294,7 +1439,7 @@ export default {
   }
   
   .stat-value {
-    font-size: 24px;
+    font-size: 20px;
   }
 }
 
@@ -1306,5 +1451,21 @@ export default {
 /* 空状态样式 */
 .el-empty {
   padding: 40px 20px;
+}
+
+/* 内容复制区域样式 */
+:deep(.content-with-copy) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+:deep(.content-with-copy .el-textarea) {
+  width: 100%;
+}
+
+:deep(.content-with-copy .el-textarea__inner) {
+  width: 100%;
 }
 </style>
