@@ -1,0 +1,34 @@
+{
+  "complete_content": "The user has greeted me in Chinese with \"你好\" which means \"Hello\". I should respond politely in Chinese and offer my assistance. Since they asked me to respond using markdown, I'll format my response accordingly.\n\n你好！👋\n\n很高兴为您服务。我是您的AI助手，可以帮助您：\n\n- 📝 回答问题\n- 💡 提供建议\n- 🔍 查找信息\n- 📚 解释概念\n- ✍️ 协助写作\n- 🧮 进行计算\n- 💬 翻译语言\n- 🎯 解决问题\n\n**请问有什么可以帮助您的吗？**",
+  "actual_content": "你好！👋\n\n很高兴为您服务。我是您的AI助手，可以帮助您：\n\n- 📝 回答问题\n- 💡 提供建议\n- 🔍 查找信息\n- 📚 解释概念\n- ✍️ 协助写作\n- 🧮 进行计算\n- 💬 翻译语言\n- 🎯 解决问题\n\n**请问有什么可以帮助您的吗？**",
+  "thinking_content": "The user has greeted me in Chinese with \"你好\" which means \"Hello\". I should respond politely in Chinese and offer my assistance. Since they asked me to respond using markdown, I'll format my response accordingly.",
+  "raw_lines": [
+    "<think>",
+    "The user has greeted me in Chinese with \"你好\" which means \"Hello\". I should respond politely in Chinese and offer my assistance. Since they asked me to respond using markdown, I'll format my response accordingly.",
+    "",
+    "</think>",
+    "你好！👋",
+    "",
+    "很高兴为您服务。我是您的AI助手，可以帮助您：",
+    "",
+    "- 📝 回答问题",
+    "- 💡 提供建议",
+    "- 🔍 查找信息",
+    "- 📚 解释概念",
+    "- ✍️ 协助写作",
+    "- 🧮 进行计算",
+    "- 💬 翻译语言",
+    "- 🎯 解决问题",
+    "",
+    "**请问有什么可以帮助您的吗？**"
+  ],
+  "metadata": {
+    "model": "claude-opus-4-20250514-thinking",
+    "prompt": "你好",
+    "total_lines": 18,
+    "thinking_lines": 2,
+    "actual_lines": 14,
+    "response_time": 8.485842943191528,
+    "http_status": 200
+  }
+}
