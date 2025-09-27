@@ -26,37 +26,84 @@
 
     <!-- 移动端搜索区 -->
     <div class="m-search">
-      <el-input
-        v-model="searchForm.search"
-        placeholder="搜索标题或内容..."
-        clearable
-        @keyup.enter="handleSearch"
-        @clear="handleSearch"
-        size="small"
-      >
-        <template #prefix>
-          <el-icon><Search /></el-icon>
-        </template>
-      </el-input>
-      
-      <div class="m-filters">
-        <el-select
-          v-model="searchForm.message_label"
-          placeholder="消息类型"
-          clearable
-          @change="handleSearch"
+      <!-- 时间范围选择 -->
+      <div class="m-date-section">
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD"
+          @change="handleDateRangeChange"
           size="small"
-          style="width: 120px"
-        >
-          <el-option label="硬消息" value="hard" />
-          <el-option label="软消息" value="soft" />
-          <el-option label="未知" value="unknown" />
-        </el-select>
+          style="width: 100%"
+        />
         
-        <el-button type="primary" @click="handleSearch" :loading="newsLoading" size="small">
-          搜索
-        </el-button>
-        <el-button @click="resetSearch" size="small">重置</el-button>
+        <el-select
+          v-model="quickDateRange"
+          placeholder="快捷选择"
+          @change="handleQuickDateRange"
+          size="small"
+          style="width: 100px; margin-top: 8px"
+        >
+          <el-option label="今天" value="today" />
+          <el-option label="7天" value="week" />
+          <el-option label="1月" value="month" />
+          <el-option label="3月" value="quarter" />
+          <el-option label="全部" value="all" />
+        </el-select>
+      </div>
+
+      <!-- 搜索字段和关键词 -->
+      <div class="m-search-section">
+        <div class="m-search-row">
+          <el-select
+            v-model="searchForm.search_field"
+            size="small"
+            style="width: 100px"
+          >
+            <el-option label="标题" value="title" />
+            <el-option label="内容" value="content" />
+            <el-option label="类型" value="message_type" />
+            <el-option label="反应" value="market_react" />
+          </el-select>
+          
+          <el-input
+            v-model="searchForm.search"
+            :placeholder="getSearchPlaceholder()"
+            clearable
+            @keyup.enter="handleSearch"
+            @clear="handleSearch"
+            size="small"
+            style="flex: 1"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+        </div>
+        
+        <div class="m-filters">
+          <el-select
+            v-model="searchForm.message_label"
+            placeholder="消息类型"
+            clearable
+            @change="handleSearch"
+            size="small"
+            style="width: 100px"
+          >
+            <el-option label="硬消息" value="hard" />
+            <el-option label="软消息" value="soft" />
+            <el-option label="未知" value="unknown" />
+          </el-select>
+          
+          <el-button type="primary" @click="handleSearch" :loading="newsLoading" size="small">
+            搜索
+          </el-button>
+          <el-button @click="resetSearch" size="small">重置</el-button>
+        </div>
       </div>
     </div>
 
@@ -83,7 +130,7 @@
         v-for="(item, index) in newsList"
         :key="item.id"
         class="m-news-item"
-        @click="showEditDialog(item)"
+        @click="showEditDialog(item, index)"
       >
         <!-- 新闻卡片头部 -->
         <div class="m-news-header">
@@ -191,6 +238,32 @@
       :before-close="handleCloseDialog"
       :show-close="false"
     >
+      <!-- 编辑模式下的移动端导航栏 -->
+      <div v-if="dialogMode === 'edit'" class="m-edit-navigation">
+        <div class="m-nav-info">
+          <div class="m-nav-position">第 {{ currentEditIndex + 1 }} 条 / 共 {{ newsList.length }} 条</div>
+          <div class="m-nav-tips">切换时未保存的修改将丢失</div>
+        </div>
+        <div class="m-nav-controls">
+          <el-button
+            size="small"
+            :disabled="currentEditIndex <= 0"
+            @click="navigateToItem(currentEditIndex - 1)"
+            icon="ArrowLeft"
+          >
+            上一条
+          </el-button>
+          <el-button
+            size="small"
+            :disabled="currentEditIndex >= newsList.length - 1"
+            @click="navigateToItem(currentEditIndex + 1)"
+            icon="ArrowRight"
+          >
+            下一条
+          </el-button>
+        </div>
+      </div>
+
       <el-form
         ref="newsFormRef"
         :model="newsForm"
@@ -395,14 +468,22 @@ export default {
       // 搜索表单
       searchForm: {
         search: '',
-        message_label: ''
+        search_field: 'title',
+        message_label: '',
+        start_date: '',
+        end_date: ''
       },
+
+      // 日期范围选择
+      dateRange: [],
+      quickDateRange: 'month',
 
       // 对话框相关
       dialogVisible: false,
       dialogMode: 'create',
       submitLoading: false,
       currentEditId: null,
+      currentEditIndex: -1, // 当前编辑项在列表中的索引
 
       // 标签选择器
       labelDialogVisible: false,
@@ -440,6 +521,8 @@ export default {
   },
   
   async mounted() {
+    // 初始化日期范围为最近1个月
+    this.initDefaultDateRange()
     await this.loadStats()
     await this.loadNewsList()
   },
@@ -557,9 +640,89 @@ export default {
     resetSearch() {
       this.searchForm = {
         search: '',
-        message_label: ''
+        search_field: 'title',
+        message_label: '',
+        start_date: '',
+        end_date: ''
       }
+      this.quickDateRange = 'month'
+      this.initDefaultDateRange()
       this.handleSearch()
+    },
+
+    // 初始化默认日期范围（最近1个月）
+    initDefaultDateRange() {
+      const today = new Date()
+      const oneMonthAgo = new Date()
+      oneMonthAgo.setMonth(today.getMonth() - 1)
+      
+      this.dateRange = [
+        oneMonthAgo.toISOString().split('T')[0],
+        today.toISOString().split('T')[0]
+      ]
+      
+      this.searchForm.start_date = this.dateRange[0]
+      this.searchForm.end_date = this.dateRange[1]
+    },
+
+    // 处理日期范围变化
+    handleDateRangeChange(dateRange) {
+      if (dateRange && dateRange.length === 2) {
+        this.searchForm.start_date = dateRange[0]
+        this.searchForm.end_date = dateRange[1]
+      } else {
+        this.searchForm.start_date = ''
+        this.searchForm.end_date = ''
+      }
+      this.quickDateRange = '' // 清空快捷选择
+      this.handleSearch()
+    },
+
+    // 处理快捷日期范围选择
+    handleQuickDateRange(value) {
+      const today = new Date()
+      let startDate = new Date()
+      
+      switch (value) {
+        case 'today':
+          startDate = new Date(today)
+          break
+        case 'week':
+          startDate.setDate(today.getDate() - 7)
+          break
+        case 'month':
+          startDate.setMonth(today.getMonth() - 1)
+          break
+        case 'quarter':
+          startDate.setMonth(today.getMonth() - 3)
+          break
+        case 'all':
+          this.dateRange = []
+          this.searchForm.start_date = ''
+          this.searchForm.end_date = ''
+          this.handleSearch()
+          return
+      }
+      
+      this.dateRange = [
+        startDate.toISOString().split('T')[0],
+        today.toISOString().split('T')[0]
+      ]
+      
+      this.searchForm.start_date = this.dateRange[0]
+      this.searchForm.end_date = this.dateRange[1]
+      this.handleSearch()
+    },
+
+    // 获取搜索占位符文本
+    getSearchPlaceholder() {
+      const placeholderMap = {
+        'title': '搜索标题...',
+        'content': '搜索内容...',
+        'message_type': '搜索类型...',
+        'market_react': '搜索反应...'
+      }
+      return placeholderMap[this.searchForm.search_field] || '搜索...'
     },
 
     // 快速更新消息标签
@@ -604,14 +767,24 @@ export default {
     showCreateDialog() {
       this.dialogMode = 'create'
       this.currentEditId = null
+      this.currentEditIndex = -1 // 重置编辑索引
       this.resetForm()
       this.dialogVisible = true
     },
 
     // 显示编辑对话框
-    async showEditDialog(row) {
+    async showEditDialog(row, index = null) {
       this.dialogMode = 'edit'
       this.currentEditId = row.id
+      
+      // 设置当前编辑索引
+      if (index !== null) {
+        this.currentEditIndex = index
+      } else {
+        // 如果没有传递索引，则查找
+        const findIndex = this.newsList.findIndex(item => item.id === row.id)
+        this.currentEditIndex = findIndex !== -1 ? findIndex : this.currentEditIndex
+      }
       
       try {
         const response = await request.get(`${getNewsDetailApi}/${row.id}`)
@@ -696,6 +869,7 @@ export default {
     // 关闭对话框
     handleCloseDialog() {
       this.dialogVisible = false
+      this.currentEditIndex = -1
       this.resetForm()
     },
 
@@ -813,6 +987,12 @@ export default {
       } finally {
         this.submitLoading = false
       }
+    },
+
+    // 导航到指定索引的新闻
+    navigateToItem(index) {
+      this.currentEditIndex = index
+      this.showEditDialog(this.newsList[index])
     }
   }
 }
@@ -924,6 +1104,40 @@ export default {
   transform: translateY(-1px);
 }
 
+/* 日期选择区域 */
+.m-date-section {
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.m-date-section .el-date-editor {
+  border-radius: 8px;
+}
+
+.m-date-section .el-date-editor .el-input__wrapper {
+  border-radius: 8px;
+  border: 1px solid #e1e7f5;
+  transition: all 0.3s ease;
+}
+
+.m-date-section .el-date-editor .el-input__wrapper:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+/* 搜索区域 */
+.m-search-section {
+  margin-bottom: 0;
+}
+
+.m-search-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
 .m-search .el-input {
   border-radius: 8px;
 }
@@ -947,7 +1161,6 @@ export default {
 .m-filters {
   display: flex;
   gap: 12px;
-  margin-top: 15px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -1200,6 +1413,64 @@ export default {
   gap: 15px;
 }
 
+/* 移动端编辑导航栏样式 */
+.m-edit-navigation {
+  background: linear-gradient(135deg, #f0f2ff 0%, #e8ecff 100%);
+  border-radius: 10px;
+  padding: 12px 15px;
+  margin-bottom: 15px;
+  border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.m-nav-info {
+  margin-bottom: 10px;
+}
+
+.m-nav-position {
+  display: block;
+  font-weight: 600;
+  color: #303133;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.m-nav-tips {
+  display: block;
+  font-size: 11px;
+  color: #909399;
+  line-height: 1.3;
+}
+
+.m-nav-controls {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.m-nav-controls .el-button {
+  border-radius: 6px;
+  font-weight: 500;
+  padding: 6px 12px;
+  transition: all 0.3s ease;
+  border: 1px solid #e1e7f5;
+  background: white;
+  color: #667eea;
+}
+
+.m-nav-controls .el-button:not(.is-disabled):hover {
+  background: #667eea;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.2);
+}
+
+.m-nav-controls .el-button.is-disabled {
+  background: #f5f7fa;
+  color: #c0c4cc;
+  border-color: #e4e7ed;
+  cursor: not-allowed;
+}
+
 .m-upload-tip {
   font-size: 12px;
   color: #999;
@@ -1285,9 +1556,24 @@ export default {
     font-size: 20px;
   }
   
+  .m-search-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .m-search-row .el-select,
+  .m-search-row .el-input {
+    width: 100% !important;
+  }
+  
   .m-filters {
     flex-direction: column;
     gap: 8px;
+  }
+  
+  .m-filters .el-select,
+  .m-filters .el-button {
+    width: 100%;
   }
 }
 

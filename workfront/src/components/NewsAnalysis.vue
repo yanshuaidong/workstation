@@ -40,11 +40,70 @@
 
     <!-- 搜索和筛选区域 -->
     <el-card class="filter-card">
-      <el-row :gutter="20">
+      <!-- 第一行：时间范围选择 -->
+      <el-row :gutter="20" class="filter-row">
         <el-col :span="8">
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            @change="handleDateRangeChange"
+            style="width: 100%"
+          />
+        </el-col>
+        <el-col :span="6">
+          <el-select
+            v-model="quickDateRange"
+            placeholder="快捷选择"
+            @change="handleQuickDateRange"
+          >
+            <el-option label="今天" value="today" />
+            <el-option label="最近7天" value="week" />
+            <el-option label="最近1个月" value="month" />
+            <el-option label="最近3个月" value="quarter" />
+            <el-option label="全部" value="all" />
+          </el-select>
+        </el-col>
+        <el-col :span="6">
+          <el-select
+            v-model="searchForm.message_label"
+            placeholder="选择消息软硬度"
+            clearable
+            @change="handleSearch"
+          >
+            <el-option label="硬消息" value="hard" />
+            <el-option label="软消息" value="soft" />
+            <el-option label="未知" value="unknown" />
+          </el-select>
+        </el-col>
+        <el-col :span="4">
+          <el-button type="success" @click="showCreateDialog" icon="Plus">
+            新增消息
+          </el-button>
+        </el-col>
+      </el-row>
+
+      <!-- 第二行：关键词搜索 -->
+      <el-row :gutter="20" class="filter-row">
+        <el-col :span="6">
+          <el-select
+            v-model="searchForm.search_field"
+            placeholder="选择搜索字段"
+          >
+            <el-option label="标题" value="title" />
+            <el-option label="内容" value="content" />
+            <el-option label="消息类型" value="message_type" />
+            <el-option label="市场反应" value="market_react" />
+          </el-select>
+        </el-col>
+        <el-col :span="10">
           <el-input
             v-model="searchForm.search"
-            placeholder="搜索标题或内容..."
+            :placeholder="getSearchPlaceholder()"
             clearable
             @keyup.enter="handleSearch"
             @clear="handleSearch"
@@ -54,29 +113,12 @@
             </template>
           </el-input>
         </el-col>
-        <el-col :span="6">
-          <el-select
-            v-model="searchForm.message_label"
-            placeholder="选择消息类型"
-            clearable
-            @change="handleSearch"
-          >
-            <el-option label="硬消息" value="hard" />
-            <el-option label="软消息" value="soft" />
-            <el-option label="未知" value="unknown" />
-          </el-select>
-        </el-col>
-        <el-col :span="6">
+        <el-col :span="8">
           <el-button type="primary" @click="handleSearch" :loading="newsLoading">
             <el-icon><Search /></el-icon>
             搜索
           </el-button>
           <el-button @click="resetSearch">重置</el-button>
-        </el-col>
-        <el-col :span="4">
-          <el-button type="success" @click="showCreateDialog" icon="Plus">
-            新增消息
-          </el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -148,8 +190,8 @@
             </template>
           </el-table-column>
           
-          <!-- 第4列：消息类型标签 -->
-          <el-table-column label="消息类型" width="120" align="center">
+          <!-- 第4列：消息软硬度标签 -->
+          <el-table-column label="消息软硬度" width="120" align="center">
             <template #default="scope">
               <el-select
                 v-model="scope.row.message_label"
@@ -185,7 +227,7 @@
           </el-table-column>
           
           <!-- 第6列：消息类型 -->
-          <el-table-column label="类型" width="140">
+          <el-table-column label="消息类型" width="140">
             <template #default="scope">
               <el-tag v-if="scope.row.message_type" type="primary" size="small">
                 {{ scope.row.message_type }}
@@ -231,7 +273,7 @@
               <el-button
                 type="primary"
                 size="small"
-                @click="showEditDialog(scope.row)"
+                @click="showEditDialog(scope.row, scope.$index)"
                 icon="Edit"
               >
                 编辑
@@ -271,6 +313,32 @@
       width="80%"
       :before-close="handleCloseDialog"
     >
+      <!-- 编辑模式下的导航栏 -->
+      <div v-if="dialogMode === 'edit'" class="edit-navigation">
+        <div class="nav-info">
+          <span class="nav-position">第 {{ currentEditIndex + 1 }} 条，共 {{ newsList.length }} 条</span>
+          <span class="nav-tips">切换时未保存的修改将丢失</span>
+        </div>
+        <div class="nav-controls">
+          <el-button
+            size="small"
+            :disabled="currentEditIndex <= 0"
+            @click="navigateToItem(currentEditIndex - 1)"
+            icon="ArrowLeft"
+          >
+            上一条
+          </el-button>
+          <el-button
+            size="small"
+            :disabled="currentEditIndex >= newsList.length - 1"
+            @click="navigateToItem(currentEditIndex + 1)"
+            icon="ArrowRight"
+          >
+            下一条
+          </el-button>
+        </div>
+      </div>
+
       <el-form
         ref="newsFormRef"
         :model="newsForm"
@@ -502,14 +570,22 @@ export default {
       // 搜索表单
       searchForm: {
         search: '',
-        message_label: ''
+        search_field: 'title',
+        message_label: '',
+        start_date: '',
+        end_date: ''
       },
+
+      // 日期范围选择
+      dateRange: [],
+      quickDateRange: 'month',
 
       // 对话框相关
       dialogVisible: false,
       dialogMode: 'create', // 'create' 或 'edit'
       submitLoading: false,
       currentEditId: null,
+      currentEditIndex: -1, // 当前编辑项在列表中的索引
 
       // 新闻表单
       newsForm: {
@@ -542,6 +618,8 @@ export default {
   },
   
   async mounted() {
+    // 初始化日期范围为最近1个月
+    this.initDefaultDateRange()
     await this.loadStats()
     await this.loadNewsList()
   },
@@ -618,9 +696,89 @@ export default {
     resetSearch() {
       this.searchForm = {
         search: '',
-        message_label: ''
+        search_field: 'title',
+        message_label: '',
+        start_date: '',
+        end_date: ''
       }
+      this.quickDateRange = 'month'
+      this.initDefaultDateRange()
       this.handleSearch()
+    },
+
+    // 初始化默认日期范围（最近1个月）
+    initDefaultDateRange() {
+      const today = new Date()
+      const oneMonthAgo = new Date()
+      oneMonthAgo.setMonth(today.getMonth() - 1)
+      
+      this.dateRange = [
+        oneMonthAgo.toISOString().split('T')[0],
+        today.toISOString().split('T')[0]
+      ]
+      
+      this.searchForm.start_date = this.dateRange[0]
+      this.searchForm.end_date = this.dateRange[1]
+    },
+
+    // 处理日期范围变化
+    handleDateRangeChange(dateRange) {
+      if (dateRange && dateRange.length === 2) {
+        this.searchForm.start_date = dateRange[0]
+        this.searchForm.end_date = dateRange[1]
+      } else {
+        this.searchForm.start_date = ''
+        this.searchForm.end_date = ''
+      }
+      this.quickDateRange = '' // 清空快捷选择
+      this.handleSearch()
+    },
+
+    // 处理快捷日期范围选择
+    handleQuickDateRange(value) {
+      const today = new Date()
+      let startDate = new Date()
+      
+      switch (value) {
+        case 'today':
+          startDate = new Date(today)
+          break
+        case 'week':
+          startDate.setDate(today.getDate() - 7)
+          break
+        case 'month':
+          startDate.setMonth(today.getMonth() - 1)
+          break
+        case 'quarter':
+          startDate.setMonth(today.getMonth() - 3)
+          break
+        case 'all':
+          this.dateRange = []
+          this.searchForm.start_date = ''
+          this.searchForm.end_date = ''
+          this.handleSearch()
+          return
+      }
+      
+      this.dateRange = [
+        startDate.toISOString().split('T')[0],
+        today.toISOString().split('T')[0]
+      ]
+      
+      this.searchForm.start_date = this.dateRange[0]
+      this.searchForm.end_date = this.dateRange[1]
+      this.handleSearch()
+    },
+
+    // 获取搜索占位符文本
+    getSearchPlaceholder() {
+      const placeholderMap = {
+        'title': '搜索新闻标题...',
+        'content': '搜索新闻内容...',
+        'message_type': '搜索消息类型...',
+        'market_react': '搜索市场反应...'
+      }
+      return placeholderMap[this.searchForm.search_field] || '搜索...'
     },
 
     // 快速更新消息标签
@@ -666,14 +824,24 @@ export default {
     showCreateDialog() {
       this.dialogMode = 'create'
       this.currentEditId = null
+      this.currentEditIndex = -1 // 重置编辑索引
       this.resetForm()
       this.dialogVisible = true
     },
 
     // 显示编辑对话框
-    async showEditDialog(row) {
+    async showEditDialog(row, index = null) {
       this.dialogMode = 'edit'
       this.currentEditId = row.id
+      
+      // 设置当前编辑索引
+      if (index !== null) {
+        this.currentEditIndex = index
+      } else {
+        // 如果没有传递索引，则查找
+        const findIndex = this.newsList.findIndex(item => item.id === row.id)
+        this.currentEditIndex = findIndex !== -1 ? findIndex : this.currentEditIndex
+      }
       
       try {
         // 获取详细信息
@@ -762,6 +930,7 @@ export default {
     // 关闭对话框
     handleCloseDialog() {
       this.dialogVisible = false
+      this.currentEditIndex = -1
       this.resetForm()
     },
 
@@ -889,6 +1058,12 @@ export default {
       } finally {
         this.submitLoading = false
       }
+    },
+
+    // 导航到指定索引的新闻
+    navigateToItem(index) {
+      this.currentEditIndex = index
+      this.showEditDialog(this.newsList[index])
     }
   }
 }
@@ -992,6 +1167,40 @@ export default {
   text-align: right;
 }
 
+/* 新增/编辑对话框导航栏样式 */
+.edit-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 10px 20px;
+  background-color: #f5f7fa;
+  border-radius: 8px;
+}
+
+.nav-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #606266;
+  font-size: 14px;
+}
+
+.nav-position {
+  font-weight: bold;
+  color: #303133;
+}
+
+.nav-tips {
+  font-size: 12px;
+  color: #909399;
+}
+
+.nav-controls {
+  display: flex;
+  gap: 10px;
+}
+
 /* 上传区域样式 */
 .upload-area {
   display: flex;
@@ -1046,10 +1255,23 @@ export default {
   right: 5px;
 }
 
+/* 筛选区域样式 */
+.filter-row {
+  margin-bottom: 15px;
+}
+
+.filter-row:last-child {
+  margin-bottom: 0;
+}
+
 /* 响应式布局 */
 @media (max-width: 1200px) {
   .stats-row .el-col {
     margin-bottom: 20px;
+  }
+  
+  .filter-row .el-col {
+    margin-bottom: 10px;
   }
 }
 

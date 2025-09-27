@@ -2350,11 +2350,14 @@ def get_cls_news_stats():
 
 @app.route('/api/news/list', methods=['GET'])
 def get_cls_news_list():
-    """分页查询财联社新闻（包含搜索和筛选功能）"""
+    """分页查询财联社新闻（包含高级搜索和筛选功能）"""
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 10, type=int)
     search = request.args.get('search', '').strip()  # 搜索关键字
+    search_field = request.args.get('search_field', 'title').strip()  # 搜索字段
     message_label = request.args.get('message_label', '').strip()  # 消息标签筛选
+    start_date = request.args.get('start_date', '').strip()  # 开始日期 YYYY-MM-DD
+    end_date = request.args.get('end_date', '').strip()  # 结束日期 YYYY-MM-DD
     
     # 限制分页参数
     page = max(1, page)
@@ -2368,10 +2371,46 @@ def get_cls_news_list():
         where_conditions = []
         where_params = []
         
-        # 搜索条件（标题或内容包含关键字）
+        # 时间范围筛选
+        if start_date:
+            # 将日期转换为时间戳进行比较
+            try:
+                start_timestamp = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp())
+                where_conditions.append("ctime >= %s")
+                where_params.append(start_timestamp)
+            except ValueError:
+                logger.warning(f"无效的开始日期格式: {start_date}")
+        
+        if end_date:
+            try:
+                # 结束日期加1天，确保包含当天的所有数据
+                end_datetime = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+                end_timestamp = int(end_datetime.timestamp())
+                where_conditions.append("ctime < %s")
+                where_params.append(end_timestamp)
+            except ValueError:
+                logger.warning(f"无效的结束日期格式: {end_date}")
+        
+        # 搜索条件（根据指定字段搜索）
         if search:
-            where_conditions.append("(title LIKE %s OR content LIKE %s)")
-            where_params.extend([f"%{search}%", f"%{search}%"])
+            # 验证搜索字段的有效性
+            valid_search_fields = ['title', 'content', 'message_type', 'market_react']
+            if search_field not in valid_search_fields:
+                search_field = 'title'  # 默认使用标题搜索
+            
+            # 构建搜索条件
+            if search_field == 'title':
+                where_conditions.append("title LIKE %s")
+                where_params.append(f"%{search}%")
+            elif search_field == 'content':
+                where_conditions.append("content LIKE %s")
+                where_params.append(f"%{search}%")
+            elif search_field == 'message_type':
+                where_conditions.append("message_type LIKE %s")
+                where_params.append(f"%{search}%")
+            elif search_field == 'market_react':
+                where_conditions.append("market_react LIKE %s")
+                where_params.append(f"%{search}%")
         
         # 消息标签筛选
         if message_label and message_label in ['hard', 'soft', 'unknown']:
@@ -2466,7 +2505,10 @@ def get_cls_news_list():
                 },
                 'filters': {
                     'search': search,
-                    'message_label': message_label
+                    'search_field': search_field,
+                    'message_label': message_label,
+                    'start_date': start_date,
+                    'end_date': end_date
                 }
             }
         })
