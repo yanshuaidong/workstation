@@ -256,8 +256,8 @@ curl http://localhost/health
 # 检查数据库连接
 docker-compose exec automysqlback python -c "
 import pymysql
-conn = pymysql.connect(host='rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com', 
-                      user='ysd', password='Yan1234567', database='futures')
+conn = pymysql.connect(host='xxx.mysql.rds.aliyuncs.com', 
+                      user='xxx', password='xxx', database='futures')
 print('数据库连接正常')
 "
 ```
@@ -322,10 +322,10 @@ cd /opt/futures-system
 
 ```bash
 # 数据库配置
-DB_HOST=rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com
+DB_HOST=xxx.mysql.rds.aliyuncs.com
 DB_PORT=3306
-DB_USER=ysd
-DB_PASSWORD=Yan1234567
+DB_USER=xxx
+DB_PASSWORD=xxx
 DB_DATABASE=futures
 
 # 服务端口
