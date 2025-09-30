@@ -27,38 +27,6 @@ const routes = [
       title: '消息跟踪'
     }
   },
-  // {
-  //   path: '/position-structure',
-  //   name: 'PositionStructure',
-  //   component: ApiDataFetcher,
-  //   meta: {
-  //     title: '机构持仓结构'
-  //   }
-  // },
-  // {
-  //   path: '/technical-analysis',
-  //   name: 'TechnicalAnalysis',
-  //   component: TechnicalAnalysis,
-  //   meta: {
-  //     title: '技术面分析'
-  //   }
-  // },
-  // {
-  //   path: '/news-analysis',
-  //   name: 'NewsAnalysis',
-  //   component: () => import('@/components/NewsAnalysis.vue'),
-  //   meta: {
-  //     title: '消息面分析'
-  //   }
-  // },
-  // {
-  //   path: '/prompt-formatter',
-  //   name: 'PromptFormatter',
-  //   component: () => import('@/components/PromptFormatter.vue'),
-  //   meta: {
-  //     title: '提示词格式化'
-  //   }
-  // },
   {
     path: '/futures-update',
     name: 'FuturesUpdate',  
