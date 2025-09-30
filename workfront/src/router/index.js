@@ -3,6 +3,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 // import TechnicalAnalysis from '@/components/TechnicalAnalysis.vue'
 import FuturesUpdate from '@/components/FuturesUpdate.vue'
 import AdaptiveNewsAnalysis from '@/components/AdaptiveNewsAnalysis.vue'
+// workfront/src/components/NewsTracking.vue
+import NewsTracking from '@/components/NewsTracking.vue'
 
 const routes = [
   {
@@ -15,6 +17,14 @@ const routes = [
     component: AdaptiveNewsAnalysis,
     meta: {
       title: '消息面分析'
+    }
+  },
+  {
+    path: '/news-tracking',
+    name: 'NewsTracking',
+    component: NewsTracking,
+    meta: {
+      title: '消息跟踪'
     }
   },
   // {

@@ -59,6 +59,13 @@ export const deleteNewsApi = `${BASE_URL_API_A}/news/delete`;     // 需要在�
 export const getOssUploadUrlApi = `${BASE_URL_API_A}/oss/upload-url`;
 export const getOssAccessUrlApi = `${BASE_URL_API_A}/oss/access-url`;
 
+// 新闻处理流程接口
+export const getUnreviewedNewsApi = `${BASE_URL_API_A}/news/process/unreviewed`;
+export const markNewsReviewedApi = `${BASE_URL_API_A}/news/process/review`;
+export const getTrackingListApi = `${BASE_URL_API_A}/news/process/tracking-list`;
+export const updateTrackingStatusApi = `${BASE_URL_API_A}/news/process/update-tracking`;
+export const initTrackingApi = `${BASE_URL_API_A}/news/process/init-tracking`;
+
 
 
 // 导出端口配置，方便组件使用

@@ -8,6 +8,7 @@
 4. AI评分新闻影响力（0-100分）
 5. AI标签新闻类型
 6. 自动检查并补齐数据库字段
+7. 消息处理流程跟踪功能（自动创建跟踪记录）
 
 使用方法:
   python main.py crawl               - 只爬取新闻
@@ -198,6 +199,36 @@ def check_and_update_database_schema():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
         
+        # 创建消息处理流程跟踪表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS news_process_tracking (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                news_id BIGINT NOT NULL COMMENT '关联news_red_telegraph表的id',
+                ctime BIGINT NOT NULL COMMENT '消息创建时间（冗余字段，方便查询）',
+                
+                -- 第一阶段：标签校验状态
+                is_reviewed TINYINT(1) NOT NULL DEFAULT '0' COMMENT '是否已完成标签校验',
+                
+                -- 第二阶段：定期跟踪状态（4个关键时间节点）
+                track_day3_done TINYINT(1) NOT NULL DEFAULT '0' COMMENT '3天跟踪是否完成',
+                track_day7_done TINYINT(1) NOT NULL DEFAULT '0' COMMENT '7天跟踪是否完成',
+                track_day14_done TINYINT(1) NOT NULL DEFAULT '0' COMMENT '14天跟踪是否完成',
+                track_day28_done TINYINT(1) NOT NULL DEFAULT '0' COMMENT '28天跟踪是否完成',
+                
+                -- 系统字段
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                
+                UNIQUE KEY uk_news_id (news_id),
+                KEY idx_ctime (ctime),
+                KEY idx_review_status (is_reviewed, ctime),
+                KEY idx_track_day3 (track_day3_done, ctime),
+                KEY idx_track_day7 (track_day7_done, ctime),
+                KEY idx_track_day14 (track_day14_done, ctime),
+                KEY idx_track_day28 (track_day28_done, ctime)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息处理流程跟踪表'
+        """)
+        
         # 获取当前表结构
         cursor.execute("DESCRIBE news_red_telegraph")
         existing_columns = {row[0]: row for row in cursor.fetchall()}
@@ -225,6 +256,12 @@ def check_and_update_database_schema():
         
         conn.commit()
         logger.info("数据库字段结构检查完成")
+        
+        # 补齐缺失的跟踪记录
+        logger.info("开始检查并补齐跟踪记录...")
+        missing_count = create_missing_tracking_records()
+        if missing_count > 0:
+            logger.info(f"补齐了 {missing_count} 条缺失的跟踪记录")
         
     except Exception as e:
         logger.error(f"数据库字段检查失败: {e}")
@@ -255,26 +292,45 @@ def save_news_to_db(news_data):
                 continue
                 
             try:
+                # 开始事务处理
+                conn.begin()
+                
                 # 清理HTML标签
                 title = re.sub(r'<[^>]+>', '', title)
                 content = re.sub(r'<[^>]+>', '', content)
                 
+                # 插入新闻记录
                 cursor.execute("""
                     INSERT INTO news_red_telegraph (ctime, title, content)
                     VALUES (%s, %s, %s)
                 """, (ctime, title, content))
                 
+                # 获取新插入的新闻ID
+                news_id = cursor.lastrowid
+                
+                # 同步创建跟踪记录
+                cursor.execute("""
+                    INSERT INTO news_process_tracking (news_id, ctime)
+                    VALUES (%s, %s)
+                """, (news_id, ctime))
+                
+                # 提交事务
+                conn.commit()
+                
                 new_count += 1
-                logger.info(f"保存新闻: {title[:50]}...")
+                logger.info(f"保存新闻及跟踪记录: {title[:50]}... (ID: {news_id})")
                 
             except pymysql.IntegrityError as e:
+                conn.rollback()
                 if e.args[0] == 1062:  # Duplicate entry
                     duplicate_count += 1
                     logger.debug(f"新闻已存在，跳过: {title[:50]}...")
                 else:
                     logger.error(f"保存新闻时出错: {e}")
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"保存新闻及跟踪记录时出错: {e}")
         
-        conn.commit()
         logger.info(f"新闻保存完成: 新增{new_count}条, 重复{duplicate_count}条")
         return new_count, duplicate_count
         
@@ -282,6 +338,55 @@ def save_news_to_db(news_data):
         logger.error(f"保存新闻数据失败: {e}")
         conn.rollback()
         return 0, 0
+    finally:
+        cursor.close()
+        conn.close()
+
+# ==================== 跟踪表操作函数 ====================
+
+def create_missing_tracking_records():
+    """为缺失跟踪记录的新闻创建跟踪记录（只包含基础字段）"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 查找没有跟踪记录的新闻
+        cursor.execute("""
+            SELECT n.id, n.ctime
+            FROM news_red_telegraph n
+            LEFT JOIN news_process_tracking t ON n.id = t.news_id
+            WHERE t.news_id IS NULL
+        """)
+        
+        missing_news = cursor.fetchall()
+        
+        if not missing_news:
+            logger.info("所有新闻都已有跟踪记录")
+            return 0
+        
+        # 批量创建跟踪记录
+        created_count = 0
+        for news_id, ctime in missing_news:
+            try:
+                cursor.execute("""
+                    INSERT INTO news_process_tracking (news_id, ctime)
+                    VALUES (%s, %s)
+                """, (news_id, ctime))
+                created_count += 1
+            except pymysql.IntegrityError as e:
+                if e.args[0] == 1062:  # Duplicate entry
+                    logger.debug(f"跟踪记录已存在，跳过新闻ID: {news_id}")
+                else:
+                    logger.error(f"创建跟踪记录失败，新闻ID: {news_id}, 错误: {e}")
+        
+        conn.commit()
+        logger.info(f"补齐跟踪记录完成: 新增{created_count}条")
+        return created_count
+        
+    except Exception as e:
+        logger.error(f"补齐跟踪记录失败: {e}")
+        conn.rollback()
+        return 0
     finally:
         cursor.close()
         conn.close()

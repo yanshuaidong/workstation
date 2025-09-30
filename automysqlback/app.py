@@ -284,6 +284,43 @@ def init_database():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='财联社加红电报新闻表'
         """)
         
+        # 7. 消息处理流程跟踪表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS news_process_tracking (
+                id BIGINT NOT NULL AUTO_INCREMENT,
+                news_id BIGINT NOT NULL COMMENT '关联news_red_telegraph表的id',
+                ctime BIGINT NOT NULL COMMENT '消息创建时间（冗余字段，方便查询）',
+                
+                -- 第一阶段：标签校验状态
+                is_reviewed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已完成标签校验',
+                review_time TIMESTAMP NULL DEFAULT NULL COMMENT '校验完成时间',
+                
+                -- 第二阶段：定期跟踪状态（4个关键时间节点）
+                track_day3_done TINYINT(1) NOT NULL DEFAULT 0 COMMENT '3天跟踪是否完成',
+                track_day3_time TIMESTAMP NULL DEFAULT NULL COMMENT '3天跟踪完成时间',
+                
+                track_day7_done TINYINT(1) NOT NULL DEFAULT 0 COMMENT '7天跟踪是否完成',
+                track_day7_time TIMESTAMP NULL DEFAULT NULL COMMENT '7天跟踪完成时间',
+                
+                track_day14_done TINYINT(1) NOT NULL DEFAULT 0 COMMENT '14天跟踪是否完成',
+                track_day14_time TIMESTAMP NULL DEFAULT NULL COMMENT '14天跟踪完成时间',
+                
+                track_day28_done TINYINT(1) NOT NULL DEFAULT 0 COMMENT '28天跟踪是否完成',
+                track_day28_time TIMESTAMP NULL DEFAULT NULL COMMENT '28天跟踪完成时间',
+                
+                -- 系统字段
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                
+                PRIMARY KEY (id),
+                UNIQUE KEY uk_news_id (news_id),
+                KEY idx_ctime (ctime),
+                KEY idx_review_status (is_reviewed, ctime),
+                KEY idx_track_status (track_day3_done, track_day7_done, track_day14_done, track_day28_done),
+                FOREIGN KEY (news_id) REFERENCES news_red_telegraph(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息处理流程跟踪表'
+        """)
+        
         conn.commit()
         
         # 检查并添加新字段到 news_red_telegraph 表（数据库迁移）
@@ -2268,6 +2305,15 @@ def save_news_to_db(news_data):
                     VALUES (%s, %s, %s)
                 """, (ctime, title, content))
                 
+                # 获取新插入的新闻ID
+                news_id = cursor.lastrowid
+                
+                # 自动创建处理跟踪记录
+                cursor.execute("""
+                    INSERT INTO news_process_tracking (news_id, ctime)
+                    VALUES (%s, %s)
+                """, (news_id, ctime))
+                
                 new_count += 1
                 logger.info(f"保存新闻: {title[:50]}...")
                 
@@ -2793,6 +2839,409 @@ def delete_news(news_id):
     finally:
         cursor.close()
         conn.close()
+
+# ========== 新闻处理流程接口 ==========
+
+@app.route('/api/news/process/unreviewed', methods=['GET'])
+def get_unreviewed_news():
+    """获取待校验的新闻列表"""
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 计算30天前的时间戳
+        thirty_days_ago = int((datetime.now() - timedelta(days=30)).timestamp())
+        
+        # 查询最近30天内未校验的新闻数量
+        cursor.execute("""
+            SELECT COUNT(*) as total FROM news_process_tracking 
+            WHERE ctime >= %s AND is_reviewed = 0
+        """, (thirty_days_ago,))
+        
+        total_unreviewed = cursor.fetchone()['total']
+        
+        # 获取下一条待校验的新闻详情
+        cursor.execute("""
+            SELECT 
+                nrt.id, nrt.ctime, nrt.title, nrt.content, 
+                nrt.ai_analysis, nrt.message_score, nrt.message_label, nrt.message_type,
+                npt.id as tracking_id,
+                FROM_UNIXTIME(nrt.ctime) as formatted_time
+            FROM news_process_tracking npt
+            JOIN news_red_telegraph nrt ON npt.news_id = nrt.id
+            WHERE npt.ctime >= %s AND npt.is_reviewed = 0
+            ORDER BY nrt.ctime ASC
+            LIMIT 1
+        """, (thirty_days_ago,))
+        
+        current_news = cursor.fetchone()
+        
+        result_data = {
+            'total_unreviewed': total_unreviewed,
+            'current_news': None
+        }
+        
+        if current_news:
+            result_data['current_news'] = {
+                'id': current_news['id'],
+                'tracking_id': current_news['tracking_id'],
+                'ctime': current_news['ctime'],
+                'title': current_news['title'],
+                'content': current_news['content'],
+                'ai_analysis': current_news['ai_analysis'],
+                'message_score': current_news['message_score'],
+                'message_label': current_news['message_label'],
+                'message_type': current_news['message_type'],
+                'time': current_news['formatted_time'].strftime('%Y-%m-%d %H:%M:%S') if current_news['formatted_time'] else ''
+            }
+        
+        return jsonify({
+            'code': 0,
+            'message': '获取成功',
+            'data': result_data
+        })
+        
+    except Exception as e:
+        logger.error(f"获取待校验新闻失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/process/review', methods=['POST'])
+def mark_news_reviewed():
+    """标记新闻为已校验"""
+    data = request.get_json()
+    tracking_id = data.get('tracking_id')
+    
+    if not tracking_id:
+        return jsonify({
+            'code': 1,
+            'message': '缺少tracking_id参数'
+        })
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 更新校验状态
+        cursor.execute("""
+            UPDATE news_process_tracking 
+            SET is_reviewed = 1, review_time = NOW(), updated_at = NOW()
+            WHERE id = %s
+        """, (tracking_id,))
+        
+        if cursor.rowcount == 0:
+            return jsonify({
+                'code': 1,
+                'message': '记录不存在'
+            })
+        
+        conn.commit()
+        
+        return jsonify({
+            'code': 0,
+            'message': '校验状态更新成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"更新校验状态失败: {e}")
+        conn.rollback()
+        return jsonify({
+            'code': 1,
+            'message': f'更新失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/process/tracking-list', methods=['GET'])
+def get_tracking_list():
+    """获取需要跟踪的新闻列表（按天数分组）- 只返回硬消息且到达跟踪时间点的消息"""
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 计算各个时间点的时间戳
+        now = datetime.now()
+        day3_ago = int((now - timedelta(days=3)).timestamp())
+        day7_ago = int((now - timedelta(days=7)).timestamp())
+        day14_ago = int((now - timedelta(days=14)).timestamp())
+        day28_ago = int((now - timedelta(days=28)).timestamp())
+        
+        result_data = {
+            'day3_list': [],
+            'day7_list': [],
+            'day14_list': [],
+            'day28_list': []
+        }
+        
+        # 3天跟踪列表：距今3天及以上的硬消息，且3天跟踪未完成
+        cursor.execute("""
+            SELECT 
+                nrt.id, nrt.ctime, nrt.title, nrt.content, 
+                nrt.ai_analysis, nrt.message_score, nrt.message_label, nrt.message_type,
+                nrt.market_react, nrt.screenshots,
+                npt.id as tracking_id,
+                FROM_UNIXTIME(nrt.ctime) as formatted_time
+            FROM news_process_tracking npt
+            JOIN news_red_telegraph nrt ON npt.news_id = nrt.id
+            WHERE nrt.ctime <= %s 
+            AND nrt.message_label = 'hard'
+            AND npt.is_reviewed = 1 
+            AND npt.track_day3_done = 0
+            ORDER BY nrt.ctime ASC
+        """, (day3_ago,))
+        
+        for row in cursor.fetchall():
+            result_data['day3_list'].append(format_tracking_news(row))
+        
+        # 7天跟踪列表：距今7天及以上的硬消息，且7天跟踪未完成
+        cursor.execute("""
+            SELECT 
+                nrt.id, nrt.ctime, nrt.title, nrt.content, 
+                nrt.ai_analysis, nrt.message_score, nrt.message_label, nrt.message_type,
+                nrt.market_react, nrt.screenshots,
+                npt.id as tracking_id,
+                FROM_UNIXTIME(nrt.ctime) as formatted_time
+            FROM news_process_tracking npt
+            JOIN news_red_telegraph nrt ON npt.news_id = nrt.id
+            WHERE nrt.ctime <= %s 
+            AND nrt.message_label = 'hard'
+            AND npt.is_reviewed = 1 
+            AND npt.track_day7_done = 0
+            ORDER BY nrt.ctime ASC
+        """, (day7_ago,))
+        
+        for row in cursor.fetchall():
+            result_data['day7_list'].append(format_tracking_news(row))
+        
+        # 14天跟踪列表：距今14天及以上的硬消息，且14天跟踪未完成
+        cursor.execute("""
+            SELECT 
+                nrt.id, nrt.ctime, nrt.title, nrt.content, 
+                nrt.ai_analysis, nrt.message_score, nrt.message_label, nrt.message_type,
+                nrt.market_react, nrt.screenshots,
+                npt.id as tracking_id,
+                FROM_UNIXTIME(nrt.ctime) as formatted_time
+            FROM news_process_tracking npt
+            JOIN news_red_telegraph nrt ON npt.news_id = nrt.id
+            WHERE nrt.ctime <= %s 
+            AND nrt.message_label = 'hard'
+            AND npt.is_reviewed = 1 
+            AND npt.track_day14_done = 0
+            ORDER BY nrt.ctime ASC
+        """, (day14_ago,))
+        
+        for row in cursor.fetchall():
+            result_data['day14_list'].append(format_tracking_news(row))
+        
+        # 28天跟踪列表：距今28天及以上的硬消息，且28天跟踪未完成
+        cursor.execute("""
+            SELECT 
+                nrt.id, nrt.ctime, nrt.title, nrt.content, 
+                nrt.ai_analysis, nrt.message_score, nrt.message_label, nrt.message_type,
+                nrt.market_react, nrt.screenshots,
+                npt.id as tracking_id,
+                FROM_UNIXTIME(nrt.ctime) as formatted_time
+            FROM news_process_tracking npt
+            JOIN news_red_telegraph nrt ON npt.news_id = nrt.id
+            WHERE nrt.ctime <= %s 
+            AND nrt.message_label = 'hard'
+            AND npt.is_reviewed = 1 
+            AND npt.track_day28_done = 0
+            ORDER BY nrt.ctime ASC
+        """, (day28_ago,))
+        
+        for row in cursor.fetchall():
+            result_data['day28_list'].append(format_tracking_news(row))
+        
+        # 统计信息
+        total_count = (len(result_data['day3_list']) + 
+                      len(result_data['day7_list']) + 
+                      len(result_data['day14_list']) + 
+                      len(result_data['day28_list']))
+        
+        return jsonify({
+            'code': 0,
+            'message': '获取成功',
+            'data': {
+                **result_data,
+                'summary': {
+                    'total_pending': total_count,
+                    'day3_count': len(result_data['day3_list']),
+                    'day7_count': len(result_data['day7_list']),
+                    'day14_count': len(result_data['day14_list']),
+                    'day28_count': len(result_data['day28_list'])
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取跟踪列表失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/process/update-tracking', methods=['POST'])
+def update_tracking_status():
+    """更新跟踪状态"""
+    data = request.get_json()
+    tracking_id = data.get('tracking_id')
+    track_type = data.get('track_type')  # day3, day7, day14, day28
+    
+    if not tracking_id or not track_type:
+        return jsonify({
+            'code': 1,
+            'message': '缺少必要参数'
+        })
+    
+    # 验证track_type
+    valid_types = ['day3', 'day7', 'day14', 'day28']
+    if track_type not in valid_types:
+        return jsonify({
+            'code': 1,
+            'message': '无效的跟踪类型'
+        })
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 构建动态SQL
+        done_field = f"track_{track_type}_done"
+        time_field = f"track_{track_type}_time"
+        
+        sql = f"""
+            UPDATE news_process_tracking 
+            SET {done_field} = 1, {time_field} = NOW(), updated_at = NOW()
+            WHERE id = %s
+        """
+        
+        cursor.execute(sql, (tracking_id,))
+        
+        if cursor.rowcount == 0:
+            return jsonify({
+                'code': 1,
+                'message': '记录不存在'
+            })
+        
+        conn.commit()
+        
+        return jsonify({
+            'code': 0,
+            'message': f'{track_type}跟踪状态更新成功'
+        })
+        
+    except Exception as e:
+        logger.error(f"更新跟踪状态失败: {e}")
+        conn.rollback()
+        return jsonify({
+            'code': 1,
+            'message': f'更新失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/news/process/init-tracking', methods=['POST'])
+def init_tracking_for_existing_news():
+    """为现有新闻初始化跟踪记录"""
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 查找没有跟踪记录的新闻
+        cursor.execute("""
+            SELECT nrt.id, nrt.ctime 
+            FROM news_red_telegraph nrt
+            LEFT JOIN news_process_tracking npt ON nrt.id = npt.news_id
+            WHERE npt.news_id IS NULL
+        """)
+        
+        missing_news = cursor.fetchall()
+        
+        if not missing_news:
+            return jsonify({
+                'code': 0,
+                'message': '所有新闻都已有跟踪记录',
+                'data': {'created_count': 0}
+            })
+        
+        # 为这些新闻创建跟踪记录
+        created_count = 0
+        for news in missing_news:
+            try:
+                cursor.execute("""
+                    INSERT INTO news_process_tracking (news_id, ctime)
+                    VALUES (%s, %s)
+                """, (news['id'], news['ctime']))
+                created_count += 1
+            except Exception as e:
+                logger.warning(f"为新闻ID {news['id']} 创建跟踪记录失败: {e}")
+        
+        conn.commit()
+        
+        return jsonify({
+            'code': 0,
+            'message': f'成功为 {created_count} 条新闻创建跟踪记录',
+            'data': {'created_count': created_count}
+        })
+        
+    except Exception as e:
+        logger.error(f"初始化跟踪记录失败: {e}")
+        conn.rollback()
+        return jsonify({
+            'code': 1,
+            'message': f'初始化失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()
+
+def format_tracking_news(row):
+    """格式化跟踪新闻数据"""
+    # 处理 screenshots JSON 数据
+    screenshots_data = []
+    if row['screenshots']:
+        try:
+            if isinstance(row['screenshots'], str):
+                screenshots_data = json_module.loads(row['screenshots'])
+            else:
+                screenshots_data = row['screenshots']
+        except:
+            screenshots_data = []
+    
+    # 为每个截图生成访问URL
+    screenshots_with_urls = []
+    for screenshot_key in screenshots_data:
+        access_url = generate_signed_access_url(screenshot_key)
+        screenshots_with_urls.append({
+            'key': screenshot_key,
+            'url': access_url
+        })
+    
+    return {
+        'id': row['id'],
+        'tracking_id': row['tracking_id'],
+        'ctime': row['ctime'],
+        'title': row['title'],
+        'content': row['content'],
+        'ai_analysis': row['ai_analysis'],
+        'message_score': row['message_score'],
+        'message_label': row['message_label'],
+        'message_type': row['message_type'],
+        'market_react': row['market_react'],
+        'screenshots': screenshots_with_urls,
+        'time': row['formatted_time'].strftime('%Y-%m-%d %H:%M:%S') if row['formatted_time'] else ''
+    }
 
 # ========== OSS相关接口 ==========
 
