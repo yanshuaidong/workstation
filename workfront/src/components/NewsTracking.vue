@@ -954,6 +954,9 @@ export default {
   margin: 10px 0;
   line-height: 1.6;
   color: #606266;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
 }
 
 .news-tags {

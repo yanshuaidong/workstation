@@ -17,7 +17,7 @@
   python main.py label [数量]        - 只AI标签最新未标签的新闻
   python main.py complete [数量]     - 完整AI处理：分析+评分+标签
   python main.py full               - 完整流程：爬取+完整AI处理
-  python main.py schedule           - 调度模式：10天，每4小时执行一次
+  python main.py schedule           - 调度模式：10天，每2小时执行一次
 """
 
 import sys
@@ -91,17 +91,66 @@ PROMPT = """
 
 # AI评分提示词
 SCORING_PROMPT = """
-message_score是消息评分，分数越高表示价值越大
-请你对下面的单条新闻，根据其对股票市场或期货市场的潜在影响，给出一个 0-100 的分数，数字越大表示市场影响力越强。  
+message_score是消息评分，分数越高表示影响力越大
+请你对下面的单条新闻，根据其对股票市场或期货市场的潜在影响，给出一个 1-10 的数字，数字越大表示市场影响力越强。  
 评估时请考虑以下维度：
-1. 是否包含真实的、可验证的数据（如产量、订单、财报、政策、供需变化）。  
-2. 消息的具体性与确定性（落地 vs 传闻/猜测）。  
-3. 对市场价格可能造成的短期或中期影响程度。  
+
+## 新闻重要性评分标准 (1-10分)
+
+### 10分 - 世纪级事件
+- **定义**：百年一遇，改变人类历史进程的重大事件
+- **特征**：全球性影响、历史转折点、载入史册
+- **举例**：世界大战爆发/结束、人类登月、重大疫情全球大流行
+
+### 9分 - 历史性事件  
+- **定义**：数十年一遇的重大历史事件
+- **特征**：深远影响、改变国际格局、历史性突破
+- **举例**：柏林墙倒塌、重大科技革命性突破、超级大国解体
+
+### 8分 - 国际重大事件
+- **定义**：影响多国的重大国际事件
+- **特征**：跨国影响、改变地区格局、国际高度关注
+- **举例**：重要国家政权更迭、重大国际协议签署、区域战争
+
+### 7分 - 国家级重大事件
+- **定义**：影响整个国家的重大事件
+- **特征**：全国性影响、政策重大调整、社会深度关注
+- **举例**：国家领导人更替、重大法律出台、全国性自然灾害
+
+### 6分 - 重要社会事件
+- **定义**：引起广泛社会讨论的重要事件
+- **特征**：社会热议、持续关注、影响民生
+- **举例**：重大政策调整、知名人物重大丑闻、重要企业倒闭
+
+### 5分 - 一般重要新闻
+- **定义**：有一定影响力的新闻事件
+- **特征**：区域性影响、行业关注、短期热点
+- **举例**：地方重要政策、行业重大变动、明星热点事件
+
+### 4分 - 常规新闻
+- **定义**：日常报道的一般新闻
+- **特征**：例行报道、有限影响、快速遗忘
+- **举例**：普通交通事故、一般企业动态、常规政府公告
+
+### 3分 - 轻微新闻
+- **定义**：影响较小的新闻
+- **特征**：局部影响、关注度低、信息价值有限
+- **举例**：小型活动报道、普通人事任命、日常社会新闻
+
+### 2分 - 琐碎新闻
+- **定义**：几乎无影响力的琐事
+- **特征**：极小范围、快速过时、填充版面
+- **举例**：明星日常动态、鸡毛蒜皮的争议、天气预报
+
+### 1分 - 陈词滥调
+- **定义**：毫无新意、反复出现的内容
+- **特征**：老生常谈、毫无价值、听觉疲劳
+- **举例**：例行工作报道、重复性通知、毫无新意的评论
 
 输出要求（严格按 JSON 返回）：  
 
 {
-  "message_score": 分数 (0-100),
+  "message_score": 数字 (1-10),
   "message_score_rationale": "一句中文解释，说明为什么给这个分数"
 }
 
@@ -153,12 +202,17 @@ LABELING_PROMPT = """
 4. 确定**信息类型**（政策/经营/市场等）
 
 ## 输出要求
-严格按以下JSON格式返回：
-```json
+**重要：必须严格按照以下JSON格式返回，不要添加任何其他文字说明！**
+
 {
   "message_type": "最贴切的标签名称",
-  "message_type_rationale": "简要说明选择该标签的核心理由"
+  "message_type_rationale": "简要说明选择该标签的核心理由（限制在100字以内）"
 }
+
+**注意：**
+1. 只返回JSON格式，不要包含markdown代码块标记
+2. message_type_rationale字段内容要简洁明了
+3. 确保JSON格式完整且可解析
 
 下面是新闻内容：  
 [在这里插入消息文本]
@@ -654,11 +708,11 @@ async def analyze_single_news_labeling_async(session, news_item):
         payload = {
             "model": "gpt-4o-mini",
             "messages": [
-                {"role": "system", "content": "你是一个财经消息分类助手，专门为新闻打标签。"},
+                {"role": "system", "content": "你是一个财经消息分类助手，专门为新闻打标签。请严格按照JSON格式返回结果。"},
                 {"role": "user", "content": prompt_content}
             ],
-            "max_tokens": 500,
-            "temperature": 0.3
+            "max_tokens": 800,  # 增加token数量避免截断
+            "temperature": 0.1  # 降低温度提高一致性
         }
         
         headers = {
@@ -676,14 +730,66 @@ async def analyze_single_news_labeling_async(session, news_item):
                 # 尝试解析JSON结果
                 try:
                     import json as json_module
-                    label_data = json_module.loads(labeling_result)
-                    message_type = label_data.get('message_type', '其他')
-                    message_type_rationale = label_data.get('message_type_rationale', '解析失败')
+                    import re
                     
-                except (json_module.JSONDecodeError, TypeError):
-                    # JSON解析失败时的备用方案
+                    # 记录完整的AI响应用于调试
+                    logger.debug(f"AI完整响应 - 新闻ID: {news_item['id']}, 响应长度: {len(labeling_result)}, 内容: {labeling_result}")
+                    
+                    # 首先尝试直接解析JSON
+                    try:
+                        label_data = json_module.loads(labeling_result)
+                        message_type = label_data.get('message_type', '其他')
+                        message_type_rationale = label_data.get('message_type_rationale', '解析失败')
+                        logger.info(f"JSON直接解析成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                        
+                    except json_module.JSONDecodeError:
+                        # 如果直接解析失败，尝试提取JSON部分
+                        logger.warning(f"JSON直接解析失败，尝试智能提取 - 新闻ID: {news_item['id']}")
+                        
+                        # 查找JSON代码块
+                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', labeling_result, re.DOTALL)
+                        if json_match:
+                            json_content = json_match.group(1)
+                            logger.debug(f"提取到JSON代码块: {json_content}")
+                            try:
+                                label_data = json_module.loads(json_content)
+                                message_type = label_data.get('message_type', '其他')
+                                message_type_rationale = label_data.get('message_type_rationale', '解析失败')
+                                logger.info(f"JSON代码块解析成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                            except json_module.JSONDecodeError:
+                                raise ValueError("JSON代码块解析失败")
+                        else:
+                            # 尝试查找裸JSON
+                            json_match = re.search(r'\{[^{}]*"message_type"[^{}]*\}', labeling_result, re.DOTALL)
+                            if json_match:
+                                json_content = json_match.group(0)
+                                logger.debug(f"提取到裸JSON: {json_content}")
+                                try:
+                                    label_data = json_module.loads(json_content)
+                                    message_type = label_data.get('message_type', '其他')
+                                    message_type_rationale = label_data.get('message_type_rationale', '解析失败')
+                                    logger.info(f"裸JSON解析成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                                except json_module.JSONDecodeError:
+                                    raise ValueError("裸JSON解析失败")
+                            else:
+                                # 尝试使用正则表达式提取字段
+                                message_type_match = re.search(r'"message_type":\s*"([^"]*)"', labeling_result)
+                                rationale_match = re.search(r'"message_type_rationale":\s*"([^"]*)"', labeling_result)
+                                
+                                if message_type_match:
+                                    message_type = message_type_match.group(1)
+                                    message_type_rationale = rationale_match.group(1) if rationale_match else "理由提取失败"
+                                    logger.info(f"正则表达式提取成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                                else:
+                                    raise ValueError("无法提取任何有效信息")
+                    
+                except (json_module.JSONDecodeError, TypeError, ValueError) as e:
+                    # 所有解析方法都失败时的备用方案
+                    logger.error(f"所有JSON解析方法都失败 - 新闻ID: {news_item['id']}, 错误: {e}")
                     message_type = '其他'
-                    message_type_rationale = f"JSON解析失败: {labeling_result[:100]}"
+                    # 提供更详细的错误信息，但限制长度
+                    error_detail = f"解析失败({str(e)[:50]}): {labeling_result[:200]}..."
+                    message_type_rationale = error_detail
                 
                 logger.info(f"AI标签完成 - 新闻ID: {news_item['id']}, 标签: {message_type}")
                 return {
@@ -902,22 +1008,22 @@ class ClsNewsCrawler:
             WebDriverWait(self.driver, 20).until(
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
-            logger.info("页面加载完成，等待6秒...")
-            time.sleep(6)
+            logger.info("页面加载完成，等待12秒...")
+            time.sleep(12)
             
             # 点击加红按钮
             click_success = self.click_jiahong_button()
             
             if click_success:
                 logger.info("点击成功，等待网络请求...")
-                time.sleep(5)
+                time.sleep(10)
             else:
                 logger.warning("点击失败，尝试其他方式...")
                 # 尝试滚动页面触发请求
                 self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(3)
+                time.sleep(6)
                 self.driver.execute_script("window.scrollTo(0, 0);")
-                time.sleep(2)
+                time.sleep(4)
             
             # 获取网络请求日志
             network_requests = self.get_network_logs()
@@ -1384,8 +1490,8 @@ def main():
                 logger.info("没有新增新闻，跳过AI处理")
                 
         elif command == "schedule":
-            # 调度模式：运行10天，每4小时执行一次
-            logger.info("启动调度模式：10天，每4小时执行一次完整流程")
+            # 调度模式：运行10天，每2小时执行一次
+            logger.info("启动调度模式：10天，每2小时执行一次完整流程")
             from scheduler import NewsScheduler
             scheduler = NewsScheduler()
             scheduler.run()
@@ -1398,7 +1504,7 @@ def main():
             print("  python main.py label [数量]        - 只AI标签最新未标签的新闻") 
             print("  python main.py complete [数量]     - 完整AI处理：分析+评分+标签")
             print("  python main.py full               - 完整流程：爬取+完整AI处理")
-            print("  python main.py schedule           - 调度模式：10天，每4小时执行一次")
+            print("  python main.py schedule           - 调度模式：10天，每2小时执行一次")
             sys.exit(1)
     else:
         # 默认执行完整流程

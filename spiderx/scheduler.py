@@ -23,9 +23,9 @@ class NewsScheduler:
     def __init__(self):
         self.start_time = datetime.now()
         self.end_time = self.start_time + timedelta(days=10)  # 运行10天
-        self.interval_hours = 4  # 每4小时执行一次
+        self.interval_hours = 2  # 每2小时执行一次
         self.execution_count = 0
-        self.max_executions = 60  # 10天 × 24小时 ÷ 4小时 = 60次
+        self.max_executions = 120  # 10天 × 24小时 ÷ 2小时 = 120次
         self.shutdown_requested = False  # 优雅退出标志
         
         # 创建logs目录
@@ -125,7 +125,7 @@ class NewsScheduler:
         remaining = self.end_time - current_time
         
         heartbeat_msg = (
-            f"💓 心跳 #{self.execution_count + 1}/60 | "
+            f"💓 心跳 #{self.execution_count + 1}/120 | "
             f"已运行: {elapsed.total_seconds() / 3600:.1f}h | "
             f"剩余: {remaining.total_seconds() / 3600:.1f}h | "
             f"预计结束: {self.end_time.strftime('%Y-%m-%d %H:%M:%S')}"
