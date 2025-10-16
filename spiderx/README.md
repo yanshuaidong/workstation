@@ -297,3 +297,19 @@ tail -f nohup.out
 ./stop_scheduler.sh && sleep 3 && ./start_scheduler.sh
 
 ```
+
+
+# 强制重新分析指定ID的新闻（覆盖现有数据）
+python3 main.py force-analyze
+
+# 强制重新评分指定ID的新闻（覆盖现有数据）
+python3 main.py force-score
+
+# 强制重新标签指定ID的新闻（覆盖现有数据）
+python3 main.py force-label
+
+# 强制完整AI处理指定ID的新闻（分析+评分+标签，覆盖现有数据）
+python3 main.py force-complete
+
+# 也可以指定自定义ID文件
+python3 main.py force-complete my_ids.txt

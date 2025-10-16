@@ -11,13 +11,21 @@
 7. 消息处理流程跟踪功能（自动创建跟踪记录）
 
 使用方法:
-  python main.py crawl               - 只爬取新闻
-  python main.py analyze [数量]      - 只AI软硬分析最新未分析的新闻
-  python main.py score [数量]        - 只AI评分最新未评分的新闻
-  python main.py label [数量]        - 只AI标签最新未标签的新闻
-  python main.py complete [数量]     - 完整AI处理：分析+评分+标签
-  python main.py full               - 完整流程：爬取+完整AI处理
-  python main.py schedule           - 调度模式：10天，每2小时执行一次
+  python main.py crawl                    - 只爬取新闻
+  python main.py analyze [数量]           - 只AI软硬分析最新未分析的新闻
+  python main.py score [数量]             - 只AI评分最新未评分的新闻
+  python main.py label [数量]             - 只AI标签最新未标签的新闻
+  python main.py complete [数量]          - 完整AI处理：分析+评分+标签
+  python main.py full                    - 完整流程：爬取+完整AI处理
+  python main.py schedule                - 调度模式：10天，每2小时执行一次
+
+强制处理模式（覆盖现有数据）:
+  python main.py force-analyze [ID文件]   - 强制分析指定ID的新闻
+  python main.py force-score [ID文件]     - 强制评分指定ID的新闻
+  python main.py force-label [ID文件]     - 强制标签指定ID的新闻
+  python main.py force-complete [ID文件]  - 强制完整AI处理指定ID的新闻
+
+ID文件格式: 每行一个新闻ID，默认使用 force_process_ids.txt
 """
 
 import sys
@@ -528,62 +536,85 @@ def update_news_analysis_results(results):
 
 # ==================== AI分析函数 ====================
 
-async def analyze_single_news_async(session, prompt=None, news_item=None):
-    """异步分析单条新闻"""
+async def analyze_single_news_async(session, prompt=None, news_item=None, max_retries=1):
+    """异步分析单条新闻（带重试机制）"""
     # 如果没有提供prompt，使用默认的PROMPT变量
     if prompt is None:
         prompt = PROMPT
     
-    try:
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "你是一个财经消息分类助手。"},
-                {"role": "user", "content": f"{prompt}\n\n新闻标题：{news_item['title']}\n新闻内容：{news_item['content']}"}
-            ],
-            "max_tokens": 500,
-            "temperature": 0.7
-        }
-        
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {AI_API_KEY}",
-            'User-Agent': 'PoloAPI/1.0.0 (https://poloai.top)',
-            "Content-Type": "application/json"
-        }
-        
-        async with session.post(AI_BASE_URL, json=payload, headers=headers, timeout=60) as response:
-            if response.status == 200:
-                result = await response.json()
-                analysis_result = result["choices"][0]["message"]["content"]
-                logger.info(f"AI分析完成 - 新闻ID: {news_item['id']}, 结果: {analysis_result[:50]}...")
-                return {
-                    'id': news_item['id'],
-                    'analysis': analysis_result[:1000],  # 限制长度
-                    'success': True
-                }
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": "你是一个财经消息分类助手。"},
+            {"role": "user", "content": f"{prompt}\n\n新闻标题：{news_item['title']}\n新闻内容：{news_item['content']}"}
+        ],
+        "max_tokens": 500,
+        "temperature": 0.7
+    }
+    
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {AI_API_KEY}",
+        'User-Agent': 'PoloAPI/1.0.0 (https://poloai.top)',
+        "Content-Type": "application/json"
+    }
+    
+    # 重试机制
+    for attempt in range(max_retries + 1):
+        try:
+            timeout_duration = 60 + (attempt * 30)  # 每次重试增加30秒超时时间
+            
+            async with session.post(AI_BASE_URL, json=payload, headers=headers, timeout=timeout_duration) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    analysis_result = result["choices"][0]["message"]["content"]
+                    retry_info = f" (重试{attempt}次)" if attempt > 0 else ""
+                    logger.info(f"AI分析完成{retry_info} - 新闻ID: {news_item['id']}, 结果: {analysis_result[:50]}...")
+                    return {
+                        'id': news_item['id'],
+                        'analysis': analysis_result[:1000],  # 限制长度
+                        'success': True
+                    }
+                else:
+                    error_msg = f"AI请求失败: HTTP {response.status}"
+                    if attempt < max_retries:
+                        logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 准备重试 ({attempt + 1}/{max_retries})")
+                        await asyncio.sleep(2 ** attempt)  # 指数退避
+                        continue
+                    else:
+                        logger.error(f"{error_msg} - 新闻ID: {news_item['id']}, 重试次数已用完")
+                        return {
+                            'id': news_item['id'],
+                            'analysis': error_msg,
+                            'success': False
+                        }
+                        
+        except asyncio.TimeoutError:
+            error_msg = f"AI请求超时 (超时时间: {timeout_duration}秒)"
+            if attempt < max_retries:
+                logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 准备重试 ({attempt + 1}/{max_retries})")
+                await asyncio.sleep(2 ** attempt)  # 指数退避
+                continue
             else:
-                logger.error(f"AI请求失败 - 新闻ID: {news_item['id']}, 状态码: {response.status}")
+                logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 重试次数已用完")
                 return {
                     'id': news_item['id'],
-                    'analysis': f"AI请求失败: HTTP {response.status}",
+                    'analysis': "AI请求超时",
                     'success': False
                 }
-                
-    except asyncio.TimeoutError:
-        logger.warning(f"AI请求超时 - 新闻ID: {news_item['id']}")
-        return {
-            'id': news_item['id'],
-            'analysis': "AI请求超时",
-            'success': False
-        }
-    except Exception as e:
-        logger.error(f"AI分析异常 - 新闻ID: {news_item['id']}, 错误: {e}")
-        return {
-            'id': news_item['id'],
-            'analysis': f"AI分析异常: {str(e)[:100]}",
-            'success': False
-        }
+        except Exception as e:
+            error_msg = f"AI分析异常: {str(e)[:100]}"
+            if attempt < max_retries:
+                logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 准备重试 ({attempt + 1}/{max_retries})")
+                await asyncio.sleep(2 ** attempt)  # 指数退避
+                continue
+            else:
+                logger.error(f"{error_msg} - 新闻ID: {news_item['id']}, 重试次数已用完")
+                return {
+                    'id': news_item['id'],
+                    'analysis': error_msg,
+                    'success': False
+                }
 
 async def batch_analyze_news_async(prompt=None, news_list=None):
     """批量异步分析新闻"""
@@ -621,208 +652,254 @@ async def batch_analyze_news_async(prompt=None, news_list=None):
         
         return processed_results
 
-async def analyze_single_news_scoring_async(session, news_item):
-    """异步分析单条新闻进行评分"""
-    try:
-        # 替换提示词中的占位符
-        prompt_content = SCORING_PROMPT.replace("[在这里插入消息文本]", f"标题：{news_item['title']}\n内容：{news_item['content']}")
-        
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "你是一个财经消息评估助手，专门为新闻评分。"},
-                {"role": "user", "content": prompt_content}
-            ],
-            "max_tokens": 500,
-            "temperature": 0.3
-        }
-        
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {AI_API_KEY}",
-            'User-Agent': 'PoloAPI/1.0.0 (https://poloai.top)',
-            "Content-Type": "application/json"
-        }
-        
-        async with session.post(AI_BASE_URL, json=payload, headers=headers, timeout=60) as response:
-            if response.status == 200:
-                result = await response.json()
-                scoring_result = result["choices"][0]["message"]["content"]
-                
-                # 尝试解析JSON结果
-                try:
-                    import json as json_module
-                    score_data = json_module.loads(scoring_result)
-                    message_score = score_data.get('message_score', 0)
-                    message_score_rationale = score_data.get('message_score_rationale', '解析失败')
+async def analyze_single_news_scoring_async(session, news_item, max_retries=1):
+    """异步分析单条新闻进行评分（带重试机制）"""
+    # 替换提示词中的占位符
+    prompt_content = SCORING_PROMPT.replace("[在这里插入消息文本]", f"标题：{news_item['title']}\n内容：{news_item['content']}")
+    
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": "你是一个财经消息评估助手，专门为新闻评分。"},
+            {"role": "user", "content": prompt_content}
+        ],
+        "max_tokens": 500,
+        "temperature": 0.3
+    }
+    
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {AI_API_KEY}",
+        'User-Agent': 'PoloAPI/1.0.0 (https://poloai.top)',
+        "Content-Type": "application/json"
+    }
+    
+    # 重试机制
+    for attempt in range(max_retries + 1):
+        try:
+            timeout_duration = 60 + (attempt * 30)  # 每次重试增加30秒超时时间
+            
+            async with session.post(AI_BASE_URL, json=payload, headers=headers, timeout=timeout_duration) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    scoring_result = result["choices"][0]["message"]["content"]
                     
-                    # 确保评分在有效范围内
-                    if not isinstance(message_score, (int, float)) or message_score < 0 or message_score > 100:
+                    # 尝试解析JSON结果
+                    try:
+                        import json as json_module
+                        score_data = json_module.loads(scoring_result)
+                        message_score = score_data.get('message_score', 0)
+                        message_score_rationale = score_data.get('message_score_rationale', '解析失败')
+                        
+                        # 确保评分在有效范围内
+                        if not isinstance(message_score, (int, float)) or message_score < 0 or message_score > 100:
+                            message_score = 0
+                            message_score_rationale = "评分超出范围"
+                        
+                    except (json_module.JSONDecodeError, TypeError):
+                        # JSON解析失败时的备用方案
                         message_score = 0
-                        message_score_rationale = "评分超出范围"
+                        message_score_rationale = f"JSON解析失败: {scoring_result[:100]}"
                     
-                except (json_module.JSONDecodeError, TypeError):
-                    # JSON解析失败时的备用方案
-                    message_score = 0
-                    message_score_rationale = f"JSON解析失败: {scoring_result[:100]}"
-                
-                logger.info(f"AI评分完成 - 新闻ID: {news_item['id']}, 评分: {message_score}")
-                return {
-                    'id': news_item['id'],
-                    'message_score': int(message_score),
-                    'message_score_rationale': message_score_rationale[:500],  # 限制长度
-                    'success': True
-                }
+                    retry_info = f" (重试{attempt}次)" if attempt > 0 else ""
+                    logger.info(f"AI评分完成{retry_info} - 新闻ID: {news_item['id']}, 评分: {message_score}")
+                    return {
+                        'id': news_item['id'],
+                        'message_score': int(message_score),
+                        'message_score_rationale': message_score_rationale[:500],  # 限制长度
+                        'success': True
+                    }
+                else:
+                    error_msg = f"AI请求失败: HTTP {response.status}"
+                    if attempt < max_retries:
+                        logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 准备重试 ({attempt + 1}/{max_retries})")
+                        await asyncio.sleep(2 ** attempt)  # 指数退避
+                        continue
+                    else:
+                        logger.error(f"{error_msg} - 新闻ID: {news_item['id']}, 重试次数已用完")
+                        return {
+                            'id': news_item['id'],
+                            'message_score': 0,
+                            'message_score_rationale': error_msg,
+                            'success': False
+                        }
+                        
+        except asyncio.TimeoutError:
+            error_msg = f"AI请求超时 (超时时间: {timeout_duration}秒)"
+            if attempt < max_retries:
+                logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 准备重试 ({attempt + 1}/{max_retries})")
+                await asyncio.sleep(2 ** attempt)  # 指数退避
+                continue
             else:
-                logger.error(f"AI评分请求失败 - 新闻ID: {news_item['id']}, 状态码: {response.status}")
+                logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 重试次数已用完")
                 return {
                     'id': news_item['id'],
                     'message_score': 0,
-                    'message_score_rationale': f"AI请求失败: HTTP {response.status}",
+                    'message_score_rationale': "AI请求超时",
                     'success': False
                 }
-                
-    except asyncio.TimeoutError:
-        logger.warning(f"AI评分请求超时 - 新闻ID: {news_item['id']}")
-        return {
-            'id': news_item['id'],
-            'message_score': 0,
-            'message_score_rationale': "AI请求超时",
-            'success': False
-        }
-    except Exception as e:
-        logger.error(f"AI评分异常 - 新闻ID: {news_item['id']}, 错误: {e}")
-        return {
-            'id': news_item['id'],
-            'message_score': 0,
-            'message_score_rationale': f"AI分析异常: {str(e)[:100]}",
-            'success': False
-        }
+        except Exception as e:
+            error_msg = f"AI分析异常: {str(e)[:100]}"
+            if attempt < max_retries:
+                logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 准备重试 ({attempt + 1}/{max_retries})")
+                await asyncio.sleep(2 ** attempt)  # 指数退避
+                continue
+            else:
+                logger.error(f"{error_msg} - 新闻ID: {news_item['id']}, 重试次数已用完")
+                return {
+                    'id': news_item['id'],
+                    'message_score': 0,
+                    'message_score_rationale': error_msg,
+                    'success': False
+                }
 
-async def analyze_single_news_labeling_async(session, news_item):
-    """异步分析单条新闻进行类型标签"""
-    try:
-        # 替换提示词中的占位符
-        prompt_content = LABELING_PROMPT.replace("[在这里插入消息文本]", f"标题：{news_item['title']}\n内容：{news_item['content']}")
-        
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "你是一个财经消息分类助手，专门为新闻打标签。请严格按照JSON格式返回结果。"},
-                {"role": "user", "content": prompt_content}
-            ],
-            "max_tokens": 800,  # 增加token数量避免截断
-            "temperature": 0.1  # 降低温度提高一致性
-        }
-        
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {AI_API_KEY}",
-            'User-Agent': 'PoloAPI/1.0.0 (https://poloai.top)',
-            "Content-Type": "application/json"
-        }
-        
-        async with session.post(AI_BASE_URL, json=payload, headers=headers, timeout=60) as response:
-            if response.status == 200:
-                result = await response.json()
-                labeling_result = result["choices"][0]["message"]["content"]
-                
-                # 尝试解析JSON结果
-                try:
-                    import json as json_module
-                    import re
+async def analyze_single_news_labeling_async(session, news_item, max_retries=1):
+    """异步分析单条新闻进行类型标签（带重试机制）"""
+    # 替换提示词中的占位符
+    prompt_content = LABELING_PROMPT.replace("[在这里插入消息文本]", f"标题：{news_item['title']}\n内容：{news_item['content']}")
+    
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": "你是一个财经消息分类助手，专门为新闻打标签。请严格按照JSON格式返回结果。"},
+            {"role": "user", "content": prompt_content}
+        ],
+        "max_tokens": 800,  # 增加token数量避免截断
+        "temperature": 0.1  # 降低温度提高一致性
+    }
+    
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {AI_API_KEY}",
+        'User-Agent': 'PoloAPI/1.0.0 (https://poloai.top)',
+        "Content-Type": "application/json"
+    }
+    
+    # 重试机制
+    for attempt in range(max_retries + 1):
+        try:
+            timeout_duration = 60 + (attempt * 30)  # 每次重试增加30秒超时时间
+            
+            async with session.post(AI_BASE_URL, json=payload, headers=headers, timeout=timeout_duration) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    labeling_result = result["choices"][0]["message"]["content"]
                     
-                    # 记录完整的AI响应用于调试
-                    logger.debug(f"AI完整响应 - 新闻ID: {news_item['id']}, 响应长度: {len(labeling_result)}, 内容: {labeling_result}")
-                    
-                    # 首先尝试直接解析JSON
+                    # 尝试解析JSON结果
                     try:
-                        label_data = json_module.loads(labeling_result)
-                        message_type = label_data.get('message_type', '其他')
-                        message_type_rationale = label_data.get('message_type_rationale', '解析失败')
-                        logger.info(f"JSON直接解析成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                        import json as json_module
+                        import re
                         
-                    except json_module.JSONDecodeError:
-                        # 如果直接解析失败，尝试提取JSON部分
-                        logger.warning(f"JSON直接解析失败，尝试智能提取 - 新闻ID: {news_item['id']}")
+                        # 记录完整的AI响应用于调试
+                        logger.debug(f"AI完整响应 - 新闻ID: {news_item['id']}, 响应长度: {len(labeling_result)}, 内容: {labeling_result}")
                         
-                        # 查找JSON代码块
-                        json_match = re.search(r'```json\s*(\{.*?\})\s*```', labeling_result, re.DOTALL)
-                        if json_match:
-                            json_content = json_match.group(1)
-                            logger.debug(f"提取到JSON代码块: {json_content}")
-                            try:
-                                label_data = json_module.loads(json_content)
-                                message_type = label_data.get('message_type', '其他')
-                                message_type_rationale = label_data.get('message_type_rationale', '解析失败')
-                                logger.info(f"JSON代码块解析成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
-                            except json_module.JSONDecodeError:
-                                raise ValueError("JSON代码块解析失败")
-                        else:
-                            # 尝试查找裸JSON
-                            json_match = re.search(r'\{[^{}]*"message_type"[^{}]*\}', labeling_result, re.DOTALL)
+                        # 首先尝试直接解析JSON
+                        try:
+                            label_data = json_module.loads(labeling_result)
+                            message_type = label_data.get('message_type', '其他')
+                            message_type_rationale = label_data.get('message_type_rationale', '解析失败')
+                            logger.info(f"JSON直接解析成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                            
+                        except json_module.JSONDecodeError:
+                            # 如果直接解析失败，尝试提取JSON部分
+                            logger.warning(f"JSON直接解析失败，尝试智能提取 - 新闻ID: {news_item['id']}")
+                            
+                            # 查找JSON代码块
+                            json_match = re.search(r'```json\s*(\{.*?\})\s*```', labeling_result, re.DOTALL)
                             if json_match:
-                                json_content = json_match.group(0)
-                                logger.debug(f"提取到裸JSON: {json_content}")
+                                json_content = json_match.group(1)
+                                logger.debug(f"提取到JSON代码块: {json_content}")
                                 try:
                                     label_data = json_module.loads(json_content)
                                     message_type = label_data.get('message_type', '其他')
                                     message_type_rationale = label_data.get('message_type_rationale', '解析失败')
-                                    logger.info(f"裸JSON解析成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                                    logger.info(f"JSON代码块解析成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
                                 except json_module.JSONDecodeError:
-                                    raise ValueError("裸JSON解析失败")
+                                    raise ValueError("JSON代码块解析失败")
                             else:
-                                # 尝试使用正则表达式提取字段
-                                message_type_match = re.search(r'"message_type":\s*"([^"]*)"', labeling_result)
-                                rationale_match = re.search(r'"message_type_rationale":\s*"([^"]*)"', labeling_result)
-                                
-                                if message_type_match:
-                                    message_type = message_type_match.group(1)
-                                    message_type_rationale = rationale_match.group(1) if rationale_match else "理由提取失败"
-                                    logger.info(f"正则表达式提取成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                                # 尝试查找裸JSON
+                                json_match = re.search(r'\{[^{}]*"message_type"[^{}]*\}', labeling_result, re.DOTALL)
+                                if json_match:
+                                    json_content = json_match.group(0)
+                                    logger.debug(f"提取到裸JSON: {json_content}")
+                                    try:
+                                        label_data = json_module.loads(json_content)
+                                        message_type = label_data.get('message_type', '其他')
+                                        message_type_rationale = label_data.get('message_type_rationale', '解析失败')
+                                        logger.info(f"裸JSON解析成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                                    except json_module.JSONDecodeError:
+                                        raise ValueError("裸JSON解析失败")
                                 else:
-                                    raise ValueError("无法提取任何有效信息")
+                                    # 尝试使用正则表达式提取字段
+                                    message_type_match = re.search(r'"message_type":\s*"([^"]*)"', labeling_result)
+                                    rationale_match = re.search(r'"message_type_rationale":\s*"([^"]*)"', labeling_result)
+                                    
+                                    if message_type_match:
+                                        message_type = message_type_match.group(1)
+                                        message_type_rationale = rationale_match.group(1) if rationale_match else "理由提取失败"
+                                        logger.info(f"正则表达式提取成功 - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                                    else:
+                                        raise ValueError("无法提取任何有效信息")
+                        
+                    except (json_module.JSONDecodeError, TypeError, ValueError) as e:
+                        # 所有解析方法都失败时的备用方案
+                        logger.error(f"所有JSON解析方法都失败 - 新闻ID: {news_item['id']}, 错误: {e}")
+                        message_type = '其他'
+                        # 提供更详细的错误信息，但限制长度
+                        error_detail = f"解析失败({str(e)[:50]}): {labeling_result[:200]}..."
+                        message_type_rationale = error_detail
                     
-                except (json_module.JSONDecodeError, TypeError, ValueError) as e:
-                    # 所有解析方法都失败时的备用方案
-                    logger.error(f"所有JSON解析方法都失败 - 新闻ID: {news_item['id']}, 错误: {e}")
-                    message_type = '其他'
-                    # 提供更详细的错误信息，但限制长度
-                    error_detail = f"解析失败({str(e)[:50]}): {labeling_result[:200]}..."
-                    message_type_rationale = error_detail
-                
-                logger.info(f"AI标签完成 - 新闻ID: {news_item['id']}, 标签: {message_type}")
-                return {
-                    'id': news_item['id'],
-                    'message_type': message_type[:64],  # 限制长度
-                    'message_type_rationale': message_type_rationale[:500],  # 限制长度
-                    'success': True
-                }
+                    retry_info = f" (重试{attempt}次)" if attempt > 0 else ""
+                    logger.info(f"AI标签完成{retry_info} - 新闻ID: {news_item['id']}, 标签: {message_type}")
+                    return {
+                        'id': news_item['id'],
+                        'message_type': message_type[:64],  # 限制长度
+                        'message_type_rationale': message_type_rationale[:500],  # 限制长度
+                        'success': True
+                    }
+                else:
+                    error_msg = f"AI请求失败: HTTP {response.status}"
+                    if attempt < max_retries:
+                        logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 准备重试 ({attempt + 1}/{max_retries})")
+                        await asyncio.sleep(2 ** attempt)  # 指数退避
+                        continue
+                    else:
+                        logger.error(f"{error_msg} - 新闻ID: {news_item['id']}, 重试次数已用完")
+                        return {
+                            'id': news_item['id'],
+                            'message_type': '其他',
+                            'message_type_rationale': error_msg,
+                            'success': False
+                        }
+                        
+        except asyncio.TimeoutError:
+            error_msg = f"AI请求超时 (超时时间: {timeout_duration}秒)"
+            if attempt < max_retries:
+                logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 准备重试 ({attempt + 1}/{max_retries})")
+                await asyncio.sleep(2 ** attempt)  # 指数退避
+                continue
             else:
-                logger.error(f"AI标签请求失败 - 新闻ID: {news_item['id']}, 状态码: {response.status}")
+                logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 重试次数已用完")
                 return {
                     'id': news_item['id'],
                     'message_type': '其他',
-                    'message_type_rationale': f"AI请求失败: HTTP {response.status}",
+                    'message_type_rationale': "AI请求超时",
                     'success': False
                 }
-                
-    except asyncio.TimeoutError:
-        logger.warning(f"AI标签请求超时 - 新闻ID: {news_item['id']}")
-        return {
-            'id': news_item['id'],
-            'message_type': '其他',
-            'message_type_rationale': "AI请求超时",
-            'success': False
-        }
-    except Exception as e:
-        logger.error(f"AI标签异常 - 新闻ID: {news_item['id']}, 错误: {e}")
-        return {
-            'id': news_item['id'],
-            'message_type': '其他',
-            'message_type_rationale': f"AI分析异常: {str(e)[:100]}",
-            'success': False
-        }
+        except Exception as e:
+            error_msg = f"AI分析异常: {str(e)[:100]}"
+            if attempt < max_retries:
+                logger.warning(f"{error_msg} - 新闻ID: {news_item['id']}, 准备重试 ({attempt + 1}/{max_retries})")
+                await asyncio.sleep(2 ** attempt)  # 指数退避
+                continue
+            else:
+                logger.error(f"{error_msg} - 新闻ID: {news_item['id']}, 重试次数已用完")
+                return {
+                    'id': news_item['id'],
+                    'message_type': '其他',
+                    'message_type_rationale': error_msg,
+                    'success': False
+                }
 
 # ==================== 爬虫类和函数 ====================
 
@@ -1398,6 +1475,297 @@ def analyze_news_labeling(count=10):
         logger.error(traceback.format_exc())
         return 0, 0
 
+# ==================== 强制处理指定ID的函数 ====================
+
+def load_force_process_ids(file_path="force_process_ids.txt"):
+    """从文件中加载需要强制处理的新闻ID列表"""
+    try:
+        if not os.path.exists(file_path):
+            logger.warning(f"ID文件不存在: {file_path}")
+            return []
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            ids = []
+            for line in f:
+                line = line.strip()
+                if line and line.isdigit():
+                    ids.append(int(line))
+                elif line and not line.startswith('#'):  # 忽略注释行
+                    logger.warning(f"无效的ID格式: {line}")
+            
+        logger.info(f"从文件 {file_path} 加载了 {len(ids)} 个ID: {ids}")
+        return ids
+        
+    except Exception as e:
+        logger.error(f"加载ID文件失败: {e}")
+        return []
+
+def get_news_by_ids(news_ids):
+    """根据ID列表获取新闻数据"""
+    if not news_ids:
+        return []
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 构建IN查询
+        placeholders = ','.join(['%s'] * len(news_ids))
+        cursor.execute(f"""
+            SELECT id, title, content 
+            FROM news_red_telegraph 
+            WHERE id IN ({placeholders})
+            ORDER BY id DESC
+        """, news_ids)
+        
+        news_list = cursor.fetchall()
+        logger.info(f"根据ID列表获取到 {len(news_list)} 条新闻")
+        return news_list
+        
+    except Exception as e:
+        logger.error(f"根据ID获取新闻失败: {e}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+def force_analyze_news_by_ids(news_ids, prompt=None):
+    """强制分析指定ID的新闻（覆盖现有数据）"""
+    if not news_ids:
+        logger.warning("没有提供需要强制分析的新闻ID")
+        return 0, 0
+    
+    try:
+        logger.info(f"开始强制AI分析任务 - ID列表: {news_ids}")
+        
+        # 根据ID获取新闻
+        news_list = get_news_by_ids(news_ids)
+        
+        if not news_list:
+            logger.warning("根据提供的ID未找到新闻")
+            return 0, 0
+        
+        logger.info(f"获取到 {len(news_list)} 条新闻进行强制分析")
+        
+        # 异步批量分析
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            results = loop.run_until_complete(batch_analyze_news_async(prompt=prompt, news_list=news_list))
+            
+            # 强制更新数据库（覆盖现有数据）
+            success_count, failure_count = force_update_news_analysis_results(results)
+            logger.info(f"强制AI分析任务完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+            return success_count, failure_count
+            
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        logger.error(f"强制分析任务执行失败: {e}")
+        logger.error(traceback.format_exc())
+        return 0, 0
+
+def force_analyze_news_scoring_by_ids(news_ids):
+    """强制评分指定ID的新闻（覆盖现有数据）"""
+    if not news_ids:
+        logger.warning("没有提供需要强制评分的新闻ID")
+        return 0, 0
+    
+    try:
+        logger.info(f"开始强制AI评分任务 - ID列表: {news_ids}")
+        
+        # 根据ID获取新闻
+        news_list = get_news_by_ids(news_ids)
+        
+        if not news_list:
+            logger.warning("根据提供的ID未找到新闻")
+            return 0, 0
+        
+        logger.info(f"获取到 {len(news_list)} 条新闻进行强制评分")
+        
+        # 异步批量评分
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            results = loop.run_until_complete(batch_analyze_news_scoring_async(news_list))
+            
+            # 强制更新数据库（覆盖现有数据）
+            success_count, failure_count = force_update_news_scoring_results(results)
+            logger.info(f"强制AI评分任务完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+            return success_count, failure_count
+            
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        logger.error(f"强制评分任务执行失败: {e}")
+        logger.error(traceback.format_exc())
+        return 0, 0
+
+def force_analyze_news_labeling_by_ids(news_ids):
+    """强制标签指定ID的新闻（覆盖现有数据）"""
+    if not news_ids:
+        logger.warning("没有提供需要强制标签的新闻ID")
+        return 0, 0
+    
+    try:
+        logger.info(f"开始强制AI标签任务 - ID列表: {news_ids}")
+        
+        # 根据ID获取新闻
+        news_list = get_news_by_ids(news_ids)
+        
+        if not news_list:
+            logger.warning("根据提供的ID未找到新闻")
+            return 0, 0
+        
+        logger.info(f"获取到 {len(news_list)} 条新闻进行强制标签")
+        
+        # 异步批量标签
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            results = loop.run_until_complete(batch_analyze_news_labeling_async(news_list))
+            
+            # 强制更新数据库（覆盖现有数据）
+            success_count, failure_count = force_update_news_labeling_results(results)
+            logger.info(f"强制AI标签任务完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+            return success_count, failure_count
+            
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        logger.error(f"强制标签任务执行失败: {e}")
+        logger.error(traceback.format_exc())
+        return 0, 0
+
+def force_update_news_analysis_results(results):
+    """强制更新新闻分析结果到数据库（覆盖现有数据）"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    success_count = 0
+    failure_count = 0
+    
+    try:
+        for result in results:
+            try:
+                # 自动分类消息标签
+                message_label = auto_classify_message_label(result['analysis'])
+                
+                # 强制更新，不管原来有没有数据
+                cursor.execute("""
+                    UPDATE news_red_telegraph 
+                    SET ai_analysis = %s, message_label = %s, updated_at = NOW()
+                    WHERE id = %s
+                """, (result['analysis'], message_label, result['id']))
+                
+                if result['success']:
+                    success_count += 1
+                    logger.info(f"强制更新分析结果 - 新闻ID {result['id']} 标记为: {message_label}")
+                else:
+                    failure_count += 1
+                    
+            except Exception as e:
+                logger.error(f"强制更新新闻分析结果失败 - ID: {result['id']}, 错误: {e}")
+                failure_count += 1
+        
+        conn.commit()
+        logger.info(f"强制批量更新分析完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+        return success_count, failure_count
+        
+    except Exception as e:
+        logger.error(f"强制批量更新新闻分析结果失败: {e}")
+        conn.rollback()
+        return 0, len(results)
+    finally:
+        cursor.close()
+        conn.close()
+
+def force_update_news_scoring_results(results):
+    """强制更新新闻评分结果到数据库（覆盖现有数据）"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    success_count = 0
+    failure_count = 0
+    
+    try:
+        for result in results:
+            try:
+                # 强制更新，不管原来有没有数据
+                cursor.execute("""
+                    UPDATE news_red_telegraph 
+                    SET message_score = %s, message_score_rationale = %s, updated_at = NOW()
+                    WHERE id = %s
+                """, (result['message_score'], result['message_score_rationale'], result['id']))
+                
+                if result['success']:
+                    success_count += 1
+                    logger.info(f"强制更新评分结果 - 新闻ID {result['id']} 评分: {result['message_score']}")
+                else:
+                    failure_count += 1
+                    
+            except Exception as e:
+                logger.error(f"强制更新新闻评分结果失败 - ID: {result['id']}, 错误: {e}")
+                failure_count += 1
+        
+        conn.commit()
+        logger.info(f"强制批量更新评分完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+        return success_count, failure_count
+        
+    except Exception as e:
+        logger.error(f"强制批量更新新闻评分结果失败: {e}")
+        conn.rollback()
+        return 0, len(results)
+    finally:
+        cursor.close()
+        conn.close()
+
+def force_update_news_labeling_results(results):
+    """强制更新新闻标签结果到数据库（覆盖现有数据）"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    success_count = 0
+    failure_count = 0
+    
+    try:
+        for result in results:
+            try:
+                # 强制更新，不管原来有没有数据
+                cursor.execute("""
+                    UPDATE news_red_telegraph 
+                    SET message_type = %s, message_type_rationale = %s, updated_at = NOW()
+                    WHERE id = %s
+                """, (result['message_type'], result['message_type_rationale'], result['id']))
+                
+                if result['success']:
+                    success_count += 1
+                    logger.info(f"强制更新标签结果 - 新闻ID {result['id']} 标签: {result['message_type']}")
+                else:
+                    failure_count += 1
+                    
+            except Exception as e:
+                logger.error(f"强制更新新闻标签结果失败 - ID: {result['id']}, 错误: {e}")
+                failure_count += 1
+        
+        conn.commit()
+        logger.info(f"强制批量更新标签完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+        return success_count, failure_count
+        
+    except Exception as e:
+        logger.error(f"强制批量更新新闻标签结果失败: {e}")
+        conn.rollback()
+        return 0, len(results)
+    finally:
+        cursor.close()
+        conn.close()
+
 # ==================== 主程序入口 ====================
 
 def main():
@@ -1489,6 +1857,61 @@ def main():
             else:
                 logger.info("没有新增新闻，跳过AI处理")
                 
+        elif command == "force-analyze":
+            # 强制分析指定ID的新闻
+            id_file = sys.argv[2] if len(sys.argv) > 2 else "force_process_ids.txt"
+            logger.info(f"执行强制AI分析任务，ID文件: {id_file}")
+            news_ids = load_force_process_ids(id_file)
+            if news_ids:
+                success_count, failure_count = force_analyze_news_by_ids(news_ids)
+                logger.info(f"强制分析完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+            else:
+                logger.warning("没有找到需要强制处理的ID")
+                
+        elif command == "force-score":
+            # 强制评分指定ID的新闻
+            id_file = sys.argv[2] if len(sys.argv) > 2 else "force_process_ids.txt"
+            logger.info(f"执行强制AI评分任务，ID文件: {id_file}")
+            news_ids = load_force_process_ids(id_file)
+            if news_ids:
+                success_count, failure_count = force_analyze_news_scoring_by_ids(news_ids)
+                logger.info(f"强制评分完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+            else:
+                logger.warning("没有找到需要强制处理的ID")
+                
+        elif command == "force-label":
+            # 强制标签指定ID的新闻
+            id_file = sys.argv[2] if len(sys.argv) > 2 else "force_process_ids.txt"
+            logger.info(f"执行强制AI标签任务，ID文件: {id_file}")
+            news_ids = load_force_process_ids(id_file)
+            if news_ids:
+                success_count, failure_count = force_analyze_news_labeling_by_ids(news_ids)
+                logger.info(f"强制标签完成: 成功 {success_count} 条, 失败 {failure_count} 条")
+            else:
+                logger.warning("没有找到需要强制处理的ID")
+                
+        elif command == "force-complete":
+            # 强制完整AI处理指定ID的新闻：分析 + 评分 + 标签
+            id_file = sys.argv[2] if len(sys.argv) > 2 else "force_process_ids.txt"
+            logger.info(f"执行强制完整AI处理任务，ID文件: {id_file}")
+            news_ids = load_force_process_ids(id_file)
+            if news_ids:
+                # 1. 强制软硬分析
+                success1, failure1 = force_analyze_news_by_ids(news_ids)
+                logger.info(f"强制软硬分析完成: 成功 {success1} 条, 失败 {failure1} 条")
+                
+                # 2. 强制评分
+                success2, failure2 = force_analyze_news_scoring_by_ids(news_ids)
+                logger.info(f"强制评分完成: 成功 {success2} 条, 失败 {failure2} 条")
+                
+                # 3. 强制标签
+                success3, failure3 = force_analyze_news_labeling_by_ids(news_ids)
+                logger.info(f"强制标签完成: 成功 {success3} 条, 失败 {failure3} 条")
+                
+                logger.info(f"强制完整AI处理完成: 分析成功{success1}条, 评分成功{success2}条, 标签成功{success3}条")
+            else:
+                logger.warning("没有找到需要强制处理的ID")
+                
         elif command == "schedule":
             # 调度模式：运行10天，每2小时执行一次
             logger.info("启动调度模式：10天，每2小时执行一次完整流程")
@@ -1498,13 +1921,21 @@ def main():
             
         else:
             print("使用方法:")
-            print("  python main.py crawl               - 只爬取新闻")
-            print("  python main.py analyze [数量]      - 只AI软硬分析最新未分析的新闻")
-            print("  python main.py score [数量]        - 只AI评分最新未评分的新闻")
-            print("  python main.py label [数量]        - 只AI标签最新未标签的新闻") 
-            print("  python main.py complete [数量]     - 完整AI处理：分析+评分+标签")
-            print("  python main.py full               - 完整流程：爬取+完整AI处理")
-            print("  python main.py schedule           - 调度模式：10天，每2小时执行一次")
+            print("  python main.py crawl                    - 只爬取新闻")
+            print("  python main.py analyze [数量]           - 只AI软硬分析最新未分析的新闻")
+            print("  python main.py score [数量]             - 只AI评分最新未评分的新闻")
+            print("  python main.py label [数量]             - 只AI标签最新未标签的新闻") 
+            print("  python main.py complete [数量]          - 完整AI处理：分析+评分+标签")
+            print("  python main.py full                    - 完整流程：爬取+完整AI处理")
+            print("  python main.py schedule                - 调度模式：10天，每2小时执行一次")
+            print("")
+            print("强制处理模式（覆盖现有数据）:")
+            print("  python main.py force-analyze [ID文件]   - 强制分析指定ID的新闻")
+            print("  python main.py force-score [ID文件]     - 强制评分指定ID的新闻")
+            print("  python main.py force-label [ID文件]     - 强制标签指定ID的新闻")
+            print("  python main.py force-complete [ID文件]  - 强制完整AI处理指定ID的新闻")
+            print("")
+            print("ID文件格式: 每行一个新闻ID，默认使用 force_process_ids.txt")
             sys.exit(1)
     else:
         # 默认执行完整流程
