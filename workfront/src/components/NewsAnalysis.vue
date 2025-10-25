@@ -192,10 +192,21 @@
           <!-- 第1列：序号 -->
           <el-table-column type="index" label="序号" width="60" :index="(index) => (pagination.page - 1) * pagination.page_size + index + 1" />
           
-          <!-- 第2列：发布时间 -->
-          <el-table-column prop="time" label="发布时间" width="180" />
+          <!-- 第2列：精准时间 -->
+          <el-table-column label="精准时间" width="130">
+            <template #default="scope">
+              {{ formatPreciseTime(scope.row.time) }}
+            </template>
+          </el-table-column>
           
-          <!-- 第3列：标题 -->
+          <!-- 第3列：模糊时间 -->
+          <el-table-column label="模糊时间" width="100">
+            <template #default="scope">
+              {{ formatVagueTime(scope.row.time) }}
+            </template>
+          </el-table-column>
+          
+          <!-- 第4列：标题 -->
           <el-table-column label="标题" min-width="200">
             <template #default="scope">
               <el-tooltip
@@ -236,7 +247,7 @@
               <el-input-number
                 v-model="scope.row.message_score"
                 :min="0"
-                :max="100"
+                :max="10"
                 size="small"
                 @change="updateMessageScore(scope.row)"
                 style="width: 80px"
@@ -424,7 +435,7 @@
               <el-slider
                 v-model="newsForm.message_score"
                 :min="0"
-                :max="100"
+                :max="10"
                 show-input
                 input-size="small"
               />
@@ -659,6 +670,61 @@ export default {
   },
   
   methods: {
+    // 格式化精准时间：10月25日06:30
+    formatPreciseTime(timeString) {
+      if (!timeString) return '-'
+      
+      try {
+        const date = new Date(timeString)
+        const month = date.getMonth() + 1
+        const day = date.getDate()
+        const hours = date.getHours().toString().padStart(2, '0')
+        const minutes = date.getMinutes().toString().padStart(2, '0')
+        
+        return `${month}月${day}日${hours}:${minutes}`
+      } catch (error) {
+        console.error('精准时间格式化失败:', error)
+        return timeString
+      }
+    },
+    
+    // 格式化模糊时间：周六上午
+    formatVagueTime(timeString) {
+      if (!timeString) return '-'
+      
+      try {
+        const date = new Date(timeString)
+        
+        // 获取星期
+        const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+        const weekDay = weekDays[date.getDay()]
+        
+        // 获取小时
+        const hours = date.getHours()
+        
+        // 判断时间段
+        let timePeriod = ''
+        if (hours >= 0 && hours < 6) {
+          timePeriod = '凌晨'
+        } else if (hours >= 6 && hours < 12) {
+          timePeriod = '上午'
+        } else if (hours >= 12 && hours < 14) {
+          timePeriod = '中午'
+        } else if (hours >= 14 && hours < 18) {
+          timePeriod = '下午'
+        } else if (hours >= 18 && hours < 19) {
+          timePeriod = '傍晚'
+        } else {
+          timePeriod = '晚上'
+        }
+        
+        return `${weekDay}${timePeriod}`
+      } catch (error) {
+        console.error('模糊时间格式化失败:', error)
+        return timeString
+      }
+    },
+    
     // 加载新闻列表
     async loadNewsList() {
       this.newsLoading = true
