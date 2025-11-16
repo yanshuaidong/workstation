@@ -33,7 +33,7 @@
             <div v-if="unreviewedData.current_news" class="news-item">
               <div class="news-header">
                 <h3>{{ unreviewedData.current_news.title }}</h3>
-                <span class="news-time">{{ unreviewedData.current_news.time }}</span>
+                <span class="news-time">{{ formatNewsTime(unreviewedData.current_news.time) }}</span>
               </div>
               
               <div class="news-content">
@@ -759,6 +759,49 @@ export default {
         'unknown': '未知'
       }
       return texts[label] || '未知'
+    },
+    
+    // 格式化新闻时间：11月7日07:49 周五（凌晨）
+    formatNewsTime(timeString) {
+      if (!timeString) return '-'
+      
+      try {
+        const date = new Date(timeString)
+        
+        // 精准时间：11月7日07:49
+        const month = date.getMonth() + 1
+        const day = date.getDate()
+        const hours = date.getHours().toString().padStart(2, '0')
+        const minutes = date.getMinutes().toString().padStart(2, '0')
+        const preciseTime = `${month}月${day}日${hours}:${minutes}`
+        
+        // 模糊时间：周五（凌晨）
+        const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+        const weekDay = weekDays[date.getDay()]
+        
+        const hour = date.getHours()
+        let timePeriod = ''
+        if (hour >= 0 && hour < 6) {
+          timePeriod = '凌晨'
+        } else if (hour >= 6 && hour < 12) {
+          timePeriod = '上午'
+        } else if (hour >= 12 && hour < 14) {
+          timePeriod = '中午'
+        } else if (hour >= 14 && hour < 18) {
+          timePeriod = '下午'
+        } else if (hour >= 18 && hour < 19) {
+          timePeriod = '傍晚'
+        } else {
+          timePeriod = '晚上'
+        }
+        
+        const vagueTime = `${weekDay}${timePeriod}`
+        
+        return `${preciseTime} -- ${vagueTime}`
+      } catch (error) {
+        console.error('时间格式化失败:', error)
+        return timeString
+      }
     },
     
     // 初始化跟踪记录
