@@ -17,7 +17,7 @@
   python main.py label [数量]             - 只AI标签最新未标签的新闻
   python main.py complete [数量]          - 完整AI处理：分析+评分+标签
   python main.py full                    - 完整流程：爬取+完整AI处理
-  python main.py schedule                - 调度模式：10天，每2小时执行一次
+  python main.py schedule                - 调度模式：10天，每1小时执行一次
 
 强制处理模式（覆盖现有数据）:
   python main.py force-analyze [ID文件]   - 强制分析指定ID的新闻
@@ -1944,8 +1944,8 @@ def main():
                 logger.warning("没有找到需要强制处理的ID")
                 
         elif command == "schedule":
-            # 调度模式：运行10天，每2小时执行一次
-            logger.info("启动调度模式：10天，每2小时执行一次完整流程")
+            # 调度模式：运行10天，每1小时执行一次
+            logger.info("启动调度模式：10天，每1小时执行一次完整流程")
             from scheduler import NewsScheduler
             scheduler = NewsScheduler()
             scheduler.run()
@@ -1958,7 +1958,7 @@ def main():
             print("  python main.py label [数量]             - 只AI标签最新未标签的新闻") 
             print("  python main.py complete [数量]          - 完整AI处理：分析+评分+标签")
             print("  python main.py full                    - 完整流程：爬取+完整AI处理")
-            print("  python main.py schedule                - 调度模式：10天，每2小时执行一次")
+            print("  python main.py schedule                - 调度模式：10天，每1小时执行一次")
             print("")
             print("强制处理模式（覆盖现有数据）:")
             print("  python main.py force-analyze [ID文件]   - 强制分析指定ID的新闻")
