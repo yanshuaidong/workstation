@@ -1,0 +1,741 @@
+{
+"contracts_main": [
+	{
+		"id" : 322,
+		"symbol" : "cum",
+		"name" : "沪铜主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 323,
+		"symbol" : "alm",
+		"name" : "沪铝主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 324,
+		"symbol" : "znm",
+		"name" : "沪锌主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 325,
+		"symbol" : "pbm",
+		"name" : "沪铅主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 326,
+		"symbol" : "aum",
+		"name" : "沪金主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 327,
+		"symbol" : "agm",
+		"name" : "沪银主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 328,
+		"symbol" : "rbm",
+		"name" : "螺纹钢主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 329,
+		"symbol" : "wrm",
+		"name" : "线材主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 330,
+		"symbol" : "fum",
+		"name" : "燃油主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 331,
+		"symbol" : "rum",
+		"name" : "橡胶主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 332,
+		"symbol" : "bum",
+		"name" : "沥青主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 333,
+		"symbol" : "hcm",
+		"name" : "热卷主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 334,
+		"symbol" : "nim",
+		"name" : "沪镍主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 335,
+		"symbol" : "snm",
+		"name" : "沪锡主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 336,
+		"symbol" : "spm",
+		"name" : "纸浆主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 337,
+		"symbol" : "ssm",
+		"name" : "不锈钢主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 338,
+		"symbol" : "aom",
+		"name" : "氧化铝主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 339,
+		"symbol" : "brm",
+		"name" : "丁二烯胶主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 340,
+		"symbol" : "adm",
+		"name" : "铸造铝主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 341,
+		"symbol" : "opm",
+		"name" : "胶版纸主连",
+		"exchange" : "上期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 342,
+		"symbol" : "cm",
+		"name" : "玉米主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 343,
+		"symbol" : "am",
+		"name" : "豆一主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 344,
+		"symbol" : "bm",
+		"name" : "豆二主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:41",
+		"updated_at" : "2025-11-12 09:16:41"
+	},
+	{
+		"id" : 345,
+		"symbol" : "mm",
+		"name" : "豆粕主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 346,
+		"symbol" : "ym",
+		"name" : "豆油主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 347,
+		"symbol" : "pm",
+		"name" : "棕榈油主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 348,
+		"symbol" : "lm",
+		"name" : "塑料主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 349,
+		"symbol" : "vm",
+		"name" : "PVC主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 350,
+		"symbol" : "jm",
+		"name" : "焦炭主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 351,
+		"symbol" : "jmm",
+		"name" : "焦煤主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 352,
+		"symbol" : "fbm",
+		"name" : "纤维板主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 353,
+		"symbol" : "bbm",
+		"name" : "胶合板主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 354,
+		"symbol" : "im",
+		"name" : "铁矿石主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 355,
+		"symbol" : "jdm",
+		"name" : "鸡蛋主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 356,
+		"symbol" : "ppm",
+		"name" : "聚丙烯主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 357,
+		"symbol" : "csm",
+		"name" : "淀粉主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 358,
+		"symbol" : "egm",
+		"name" : "乙二醇主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 359,
+		"symbol" : "rrm",
+		"name" : "粳米主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 360,
+		"symbol" : "ebm",
+		"name" : "苯乙烯主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 361,
+		"symbol" : "pgm",
+		"name" : "LPG主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 362,
+		"symbol" : "lhm",
+		"name" : "生猪主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 363,
+		"symbol" : "lgm",
+		"name" : "原木主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 364,
+		"symbol" : "lFm",
+		"name" : "塑料月均主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 365,
+		"symbol" : "vFm",
+		"name" : "PVC月均主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:42",
+		"updated_at" : "2025-11-12 09:16:42"
+	},
+	{
+		"id" : 366,
+		"symbol" : "ppFm",
+		"name" : "聚丙烯月均主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:43",
+		"updated_at" : "2025-11-12 09:16:43"
+	},
+	{
+		"id" : 367,
+		"symbol" : "bzm",
+		"name" : "纯苯主连",
+		"exchange" : "大商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:43",
+		"updated_at" : "2025-11-12 09:16:43"
+	},
+	{
+		"id" : 368,
+		"symbol" : "CFM",
+		"name" : "棉花主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:43",
+		"updated_at" : "2025-11-12 09:16:43"
+	},
+	{
+		"id" : 369,
+		"symbol" : "SRM",
+		"name" : "白糖主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:44",
+		"updated_at" : "2025-11-12 09:16:44"
+	},
+	{
+		"id" : 370,
+		"symbol" : "TAM",
+		"name" : "PTA主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:44",
+		"updated_at" : "2025-11-12 09:16:44"
+	},
+	{
+		"id" : 371,
+		"symbol" : "OIM",
+		"name" : "菜油主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:44",
+		"updated_at" : "2025-11-12 09:16:44"
+	},
+	{
+		"id" : 372,
+		"symbol" : "MAM",
+		"name" : "甲醇主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:44",
+		"updated_at" : "2025-11-12 09:16:44"
+	},
+	{
+		"id" : 373,
+		"symbol" : "FGM",
+		"name" : "玻璃主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:45",
+		"updated_at" : "2025-11-12 09:16:45"
+	},
+	{
+		"id" : 374,
+		"symbol" : "RSM",
+		"name" : "菜籽主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:45",
+		"updated_at" : "2025-11-12 09:16:45"
+	},
+	{
+		"id" : 375,
+		"symbol" : "RMM",
+		"name" : "菜粕主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:45",
+		"updated_at" : "2025-11-12 09:16:45"
+	},
+	{
+		"id" : 376,
+		"symbol" : "SFM",
+		"name" : "硅铁主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:45",
+		"updated_at" : "2025-11-12 09:16:45"
+	},
+	{
+		"id" : 377,
+		"symbol" : "SMM",
+		"name" : "锰硅主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:46",
+		"updated_at" : "2025-11-12 09:16:46"
+	},
+	{
+		"id" : 378,
+		"symbol" : "CYM",
+		"name" : "棉纱主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:46",
+		"updated_at" : "2025-11-12 09:16:46"
+	},
+	{
+		"id" : 379,
+		"symbol" : "APM",
+		"name" : "苹果主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:46",
+		"updated_at" : "2025-11-12 09:16:46"
+	},
+	{
+		"id" : 380,
+		"symbol" : "CJM",
+		"name" : "红枣主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:47",
+		"updated_at" : "2025-11-12 09:16:47"
+	},
+	{
+		"id" : 381,
+		"symbol" : "URM",
+		"name" : "尿素主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:47",
+		"updated_at" : "2025-11-12 09:16:47"
+	},
+	{
+		"id" : 382,
+		"symbol" : "SAM",
+		"name" : "纯碱主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:47",
+		"updated_at" : "2025-11-12 09:16:47"
+	},
+	{
+		"id" : 383,
+		"symbol" : "PFM",
+		"name" : "短纤主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:47",
+		"updated_at" : "2025-11-12 09:16:47"
+	},
+	{
+		"id" : 384,
+		"symbol" : "PKM",
+		"name" : "花生主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:48",
+		"updated_at" : "2025-11-12 09:16:48"
+	},
+	{
+		"id" : 385,
+		"symbol" : "PXM",
+		"name" : "对二甲苯主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:48",
+		"updated_at" : "2025-11-12 09:16:48"
+	},
+	{
+		"id" : 386,
+		"symbol" : "SHM",
+		"name" : "烧碱主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:48",
+		"updated_at" : "2025-11-12 09:16:48"
+	},
+	{
+		"id" : 387,
+		"symbol" : "PRM",
+		"name" : "瓶片主连",
+		"exchange" : "郑商所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:48",
+		"updated_at" : "2025-11-12 09:16:48"
+	},
+	{
+		"id" : 388,
+		"symbol" : "scm",
+		"name" : "原油主连",
+		"exchange" : "上期能源",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:49",
+		"updated_at" : "2025-11-12 09:16:49"
+	},
+	{
+		"id" : 389,
+		"symbol" : "nrm",
+		"name" : "20号胶主连",
+		"exchange" : "上期能源",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:49",
+		"updated_at" : "2025-11-12 09:16:49"
+	},
+	{
+		"id" : 390,
+		"symbol" : "lum",
+		"name" : "低硫燃油主连",
+		"exchange" : "上期能源",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:49",
+		"updated_at" : "2025-11-12 09:16:49"
+	},
+	{
+		"id" : 391,
+		"symbol" : "bcm",
+		"name" : "国际铜主连",
+		"exchange" : "上期能源",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:49",
+		"updated_at" : "2025-11-12 09:16:49"
+	},
+	{
+		"id" : 392,
+		"symbol" : "ecm",
+		"name" : "欧线集运主连",
+		"exchange" : "上期能源",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:49",
+		"updated_at" : "2025-11-12 09:16:49"
+	},
+	{
+		"id" : 393,
+		"symbol" : "ICM",
+		"name" : "中证500股指主连",
+		"exchange" : "中金所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:49",
+		"updated_at" : "2025-11-12 09:16:49"
+	},
+	{
+		"id" : 394,
+		"symbol" : "IFM",
+		"name" : "沪深主连",
+		"exchange" : "中金所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:49",
+		"updated_at" : "2025-11-12 09:16:49"
+	},
+	{
+		"id" : 395,
+		"symbol" : "IHM",
+		"name" : "上证主连",
+		"exchange" : "中金所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:49",
+		"updated_at" : "2025-11-12 09:16:49"
+	},
+	{
+		"id" : 396,
+		"symbol" : "TM",
+		"name" : "十债主连",
+		"exchange" : "中金所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:50",
+		"updated_at" : "2025-11-12 09:16:50"
+	},
+	{
+		"id" : 397,
+		"symbol" : "TFM",
+		"name" : "五债主连",
+		"exchange" : "中金所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:50",
+		"updated_at" : "2025-11-12 09:16:50"
+	},
+	{
+		"id" : 398,
+		"symbol" : "TSM",
+		"name" : "二债主连",
+		"exchange" : "中金所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:50",
+		"updated_at" : "2025-11-12 09:16:50"
+	},
+	{
+		"id" : 399,
+		"symbol" : "IMM",
+		"name" : "中证1000股指主连",
+		"exchange" : "中金所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:50",
+		"updated_at" : "2025-11-12 09:16:50"
+	},
+	{
+		"id" : 400,
+		"symbol" : "TLM",
+		"name" : "三十债主连",
+		"exchange" : "中金所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:51",
+		"updated_at" : "2025-11-12 09:16:51"
+	},
+	{
+		"id" : 401,
+		"symbol" : "sim",
+		"name" : "工业硅主连",
+		"exchange" : "广期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:51",
+		"updated_at" : "2025-11-12 09:16:51"
+	},
+	{
+		"id" : 402,
+		"symbol" : "lcm",
+		"name" : "碳酸锂主连",
+		"exchange" : "广期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:51",
+		"updated_at" : "2025-11-12 09:16:51"
+	},
+	{
+		"id" : 403,
+		"symbol" : "psm",
+		"name" : "多晶硅主连",
+		"exchange" : "广期所",
+		"is_active" : 1,
+		"created_at" : "2025-11-12 09:16:51",
+		"updated_at" : "2025-11-12 09:16:51"
+	}
+]}

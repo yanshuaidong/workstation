@@ -37,7 +37,65 @@
               </div>
               
               <div class="news-content">
-                <p><strong>内容：</strong>{{ unreviewedData.current_news.content }}</p>
+                <!-- 国泰君安持仓变化日报特殊展示 -->
+                <div v-if="isPositionReport(unreviewedData.current_news.title)">
+                  <div class="position-report">
+                    <h4>国泰君安持仓TOP3变化</h4>
+                    <el-table :data="parsePositionData(unreviewedData.current_news.content)" stripe style="width: 100%">
+                      <el-table-column prop="name" label="品种" width="100" align="center"></el-table-column>
+                      <el-table-column prop="family" label="品类" width="80" align="center"></el-table-column>
+                      <el-table-column prop="total_buy" label="多头持仓" width="100" align="center">
+                        <template #default="scope">
+                          <span style="color: #f56c6c; font-weight: bold;">{{ scope.row.total_buy }}</span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="total_ss" label="空头持仓" width="100" align="center">
+                        <template #default="scope">
+                          <span style="color: #67c23a; font-weight: bold;">{{ scope.row.total_ss }}</span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="net_position" label="净持仓" width="100" align="center">
+                        <template #default="scope">
+                          <span :style="{color: scope.row.net_position > 0 ? '#f56c6c' : '#67c23a', fontWeight: 'bold'}">
+                            {{ scope.row.net_position }}
+                          </span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="net_change" label="持仓变化" width="100" align="center">
+                        <template #default="scope">
+                          <span :style="{color: scope.row.net_change > 0 ? '#f56c6c' : '#67c23a', fontWeight: 'bold'}">
+                            {{ scope.row.net_change > 0 ? '+' : '' }}{{ scope.row.net_change }}
+                          </span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="change_ratio" label="变化比例" width="100" align="center">
+                        <template #default="scope">
+                          <span :style="{color: scope.row.change_ratio > 0 ? '#f56c6c' : '#67c23a', fontWeight: 'bold'}">
+                            {{ scope.row.change_ratio > 0 ? '+' : '' }}{{ scope.row.change_ratio.toFixed(2) }}%
+                          </span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column label="方向" width="80" align="center">
+                        <template #default="scope">
+                          <el-tag :type="scope.row.is_net_long ? 'danger' : 'success'" size="small">
+                            {{ scope.row.is_net_long ? '净多' : '净空' }}
+                          </el-tag>
+                        </template>
+                      </el-table-column>
+                      <el-table-column label="趋势" width="80" align="center">
+                        <template #default="scope">
+                          <el-icon :style="{color: scope.row.is_increasing ? '#f56c6c' : '#67c23a', fontSize: '20px'}">
+                            <component :is="scope.row.is_increasing ? 'CaretTop' : 'CaretBottom'" />
+                          </el-icon>
+                        </template>
+                      </el-table-column>
+                    </el-table>
+                  </div>
+                </div>
+                
+                <!-- 普通新闻展示 -->
+                <p v-else><strong>内容：</strong>{{ unreviewedData.current_news.content }}</p>
+                
                 <p v-if="unreviewedData.current_news.ai_analysis">
                   <strong>AI分析：</strong>{{ unreviewedData.current_news.ai_analysis }}
                 </p>
@@ -403,13 +461,15 @@ import {
   initTrackingApi,
   getOssUploadUrlApi
 } from '@/api'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, CaretTop, CaretBottom } from '@element-plus/icons-vue'
 
 
 export default {
   name: 'NewsTracking',
   components: {
-    Plus
+    Plus,
+    CaretTop,
+    CaretBottom
   },
   data() {
     return {
@@ -923,6 +983,28 @@ export default {
         console.error('文件上传失败:', error)
         throw error
       }
+    },
+    
+    // 判断是否是国泰君安持仓变化日报
+    isPositionReport(title) {
+      if (!title) return false
+      return title.includes('国泰君安持仓变化日报')
+    },
+    
+    // 解析持仓数据
+    parsePositionData(content) {
+      if (!content) return []
+      
+      try {
+        const data = JSON.parse(content)
+        if (data && data.top3 && Array.isArray(data.top3)) {
+          return data.top3
+        }
+        return []
+      } catch (error) {
+        console.error('解析持仓数据失败:', error)
+        return []
+      }
     }
   }
 }
@@ -1158,6 +1240,36 @@ export default {
   margin: 0;
 }
 
+/* 持仓报告样式 */
+.position-report {
+  margin: 15px 0;
+  padding: 15px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+}
+
+.position-report h4 {
+  margin: 0 0 15px 0;
+  color: #303133;
+  font-size: 16px;
+  font-weight: bold;
+  text-align: center;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #409eff;
+}
+
+.position-report .el-table {
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.position-report .el-table th {
+  background-color: #409eff !important;
+  color: white !important;
+  font-weight: bold;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .news-header {
@@ -1177,6 +1289,10 @@ export default {
   .news-tags {
     flex-direction: column;
     align-items: flex-start;
+  }
+  
+  .position-report {
+    overflow-x: auto;
   }
 }
 </style>

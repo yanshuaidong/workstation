@@ -1,0 +1,41 @@
+{
+  "date": "2025-11-21",
+  "top3": [
+    {
+      "date": "2025-11-21",
+      "name": "淀粉",
+      "family": "谷物",
+      "total_buy": 24607,
+      "total_ss": 10010,
+      "net_position": 14597,
+      "net_change": 4897,
+      "change_ratio": 19.90084122404194,
+      "is_net_long": true,
+      "is_increasing": true
+    },
+    {
+      "date": "2025-11-21",
+      "name": "低硫油",
+      "family": "原油",
+      "total_buy": 10010,
+      "total_ss": 5573,
+      "net_position": 4437,
+      "net_change": 1850,
+      "change_ratio": 18.48151848151848,
+      "is_net_long": true,
+      "is_increasing": true
+    },
+    {
+      "date": "2025-11-21",
+      "name": "红枣",
+      "family": "农副",
+      "total_buy": 13135,
+      "total_ss": 23841,
+      "net_position": -10706,
+      "net_change": -3151,
+      "change_ratio": 13.21672748626316,
+      "is_net_long": false,
+      "is_increasing": false
+    }
+  ]
+}
