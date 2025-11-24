@@ -12,3 +12,40 @@
 ============================================================
 2025-11-24 10:12:31,963 - futures_scheduler - INFO - 今天是交易日，等待到 16:00:00 执行
 2025-11-24 10:12:31,963 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 11:12:32,050 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 12:12:32,176 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 13:12:32,525 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 14:12:32,439 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:12:32,622 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:17:32,660 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:22:32,677 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:27:32,696 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:32:32,725 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:37:32,741 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:42:32,770 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:47:32,787 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:52:32,805 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 15:57:32,840 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 16:02:32,870 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 16:02:32,883 - futures_scheduler - INFO - 到达执行时间，开始执行任务...
+2025-11-24 16:02:32,884 - futures_scheduler - INFO - === 开始第 1 次执行 ===
+2025-11-24 16:02:32,884 - futures_scheduler - INFO - 执行时间: 2025-11-24 16:02:32
+2025-11-24 16:02:32,884 - futures_scheduler - INFO - 步骤1: 加载期货品种过滤条件...
+2025-11-24 16:02:32,929 - futures_scheduler - INFO - 步骤2: 开始爬取期货数据...
+2025-11-24 16:03:19,085 - futures_scheduler - INFO - 步骤3: 过滤数据...
+2025-11-24 16:03:19,086 - futures_scheduler - INFO - 上期所: 原始 277 条 -> 过滤后 20 条
+2025-11-24 16:03:19,086 - futures_scheduler - INFO - 上期能源: 原始 72 条 -> 过滤后 5 条
+2025-11-24 16:03:19,086 - futures_scheduler - INFO - 大商所: 原始 292 条 -> 过滤后 26 条
+2025-11-24 16:03:19,086 - futures_scheduler - INFO - 郑商所: 原始 295 条 -> 过滤后 20 条
+2025-11-24 16:03:19,086 - futures_scheduler - INFO - 广期所: 原始 42 条 -> 过滤后 3 条
+2025-11-24 16:03:19,086 - futures_scheduler - INFO - 数据过滤完成: 总原始 978 条 -> 总过滤后 74 条
+2025-11-24 16:03:19,086 - futures_scheduler - INFO - 步骤4: 保存数据到数据库...
+2025-11-24 16:03:29,079 - futures_scheduler - INFO - 数据库保存完成: 成功 74 条, 失败 0 条
+💓 心跳 #0/10 | 已运行: 5.8h (0天) | 剩余: 330.2h (13天) | 预计结束: 2025-12-08 10:12:31
+2025-11-24 16:03:29,079 - futures_scheduler - INFO - 💓 心跳 #0/10 | 已运行: 5.8h (0天) | 剩余: 330.2h (13天) | 预计结束: 2025-12-08 10:12:31
+2025-11-24 16:03:29,079 - futures_scheduler - INFO - === 第 1 次执行完成 ===
+2025-11-24 16:03:29,080 - futures_scheduler - INFO - 下次执行时间: 2025-11-25 16:00:00
+2025-11-24 16:03:29,080 - futures_scheduler - INFO - 等待 23.9 小时...
+2025-11-24 16:03:29,081 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 16:08:29,209 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
+2025-11-24 17:08:29,425 - futures_scheduler - INFO - 切换到新日志文件: logs/futures_crawler_2025-11-24.log
