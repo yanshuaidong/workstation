@@ -615,3 +615,11 @@ self.execution_hour = 当前时间的下一个小时  # 例如现在是14点，�
 
 如有问题，请查看日志文件或联系开发者。
 
+```bash
+# 启动
+./start_scheduler.sh
+
+
+# 停止
+./stop_scheduler.sh
+```
