@@ -37,32 +37,57 @@ def capture_data():
                 'message': '没有接收到数据'
             }), 400
         
-        # 生成文件名（使用时间戳）
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-        filename = f'bloomberg_data_{timestamp}.json'
+        # 生成当天的文件名（按日期）
+        today = datetime.now().strftime('%Y%m%d')
+        filename = f'bloomberg_data_{today}.json'
         filepath = os.path.join(DATA_DIR, filename)
         
-        # 添加服务器接收时间
-        data['serverReceivedTime'] = datetime.now().isoformat()
+        # 读取现有文件或创建新文件结构
+        if os.path.exists(filepath):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+        else:
+            existing_data = {
+                'capturedData': [],
+                'serverReceivedTime': datetime.now().isoformat()
+            }
+        
+        # 获取新接收的数据列表
+        new_items = data.get('capturedData', [])
+        
+        # 获取已存在的所有publishedAt值（用于去重）
+        existing_published_at = {
+            item.get('publishedAt') 
+            for item in existing_data['capturedData'] 
+            if item.get('publishedAt')
+        }
+        
+        # 过滤掉重复的数据
+        added_count = 0
+        for item in new_items:
+            published_at = item.get('publishedAt')
+            if published_at and published_at not in existing_published_at:
+                existing_data['capturedData'].append(item)
+                existing_published_at.add(published_at)
+                added_count += 1
+        
+        # 更新服务器接收时间
+        existing_data['serverReceivedTime'] = datetime.now().isoformat()
         
         # 保存到JSON文件
         with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        
-        # 同时保存为latest.json（最新的一份）
-        latest_filepath = os.path.join(DATA_DIR, 'latest.json')
-        with open(latest_filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            json.dump(existing_data, f, ensure_ascii=False, indent=2)
         
         print(f'✅ 数据已保存: {filename}')
-        print(f'📦 数据大小: {data.get("dataSize", "未知")} bytes')
+        print(f'📊 新增: {added_count} 条 | 总计: {len(existing_data["capturedData"])} 条')
         print(f'🔗 URL: {data.get("capturedUrl", "未知")}')
         
         return jsonify({
             'success': True,
             'message': '数据保存成功',
             'filename': filename,
-            'timestamp': timestamp
+            'added': added_count,
+            'total': len(existing_data['capturedData'])
         }), 200
         
     except Exception as e:

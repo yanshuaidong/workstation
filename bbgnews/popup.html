@@ -6,104 +6,256 @@
   <title>Bloomberg API拦截器</title>
   <style>
     body {
-      width: 600px;
-      min-height: 400px;
-      padding: 15px;
-      font-family: Arial, sans-serif;
+      width: 700px;
+      min-height: 500px;
+      padding: 20px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
-    h2 {
-      margin-top: 0;
+    .container {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    h1 {
+      margin: 0 0 20px 0;
       color: #333;
-      font-size: 18px;
+      font-size: 24px;
+      text-align: center;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #667eea;
     }
-    .controls {
+    .section {
+      background-color: #f8f9fa;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 15px;
       margin-bottom: 15px;
+    }
+    .section-title {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      font-weight: bold;
+      color: #444;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .scheduler-config {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+    .scheduler-config label {
+      font-weight: 600;
+      color: #555;
+    }
+    .scheduler-config input {
+      width: 70px;
+      padding: 6px 10px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+    .scheduler-config input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    .scheduler-buttons {
       display: flex;
       gap: 10px;
-      align-items: center;
+      margin-bottom: 12px;
     }
     button {
-      padding: 8px 16px;
+      padding: 10px 20px;
       background-color: #4CAF50;
       color: white;
       border: none;
-      border-radius: 4px;
+      border-radius: 6px;
       cursor: pointer;
       font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
     button:hover {
-      background-color: #45a049;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     }
     button:disabled {
       background-color: #cccccc;
       cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
     }
-    #clearBtn {
-      background-color: #f44336;
+    .btn-start {
+      flex: 1;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
-    #clearBtn:hover {
-      background-color: #da190b;
+    .btn-stop {
+      flex: 1;
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     }
-    .status {
-      padding: 8px;
-      border-radius: 4px;
-      margin-bottom: 10px;
+    .scheduler-status {
+      background-color: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 10px;
       font-size: 13px;
     }
-    .status.success {
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .status-item:last-child {
+      border-bottom: none;
+    }
+    .status-label {
+      color: #666;
+      font-weight: 600;
+    }
+    .status-value {
+      color: #333;
+      font-weight: 500;
+    }
+    .status-value.active {
+      color: #4CAF50;
+      font-weight: bold;
+    }
+    .status-value.inactive {
+      color: #999;
+    }
+    .records-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: white;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .records-table thead {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .records-table th {
+      padding: 10px;
+      text-align: left;
+      font-weight: 600;
+    }
+    .records-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .records-table tbody tr:hover {
+      background-color: #f8f9fa;
+    }
+    .records-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .badge-success {
+      display: inline-block;
+      padding: 3px 8px;
       background-color: #d4edda;
       color: #155724;
-      border: 1px solid #c3e6cb;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
     }
-    .status.error {
+    .badge-fail {
+      display: inline-block;
+      padding: 3px 8px;
       background-color: #f8d7da;
       color: #721c24;
-      border: 1px solid #f5c6cb;
-    }
-    .status.info {
-      background-color: #d1ecf1;
-      color: #0c5460;
-      border: 1px solid #bee5eb;
-    }
-    .status.hidden {
-      display: none;
-    }
-    #jsonDisplay {
-      background-color: #f5f5f5;
-      border: 1px solid #ddd;
       border-radius: 4px;
-      padding: 10px;
-      max-height: 500px;
-      overflow-y: auto;
-      font-family: 'Courier New', monospace;
       font-size: 12px;
-      white-space: pre-wrap;
-      word-wrap: break-word;
+      font-weight: 600;
     }
-    #jsonDisplay:empty::before {
-      content: "等待拦截API响应...";
+    .empty-records {
+      text-align: center;
+      padding: 30px;
       color: #999;
       font-style: italic;
     }
-    .timestamp {
-      color: #666;
-      font-size: 11px;
-      margin-top: 5px;
+    .records-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .clear-records-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     }
   </style>
 </head>
 <body>
-  <h2>📰 Bloomberg News API 拦截器</h2>
-  
-  <div class="controls">
-    <button id="refreshBtn">🔄 刷新页面并拦截</button>
-    <button id="clearBtn">🗑️ 清除数据</button>
+  <div class="container">
+    <h1>📰 Bloomberg News API 拦截器</h1>
+    
+    <!-- 定时任务管理面板 -->
+    <div class="section">
+      <div class="section-title">⏰ 定时任务管理</div>
+      <div class="scheduler-config">
+        <label for="intervalInput">刷新间隔:</label>
+        <input type="number" id="intervalInput" min="1" max="1440" value="60" />
+        <span>分钟</span>
+      </div>
+      <div class="scheduler-buttons">
+        <button id="startSchedulerBtn" class="btn-start">▶️ 启动定时任务</button>
+        <button id="stopSchedulerBtn" class="btn-stop" disabled>⏸️ 停止定时任务</button>
+      </div>
+      <div class="scheduler-status">
+        <div class="status-item">
+          <span class="status-label">状态:</span>
+          <span id="statusText" class="status-value inactive">未启动</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">启动时间:</span>
+          <span id="startTimeText" class="status-value">-</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">上次执行:</span>
+          <span id="lastRefreshText" class="status-value">-</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">下次执行:</span>
+          <span id="nextRefreshText" class="status-value">-</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 定时任务记录表格 -->
+    <div class="section">
+      <div class="records-header">
+        <div class="section-title">📊 执行记录</div>
+        <button id="clearRecordsBtn" class="clear-records-btn">清空记录</button>
+      </div>
+      <div style="max-height: 300px; overflow-y: auto;">
+        <table class="records-table">
+          <thead>
+            <tr>
+              <th>次数</th>
+              <th>执行时间</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody id="recordsTableBody">
+            <tr>
+              <td colspan="3" class="empty-records">暂无执行记录</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
-  
-  <div id="status" class="status hidden"></div>
-  
-  <div id="jsonDisplay"></div>
   
   <script src="popup.js"></script>
 </body>

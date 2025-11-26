@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Bloomberg News Interceptor",
-  "version": "1.0.2",
-  "description": "拦截Bloomberg API请求并展示响应数据",
+  "version": "1.1.0",
+  "description": "拦截Bloomberg API请求并展示响应数据，支持定时自动采集",
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "alarms",
+    "tabs"
   ],
   "host_permissions": [
     "https://www.bloomberg.com/*"

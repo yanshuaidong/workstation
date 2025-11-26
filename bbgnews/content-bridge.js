@@ -17,17 +17,57 @@
   // 本地服务器配置
   const LOCAL_SERVER_URL = 'http://localhost:1123/api/capture';
   
+  // 过滤数据，只保留需要的字段
+  const filterCapturedData = (rawData) => {
+    try {
+      // 假设 rawData 是一个包含新闻列表的对象
+      // 需要找到数组字段并提取所需信息
+      let newsArray = [];
+      
+      // 尝试从不同可能的结构中提取数据
+      if (Array.isArray(rawData)) {
+        newsArray = rawData;
+      } else if (rawData.stories && Array.isArray(rawData.stories)) {
+        newsArray = rawData.stories;
+      } else if (rawData.data && Array.isArray(rawData.data)) {
+        newsArray = rawData.data;
+      } else if (rawData.results && Array.isArray(rawData.results)) {
+        newsArray = rawData.results;
+      }
+      
+      // 过滤并只保留需要的字段
+      const filteredData = newsArray.map(item => ({
+        publishedAt: item.publishedAt || item.published_at || item.date || null,
+        brand: item.brand || item.source || null,
+        headline: item.headline || item.title || null
+      })).filter(item => item.headline); // 至少要有标题才保留
+      
+      safeLog(`📊 数据过滤完成: ${newsArray.length} 条 → ${filteredData.length} 条`);
+      
+      return {
+        capturedData: filteredData
+      };
+    } catch (err) {
+      console.error('❌ 数据过滤失败:', err);
+      return { capturedData: [] };
+    }
+  };
+  
   // 发送数据到本地服务器
-  const sendToLocalServer = async (data) => {
+  const sendToLocalServer = async (rawData) => {
     try {
       safeLog('🌐 正在发送数据到本地服务器:', LOCAL_SERVER_URL);
+      
+      // 过滤数据
+      const filteredData = filterCapturedData(rawData);
+      safeLog('📦 过滤后的数据条数:', filteredData.capturedData.length);
       
       const response = await fetch(LOCAL_SERVER_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(filteredData)
       });
       
       if (response.ok) {
@@ -63,26 +103,21 @@
     if (message.type === 'API_CAPTURED') {
       const { capturedData, capturedUrl, capturedTime, dataSize } = message.data;
       
-      safeLog('💾 正在保存到 chrome.storage...');
-      safeLog('📦 数据大小:', dataSize, 'bytes');
+      safeLog('📦 原始数据大小:', dataSize, 'bytes');
       
       try {
-        // 1. 保存到 chrome.storage（作为备份）
+        // 1. 发送到本地服务器（发送过滤后的数据）
+        const serverSuccess = await sendToLocalServer(capturedData);
+        
+        // 2. 浏览器只保存简要信息（时间和状态）
+        safeLog('💾 正在保存简要记录到 chrome.storage...');
         await chrome.storage.local.set({
-          capturedData,
-          capturedUrl,
-          capturedTime
+          lastCaptureTime: capturedTime,
+          lastCaptureSuccess: serverSuccess,
+          lastCaptureUrl: capturedUrl
         });
         
-        safeLog('✅ 数据已保存到 storage');
-        
-        // 2. 发送到本地服务器
-        const serverSuccess = await sendToLocalServer({
-          capturedData,
-          capturedUrl,
-          capturedTime,
-          dataSize
-        });
+        safeLog('✅ 简要记录已保存到 storage');
         
         // 3. 通知 background script
         safeLog('📢 正在通知 background script...');

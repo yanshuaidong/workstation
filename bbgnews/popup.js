@@ -3,143 +3,201 @@ console.log('📱 Popup 窗口已打开');
 console.log('⏰ 打开时间:', new Date().toLocaleString('zh-CN'));
 console.log('═══════════════════════════════════════════════');
 
-// 显示状态消息
-function showStatus(message, type = 'info') {
-  console.log(`📢 状态消息 [${type}]:`, message);
-  const statusDiv = document.getElementById('status');
-  statusDiv.textContent = message;
-  statusDiv.className = `status ${type}`;
-  
-  // 3秒后自动隐藏
-  setTimeout(() => {
-    statusDiv.classList.add('hidden');
-  }, 3000);
+// ==================== 定时任务功能 ====================
+
+// 格式化时间显示
+function formatTime(isoString) {
+  if (!isoString) return '-';
+  const date = new Date(isoString);
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
 }
 
-// 格式化JSON显示
-function displayJSON(data) {
-  console.log('🎨 正在格式化显示数据...');
-  console.log('📦 原始数据:', data);
+// 更新执行记录表格
+async function updateRecordsTable() {
+  const result = await chrome.storage.local.get(['taskRecords']);
+  const records = result.taskRecords || [];
   
-  const jsonDisplay = document.getElementById('jsonDisplay');
-  try {
-    const formatted = JSON.stringify(data, null, 2);
-    console.log('✅ JSON 格式化成功，字符数:', formatted.length);
-    
-    jsonDisplay.textContent = formatted;
-    
-    // 添加时间戳
-    const timestamp = document.createElement('div');
-    timestamp.className = 'timestamp';
-    timestamp.textContent = `\n拦截时间: ${new Date().toLocaleString('zh-CN')}`;
-    jsonDisplay.appendChild(timestamp);
-    
-    console.log('✅ 数据已显示在界面上');
-    showStatus('✅ 成功拦截到API响应！', 'success');
-  } catch (e) {
-    console.error('❌ JSON 格式化失败:', e);
-    jsonDisplay.textContent = '解析JSON失败: ' + e.message;
-    showStatus('❌ JSON解析失败', 'error');
+  const tbody = document.getElementById('recordsTableBody');
+  
+  if (records.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-records">暂无执行记录</td></tr>';
+    return;
   }
+  
+  // 最新的记录在上面
+  tbody.innerHTML = records.map((record, index) => `
+    <tr>
+      <td>#${records.length - index}</td>
+      <td>${formatTime(record.time)}</td>
+      <td><span class="badge-${record.success ? 'success' : 'fail'}">${record.success ? '✓ 成功' : '✗ 失败'}</span></td>
+    </tr>
+  `).join('');
 }
 
-// 刷新页面按钮
-document.getElementById('refreshBtn').addEventListener('click', async () => {
-  console.log('═══════════════════════════════════════════════');
-  console.log('🔄 用户点击了刷新按钮');
+// 添加执行记录
+async function addTaskRecord(success) {
+  const result = await chrome.storage.local.get(['taskRecords']);
+  const records = result.taskRecords || [];
+  
+  // 添加新记录到开头（最新的在前面）
+  records.unshift({
+    time: new Date().toISOString(),
+    success: success
+  });
+  
+  // 最多保留100条记录
+  if (records.length > 100) {
+    records.pop();
+  }
+  
+  await chrome.storage.local.set({ taskRecords: records });
+  await updateRecordsTable();
+}
+
+// 更新定时任务状态显示
+async function updateSchedulerStatus() {
+  console.log('🔄 更新定时任务状态...');
   
   try {
-    console.log('🔍 正在查询当前标签页...');
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    console.log('📍 当前标签页:', tab.id, tab.url);
+    const response = await chrome.runtime.sendMessage({ type: 'GET_SCHEDULER_STATUS' });
     
-    if (!tab.url.includes('bloomberg.com')) {
-      console.warn('⚠️ 当前不在 Bloomberg 网站');
-      showStatus('⚠️ 请在Bloomberg网站上使用此插件', 'error');
-      return;
+    if (response.success) {
+      const { status } = response;
+      console.log('📊 定时任务状态:', status);
+      
+      // 更新UI
+      const statusText = document.getElementById('statusText');
+      const startTimeText = document.getElementById('startTimeText');
+      const lastRefreshText = document.getElementById('lastRefreshText');
+      const nextRefreshText = document.getElementById('nextRefreshText');
+      const startBtn = document.getElementById('startSchedulerBtn');
+      const stopBtn = document.getElementById('stopSchedulerBtn');
+      const intervalInput = document.getElementById('intervalInput');
+      
+      if (status.enabled) {
+        statusText.textContent = '🟢 运行中';
+        statusText.className = 'status-value active';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        intervalInput.disabled = true;
+        intervalInput.value = status.interval;
+      } else {
+        statusText.textContent = '⚪ 未启动';
+        statusText.className = 'status-value inactive';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        intervalInput.disabled = false;
+      }
+      
+      startTimeText.textContent = formatTime(status.startTime);
+      lastRefreshText.textContent = formatTime(status.lastRefreshTime);
+      nextRefreshText.textContent = formatTime(status.nextRefreshTime);
+      
+      console.log('✅ 状态显示已更新');
     }
-    
-    console.log('✅ 在 Bloomberg 网站，准备刷新...');
-    showStatus('🔄 正在刷新页面，拦截器已自动激活...', 'info');
-    
-    // 清除旧数据
-    console.log('🗑️ 正在清除旧数据...');
-    await chrome.storage.local.remove('capturedData');
-    document.getElementById('jsonDisplay').textContent = '';
-    console.log('✅ 旧数据已清除');
-    
-    // 刷新页面（content script 会自动注入）
-    console.log('🔄 正在刷新标签页...');
-    await chrome.tabs.reload(tab.id);
-    console.log('✅ 刷新命令已发送');
-    console.log('═══════════════════════════════════════════════');
-    
   } catch (error) {
-    console.error('❌ 刷新失败:', error);
-    showStatus('❌ 操作失败: ' + error.message, 'error');
+    console.error('❌ 更新状态失败:', error);
+  }
+}
+
+// 启动定时任务
+document.getElementById('startSchedulerBtn').addEventListener('click', async () => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('▶️ 启动定时任务');
+  
+  const interval = parseInt(document.getElementById('intervalInput').value);
+  
+  if (!interval || interval < 1 || interval > 1440) {
+    alert('请输入有效的时间间隔（1-1440分钟）');
+    return;
+  }
+  
+  console.log('⏰ 设置间隔:', interval, '分钟');
+  
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'START_SCHEDULER',
+      interval: interval
+    });
+    
+    if (response.success) {
+      console.log('✅ 定时任务启动成功，已立即执行第一次');
+      await updateSchedulerStatus();
+      await updateRecordsTable();
+    } else {
+      console.error('❌ 启动失败:', response.error);
+      alert('启动失败: ' + response.error);
+    }
+  } catch (error) {
+    console.error('❌ 启动定时任务出错:', error);
+    alert('启动失败: ' + error.message);
+  }
+  
+  console.log('═══════════════════════════════════════════════');
+});
+
+// 停止定时任务
+document.getElementById('stopSchedulerBtn').addEventListener('click', async () => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('⏸️ 停止定时任务');
+  
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'STOP_SCHEDULER' });
+    
+    if (response.success) {
+      console.log('✅ 定时任务已停止');
+      await updateSchedulerStatus();
+    } else {
+      console.error('❌ 停止失败:', response.error);
+      alert('停止失败: ' + response.error);
+    }
+  } catch (error) {
+    console.error('❌ 停止定时任务出错:', error);
+    alert('停止失败: ' + error.message);
+  }
+  
+  console.log('═══════════════════════════════════════════════');
+});
+
+// 清空执行记录
+document.getElementById('clearRecordsBtn').addEventListener('click', async () => {
+  if (confirm('确定要清空所有执行记录吗？')) {
+    await chrome.storage.local.set({ taskRecords: [] });
+    await updateRecordsTable();
+    console.log('✅ 执行记录已清空');
   }
 });
 
-// 清除数据按钮
-document.getElementById('clearBtn').addEventListener('click', async () => {
-  console.log('═══════════════════════════════════════════════');
-  console.log('🗑️ 用户点击了清除按钮');
-  console.log('🗑️ 正在清除存储的数据...');
-  
-  await chrome.storage.local.remove('capturedData');
-  document.getElementById('jsonDisplay').textContent = '';
-  
-  console.log('✅ 数据已清除');
-  console.log('═══════════════════════════════════════════════');
-  showStatus('🗑️ 数据已清除', 'info');
-});
-
-// 监听storage变化，自动更新显示
+// 监听storage变化，更新记录表格和状态
 console.log('👂 开始监听 storage 变化...');
 chrome.storage.onChanged.addListener((changes, namespace) => {
   console.log('📢 Storage 发生变化:', namespace, changes);
   
-  if (namespace === 'local' && changes.capturedData) {
-    const newData = changes.capturedData.newValue;
-    console.log('🔔 检测到新的拦截数据!');
-    console.log('📦 新数据:', newData);
-    
-    if (newData) {
-      displayJSON(newData);
+  if (namespace === 'local') {
+    if (changes.taskRecords) {
+      console.log('🔔 检测到新的执行记录');
+      updateRecordsTable();
+    }
+    if (changes.capturedData || changes.schedulerEnabled || changes.lastAutoRefreshTime) {
+      updateSchedulerStatus();
     }
   }
 });
 
-// 页面加载时，检查是否有已保存的数据
-console.log('🔍 检查是否有已保存的数据...');
-chrome.storage.local.get(['capturedData', 'capturedUrl', 'capturedTime'], (result) => {
-  console.log('📦 Storage 中的数据:', result);
-  
-  if (result.capturedData) {
-    console.log('✅ 发现已保存的数据，准备显示...');
-    console.log('📍 URL:', result.capturedUrl);
-    console.log('⏰ 时间:', result.capturedTime);
-    displayJSON(result.capturedData);
-  } else {
-    console.log('ℹ️ 暂无已保存的数据');
-  }
-});
+// 初始化
+console.log('🔄 初始化界面...');
+updateSchedulerStatus();
+updateRecordsTable();
 
-// 检查当前标签页
-console.log('🔍 检查当前标签页...');
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  if (tabs[0]) {
-    const url = tabs[0].url;
-    console.log('📍 当前标签页 URL:', url);
-    
-    if (!url.includes('bloomberg.com')) {
-      console.warn('⚠️ 当前不在 Bloomberg 网站');
-      showStatus('ℹ️ 请导航到 bloomberg.com 网站', 'info');
-    } else {
-      console.log('✅ 当前在 Bloomberg 网站');
-    }
-  }
-});
+// 每5秒自动更新一次状态
+setInterval(updateSchedulerStatus, 5000);
 
 console.log('✅ Popup 初始化完成');
 console.log('═══════════════════════════════════════════════');
