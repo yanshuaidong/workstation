@@ -420,7 +420,7 @@ def get_all_futures_data():
     # 配置 Chrome 选项
     chrome_options = Options()
     # 如果需要无头模式，取消下面一行的注释
-    # chrome_options.add_argument("--headless") 
+    chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--ignore-certificate-errors")

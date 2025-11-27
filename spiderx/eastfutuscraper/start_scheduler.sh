@@ -6,9 +6,20 @@ echo "🚀 启动东方财富期货数据爬虫调度器..."
 echo "📁 当前目录: $(pwd)"
 echo "⏰ 开始时间: $(date)"
 echo "📋 运行模式: 14天长期调度（仅交易日下午4点执行）"
-echo "📝 控制台输出将保存到: nohup.out"
-echo "📂 详细日志将保存到: logs/ 目录"
 echo ""
+
+# 检查是否已经有调度器在运行
+if [ -f "scheduler.pid" ]; then
+    OLD_PID=$(cat scheduler.pid)
+    if ps -p $OLD_PID > /dev/null 2>&1; then
+        echo "⚠️  检测到调度器已在运行 (PID: $OLD_PID)"
+        echo "❌ 无法启动，请先停止现有调度器: ./stop_scheduler.sh"
+        exit 1
+    else
+        echo "🗑️  清理过期的PID文件..."
+        rm scheduler.pid
+    fi
+fi
 
 # 检查Python环境
 if command -v python3 &> /dev/null; then
@@ -34,6 +45,10 @@ if [ ! -f "main.py" ]; then
     exit 1
 fi
 
+echo "📝 控制台输出将保存到: nohup.out"
+echo "📂 详细日志将保存到: logs/ 目录"
+echo ""
+
 # 检查操作系统类型
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍎 检测到macOS系统，使用caffeinate防止系统休眠"
@@ -48,14 +63,18 @@ fi
 # 获取进程ID
 PID=$!
 
+# 保存进程信息到PID文件
+echo $PID > scheduler.pid
+
 echo "✅ 调度器已在后台启动"
 echo "🆔 进程ID: $PID"
-echo "📝 实时查看输出: tail -f nohup.out"
-echo "🔍 查看详细日志: tail -f logs/futures_crawler_\$(date +%Y-%m-%d).log"
-echo "🛑 停止程序: kill $PID 或运行 ./stop_scheduler.sh"
+echo "📝 进程信息已保存到: scheduler.pid"
 echo ""
-echo "进程信息已保存到 scheduler.pid 文件"
-echo $PID > scheduler.pid
+echo "📖 查看命令："
+echo "  - 实时查看输出: tail -f nohup.out"
+echo "  - 查看详细日志: tail -f logs/futures_crawler_\$(date +%Y-%m-%d).log"
+echo "🛑 停止命令: ./stop_scheduler.sh"
+echo ""
 
 echo "👀 前10行输出预览："
 sleep 2
