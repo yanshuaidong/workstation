@@ -579,7 +579,6 @@ async def analyze_single_news_async(session, prompt=None, news_item=None, max_re
             {"role": "system", "content": "你是一个财经消息分类助手。"},
             {"role": "user", "content": f"{prompt}\n\n新闻标题：{news_item['title']}\n新闻内容：{news_item['content']}"}
         ],
-        "max_tokens": 500,
         "temperature": 0.7
     }
     
@@ -694,7 +693,6 @@ async def analyze_single_news_scoring_async(session, news_item, max_retries=1):
             {"role": "system", "content": "你是一个财经消息评估助手，专门为新闻评分。"},
             {"role": "user", "content": prompt_content}
         ],
-        "max_tokens": 500,
         "temperature": 0.3
     }
     
@@ -795,7 +793,6 @@ async def analyze_single_news_labeling_async(session, news_item, max_retries=1):
             {"role": "system", "content": "你是一个财经消息分类助手，专门为新闻打标签。请严格按照JSON格式返回结果。"},
             {"role": "user", "content": prompt_content}
         ],
-        "max_tokens": 800,  # 增加token数量避免截断
         "temperature": 0.1  # 降低温度提高一致性
     }
     
