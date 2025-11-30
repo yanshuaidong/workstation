@@ -1,20 +1,36 @@
 {
   "manifest_version": 3,
   "name": "Gemini 自动提问助手",
-  "version": "1.0",
-  "description": "在 Gemini 页面自动填入问题并发送",
+  "version": "1.1.0",
+  "description": "自动向Gemini提问并保存结果",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://gemini.google.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icon.png", 
+      "16": "icon.png",
       "48": "icon.png",
       "128": "icon.png"
     }
   },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "icons": {
     "16": "icon.png",
     "48": "icon.png",
