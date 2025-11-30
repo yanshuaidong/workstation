@@ -15,7 +15,43 @@ import pymysql
 import os
 import json
 import time
+import logging
+from logging.handlers import RotatingFileHandler
 from datetime import datetime
+
+# ==================== 日志配置 ====================
+
+# 日志文件路径
+LOG_FILE = os.path.join(os.path.dirname(__file__), 'gemini_helper.log')
+
+# 创建日志记录器
+logger = logging.getLogger('gemini_helper')
+logger.setLevel(logging.DEBUG)
+
+# 日志格式
+log_formatter = logging.Formatter(
+    '%(asctime)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# 文件处理器（带日志轮转，最大10MB，保留5个备份）
+file_handler = RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=10*1024*1024,
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(log_formatter)
+
+# 控制台处理器
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(log_formatter)
+
+# 添加处理器
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
@@ -94,7 +130,7 @@ def save_to_database(title, content):
         
         conn.commit()
         
-        print(f"[数据库] 成功保存: news_id={news_id}, title={title}")
+        logger.info(f"数据库成功保存: news_id={news_id}, title={title}")
         
         return {
             'success': True,
@@ -105,7 +141,7 @@ def save_to_database(title, content):
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"[数据库] 保存失败: {e}")
+        logger.error(f"数据库保存失败: {e}")
         return {
             'success': False,
             'message': f'数据库保存失败: {str(e)}'
@@ -160,7 +196,7 @@ def get_prompts():
             }
             processed_list.append(processed_item)
         
-        print(f"[API] 成功返回 {len(processed_list)} 条 prompt")
+        logger.info(f"成功返回 {len(processed_list)} 条 prompt")
         
         return jsonify({
             'success': True,
@@ -169,7 +205,7 @@ def get_prompts():
         }), 200
         
     except Exception as e:
-        print(f"[API] 读取 prompts 失败: {e}")
+        logger.error(f"读取 prompts 失败: {e}")
         return jsonify({
             'success': False,
             'message': str(e)
@@ -198,7 +234,7 @@ def save_result():
         title = data['title']
         content = data['content']
         
-        print(f"[API] 收到保存请求 - 标题: {title}, 内容长度: {len(content)}")
+        logger.info(f"收到保存请求 - 标题: {title}, 内容长度: {len(content)}")
         
         # 保存到数据库
         db_result = save_to_database(title, content)
@@ -218,7 +254,7 @@ def save_result():
         with open(RESULT_FILE, 'a', encoding='utf-8') as f:
             f.write(formatted_content)
         
-        print(f"[{timestamp}] 成功保存结果: {title}")
+        logger.info(f"成功保存结果到文件: {title}")
         
         return jsonify({
             'success': True,
@@ -228,7 +264,7 @@ def save_result():
         }), 200
         
     except Exception as e:
-        print(f"[API] 保存结果时出错: {str(e)}")
+        logger.error(f"保存结果时出错: {str(e)}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
@@ -258,20 +294,21 @@ def test_db_connection():
 # ==================== 启动服务 ====================
 
 if __name__ == '__main__':
-    print("="*80)
-    print("Gemini Helper 后端服务启动中...")
-    print(f"结果将保存到: {RESULT_FILE}")
-    print(f"Prompts 配置文件: {PROMPTS_FILE}")
-    print(f"数据库: {DB_CONFIG['host']}/{DB_CONFIG['database']}")
-    print("服务地址: http://localhost:1124")
-    print("="*80)
+    logger.info("=" * 60)
+    logger.info("Gemini Helper 后端服务启动中...")
+    logger.info(f"日志文件: {LOG_FILE}")
+    logger.info(f"结果将保存到: {RESULT_FILE}")
+    logger.info(f"Prompts 配置文件: {PROMPTS_FILE}")
+    logger.info(f"数据库: {DB_CONFIG['host']}/{DB_CONFIG['database']}")
+    logger.info("服务地址: http://localhost:1124")
+    logger.info("=" * 60)
     
     # 测试数据库连接
     if test_db_connection():
-        print("✅ 数据库连接成功")
+        logger.info("✅ 数据库连接成功")
     else:
-        print("⚠️  数据库连接失败，请检查配置")
+        logger.warning("⚠️  数据库连接失败，请检查配置")
     
-    print("="*80)
+    logger.info("=" * 60)
     
     app.run(host='0.0.0.0', port=1124, debug=True)
