@@ -1,168 +1,419 @@
-# 📰 Bloomberg News API 拦截器
+# 📰 Bloomberg 新闻自动处理系统
 
-一个Chrome浏览器扩展插件，用于自动拦截并显示Bloomberg网站的文章列表API响应数据。
+一个完整的彭博新闻采集、筛选和存储系统，包含Chrome浏览器扩展插件和Python后端服务。
 
-我来帮你分析整个 bbgnews 插件的运行逻辑。让我先读取关键文件来理解整体架构。
+## 🎯 系统功能
 
-根据我对代码的分析,这是一个 **Chrome 浏览器扩展插件**,用于拦截 Bloomberg 网站的文章列表 API 并保存数据。让我详细解释各个文件的作用和完整运行逻辑:
+### 谷歌插件（前端采集）
+- 每1小时自动拦截Bloomberg网站的文章列表API
+- 自动发送新闻数据到本地Python服务
 
-## 📁 文件结构说明
+### Python服务（后端处理）
+1. **实时接收**: 接收插件发送的新闻数据，存储到本地JSON文件
+2. **定时处理**: 每天4个时间点（6点、12点、18点、24点）自动处理新闻
+3. **AI筛选**: 调用AI接口筛选出股票/期货相关新闻并翻译成中文
+4. **数据库存储**: 将处理后的新闻保存到阿里云MySQL数据库
+5. **自动清理**: 处理完成后删除已处理的本地数据
 
-### 核心代码文件:
-
-1. **`manifest.json`** - Chrome 扩展配置文件
-   - 定义插件名称、版本、权限
-   - 配置了两个 content script:
-     - `content-main.js` (运行在 MAIN world)
-     - `content-bridge.js` (运行在 ISOLATED world)
-   - 指定只在 `bloomberg.com` 域名下工作
-
-2. **`content-main.js`** ⭐ 核心拦截脚本
-   - 运行在**主页面环境** (MAIN world)
-   - 重写 `window.fetch` 和 `XMLHttpRequest` 原生方法
-   - 拦截目标: `/lineup-next/api/stories` 接口
-   - 过滤条件: 包含 `types=` 参数且不包含 `id=` 参数(只拦截列表请求,不拦截详情请求)
-   - 拦截到数据后通过 `postMessage` 发送给 bridge 脚本
-
-3. **`content-bridge.js`** ⭐ 桥接脚本
-   - 运行在**隔离环境** (ISOLATED world,可访问 Chrome API)
-   - 监听来自 `content-main.js` 的 `postMessage` 消息
-   - 执行三个操作:
-     - 保存数据到 `chrome.storage.local`
-     - 发送数据到本地 Python 服务器 (`http://localhost:1123`)
-     - 通知 background script
-
-4. **`background.js`** - 后台服务
-   - 监听来自 content script 的消息
-   - 显示绿色徽章 ✓ 表示拦截成功
-   - 3秒后自动清除徽章
-
-5. **`popup.html/popup.js`** - 用户界面
-   - 点击插件图标显示的弹出窗口
-   - 显示拦截到的 JSON 数据
-   - 提供"刷新页面"和"清除数据"按钮
-   - 实时监听 `chrome.storage` 变化并更新显示
-
-6. **`main.py`** - Python Flask 后端服务
-   - 监听端口 1123
-   - 接收 POST 请求: `/api/capture`
-   - 将数据保存为 JSON 文件到 `captured_data/` 目录
-   - 提供健康检查和文件列表接口
-
-7. **`content.js`** ❌ 已废弃
-   - 早期版本的拦截脚本
-   - 现在已被 `content-main.js` 和 `content-bridge.js` 替代
-
-## 🔄 完整运行流程
+## 🔄 完整工作流程
 
 ```
-用户访问 Bloomberg 网站
-         ↓
-[1] Chrome 自动注入 content-main.js (MAIN world)
-    - 在 document_start 时刻(页面加载前)
-    - 重写 window.fetch 和 XMLHttpRequest
-         ↓
-[2] Chrome 自动注入 content-bridge.js (ISOLATED world)
-    - 监听来自 MAIN world 的消息
-         ↓
-[3] 页面发起网络请求
-    - Bloomberg 页面加载时会请求文章列表 API
-         ↓
-[4] content-main.js 拦截请求
-    - 检查 URL 是否包含 /lineup-next/api/stories
-    - 检查是否是列表请求 (有 types= 且无 id=)
-    - 克隆响应并解析 JSON
-    - 通过 postMessage 发送数据
-         ↓
-[5] content-bridge.js 接收消息
-    - 保存到 chrome.storage.local
-    - 发送到本地服务器 (localhost:1123)
-    - 通知 background.js
-         ↓
-[6] background.js 处理通知
-    - 显示绿色徽章 ✓
-    - 3秒后清除徽章
-         ↓
-[7] main.py 接收数据 (如果在运行)
-    - 保存为带时间戳的 JSON 文件
-    - 同时保存为 latest.json
-         ↓
-[8] 用户点击插件图标
-    - popup.js 从 chrome.storage 读取数据
-    - 格式化显示在弹出窗口中
+Chrome插件（每1小时）
+    ↓ 拦截Bloomberg API
+    ↓ 发送新闻数据到本地服务
+Python服务接收（Flask API）
+    ↓ 存储到 bloomberg_news.json
+    ↓ 添加 localReceivedTime 字段
+    ↓ 去重（根据publishedAt）
+定时任务触发（6/12/18/24点）
+    ↓ 加载本地所有新闻
+    ↓ 筛选对应时间段的新闻（根据localReceivedTime）
+    ↓ 调用AI接口（带重试机制）
+    ├─ 第1次：60秒超时
+    ├─ 第2次：120秒超时
+    ├─ 筛选股票/期货相关新闻
+    ├─ 翻译成中文
+    └─ 规范输出格式（1、xxx 2、xxx）
+    ↓ 
+构建标题和内容
+    ↓ 标题：【彭博社2025年11月30日0点到6点新闻】
+    ↓ 内容：AI返回的筛选结果
+    ↓ ctime：时间段开始时间戳
+    ↓
+保存到数据库（2个表）
+    ├─ news_red_telegraph（新闻主表）
+    └─ news_process_tracking（跟踪表）
+    ↓
+删除已处理的本地数据
+    └─ 只删除对应时间段的新闻
 ```
 
-## 🎯 技术要点
+## 📊 数据流转说明
 
-### 为什么需要两个 content script?
+### 1. 插件发送格式
+```json
+{
+  "capturedData": [
+    {
+      "publishedAt": "2025-11-30T03:59:03.235Z",
+      "brand": "politics",
+      "headline": "Thousands Mount Renewed Protests Against Philippine Corruption"
+    }
+  ],
+  "serverReceivedTime": "2025-11-30T12:57:05.116034"
+}
+```
+
+### 2. 本地存储格式
+每条新闻会添加 `localReceivedTime` 字段：
+```json
+{
+  "publishedAt": "2025-11-30T03:59:03.235Z",
+  "brand": "politics",
+  "headline": "Thousands Mount Renewed Protests...",
+  "localReceivedTime": "2025-11-30T12:57:05.116034"
+}
+```
+
+### 3. 时间段划分
+- **0-6点**: 在6点处理
+- **6-12点**: 在12点处理
+- **12-18点**: 在18点处理
+- **18-24点**: 在24点（0点）处理
+
+### 4. 数据库存储
+**news_red_telegraph 表**:
+- `ctime`: 时间段开始时间的时间戳
+- `title`: 【彭博社2025年11月1日0点到6点新闻】
+- `content`: AI筛选翻译后的内容（1、xxx。2、xxx。3、xxx。）
+- `ai_analysis`: "暂无分析"
+- `message_score`: 6
+- `message_label`: "hard"
+- `message_type`: "彭博社新闻"
+
+**news_process_tracking 表**:
+- 自动添加一条默认值记录
+
+## 🚀 快速启动
+
+### 前置要求
+- Python 3.7+
+- Chrome浏览器
+- MySQL数据库（已配置好）
+- 网络环境（能访问AI API和数据库）
+
+### 第一步：安装依赖
+```bash
+cd spiderx/bbgnews
+pip3 install -r requirements.txt
+```
+
+### 第二步：启动服务
+
+#### Linux/Mac
+```bash
+# 添加执行权限（首次运行）
+chmod +x *.sh
+
+# 启动服务
+./start_scheduler.sh
+
+# 停止服务
+./stop_scheduler.sh
+```
+
+#### 脚本说明
+
+| 脚本 | 功能 | 说明 |
+|------|------|------|
+| `start_scheduler.sh` | 启动服务 | 后台运行，自动检查依赖，保存PID |
+| `stop_scheduler.sh` | 停止服务 | 优雅停止，先SIGTERM再SIGKILL |
+
+#### 脚本特性
+
+- ✅ **智能检测**: 自动检查服务是否已运行
+- ✅ **防止重复**: 不允许启动多个实例
+- ✅ **优雅退出**: 信号处理，安全停止
+- ✅ **后台运行**: 使用nohup，关闭终端不影响
+- ✅ **macOS优化**: 使用caffeinate防止休眠
+- ✅ **健康检查**: 启动后自动验证服务可用性
+- ✅ **日志输出**: 详细的启动和运行日志
+
+### 第三步：安装浏览器插件
+1. 打开Chrome浏览器
+2. 访问 `chrome://extensions/`
+3. 开启右上角的"开发者模式"
+4. 点击"加载已解压的扩展程序"
+5. 选择 `spiderx/bbgnews` 目录
+6. 插件安装成功后，访问 Bloomberg 网站即可自动工作
+
+## 📋 服务接口
+
+### 健康检查
+```bash
+curl http://localhost:1123/api/health
+```
+
+### 统计信息
+```bash
+curl http://localhost:1123/api/stats
+```
+
+### 手动触发处理（测试用）
+```bash
+curl -X POST http://localhost:1123/api/process_now
+```
+
+## 🔧 AI接口说明
+
+### 重试机制
+- 第一次尝试：超时60秒
+- 第二次尝试：超时120秒
+- 两次都失败则放弃本次处理
+
+### AI任务（一次请求完成）
+1. 筛选出股票/期货相关新闻
+2. 翻译成中文
+3. 规范输出格式
+
+### 输出格式要求
+```
+1、[中文翻译的新闻标题1]
+2、[中文翻译的新闻标题2]
+3、[中文翻译的新闻标题3]
+...
+```
+
+## 📂 目录结构
+
+## 📂 目录结构
+
+```
+bbgnews/
+├── manifest.json           # Chrome扩展配置
+├── background.js           # 扩展后台脚本
+├── content-main.js         # 拦截脚本（MAIN world）
+├── content-bridge.js       # 桥接脚本（ISOLATED world）
+├── popup.html/popup.js     # 插件弹窗界面
+├── icon.png               # 插件图标
+├── main.py                # Python后端服务 ⭐
+├── requirements.txt       # Python依赖
+├── start_scheduler.sh     # 启动脚本（Linux/Mac）
+├── stop_scheduler.sh      # 停止脚本（Linux/Mac）
+├── captured_data/         # 数据存储目录
+│   └── bloomberg_news.json  # 单一数据文件
+├── bloomberg_service.log  # 服务日志
+├── nohup.out             # 后台输出日志
+├── scheduler.pid         # 进程ID文件
+└── README.md             # 说明文档
+```
+
+## 📁 核心文件说明
+
+### Chrome扩展部分
+
+1. **`content-main.js`** - 拦截脚本
+   - 重写 `window.fetch` 和 `XMLHttpRequest`
+   - 拦截 `/lineup-next/api/stories` 接口
+   - 通过 `postMessage` 发送数据
+
+2. **`content-bridge.js`** - 桥接脚本
+   - 接收拦截到的数据
+   - 发送到本地Python服务（`http://localhost:1123`）
+   - 保存到 `chrome.storage.local`
+
+3. **`background.js`** - 后台服务
+   - 显示拦截成功徽章
+
+4. **`popup.html/js`** - 用户界面
+   - 显示拦截数据
+   - 提供控制按钮
+
+### Python服务部分
+
+5. **`main.py`** ⭐ 核心服务
+   - **Flask API**: 接收插件发送的数据
+   - **定时任务**: APScheduler调度器（6/12/18/24点）
+   - **AI筛选**: 调用OpenAI兼容接口
+   - **数据库操作**: 保存到MySQL两个表
+   - **数据清理**: 删除已处理的本地数据
+
+## 🔍 技术细节
+
+### Chrome插件工作原理
+
+#### 为什么使用两个Content Script？
 
 - **MAIN world** (`content-main.js`):
-  - 可以访问页面的原生 JavaScript 对象
+  - 可以访问页面的原生JavaScript对象
   - 能够重写 `window.fetch` 和 `XMLHttpRequest`
-  - **不能**访问 Chrome Extension API
+  - 拦截 `/lineup-next/api/stories` 接口
+  - 无法访问 Chrome Extension API
 
 - **ISOLATED world** (`content-bridge.js`):
-  - 可以访问 Chrome Extension API (`chrome.storage`, `chrome.runtime`)
-  - **不能**直接访问页面的 JavaScript 环境
-  - 通过 `window.postMessage` 与 MAIN world 通信
+  - 可以访问 Chrome Extension API
+  - 接收 MAIN world 发送的数据
+  - 发送数据到本地Python服务
+  - 通过 `postMessage` 与MAIN world通信
 
-### 数据流向:
+### 定时任务实现
 
-```
-Bloomberg API Response
-    ↓ (被拦截)
-content-main.js
-    ↓ (postMessage)
-content-bridge.js
-    ↓ (分三路)
-    ├─→ chrome.storage.local (Chrome本地存储)
-    ├─→ localhost:1123 (Python服务器)
-    └─→ background.js (显示徽章)
+使用 `APScheduler` 的 `BackgroundScheduler`:
+```python
+scheduler.add_job(process_news_task, 'cron', hour='6,12,18,0', minute=0)
 ```
 
-## 📝 关键特性
+### AI接口重试策略
 
-1. **自动拦截**: 页面加载时自动工作,无需手动操作
-2. **双重拦截**: 同时支持 Fetch 和 XHR 两种请求方式
-3. **精准过滤**: 只拦截列表请求,不拦截详情请求
-4. **数据持久化**: 同时保存到浏览器存储和本地文件
-5. **实时通知**: 拦截成功后显示徽章,popup 实时更新
-6. **⏰ 定时任务**: 支持自动定时刷新页面并拦截数据(新功能)
+```python
+# 第一次：60秒超时
+# 第二次：120秒超时
+# 失败后等待2秒再重试
+```
 
-## ⚙️ 使用方式
+### 数据去重机制
 
-### 基础使用
+- 根据 `publishedAt` 字段去重
+- 存储时检查是否已存在
 
-1. 安装插件到 Chrome
-2. (可选) 启动 Python 服务: `python main.py`
-3. 访问 Bloomberg 网站 (如 https://www.bloomberg.com/latest)
-4. 插件自动拦截 API 请求
-5. 点击插件图标查看数据
+### 时间范围筛选
 
-### ⏰ 定时任务功能
+根据 `localReceivedTime` 字段筛选对应时间段的新闻
 
-插件支持自动定时刷新页面并拦截数据，实现无人值守的数据采集：
+## ⚠️ 注意事项
 
-#### 使用方法
+1. **数据库配置**: 确保数据库可访问且表结构正确（见 `1example/database_example.py`）
+2. **AI接口**: 确保API密钥有效且有足够余额
+3. **时区问题**: 服务器时区需要正确设置（系统使用本地时间）
+4. **日志监控**: 定期查看 `bloomberg_service.log` 和 `nohup.out`
+5. **数据备份**: 定期备份数据库和 `captured_data/bloomberg_news.json`
+6. **端口占用**: 确保1123端口未被占用
+7. **插件权限**: Bloomberg网站需要授予插件拦截权限
 
-1. 点击插件图标打开控制面板
-2. 设置刷新间隔（1-1440分钟）
-3. 点击"▶️ 启动定时任务"按钮
-   - 立即执行第一次爬虫任务
-   - 然后按设定间隔定时执行
-4. 查看执行记录表格了解任务运行情况
-5. 点击"⏸️ 停止定时任务"停止自动采集
+## 🐛 故障排查
 
-#### 主要特性
+### 插件无法拦截数据
+- 检查是否在Bloomberg网站
+- 查看浏览器控制台是否有错误
+- 确认插件已启用
 
-- **立即执行**: 启动后立即执行第一次，无需等待
-- **后台运行**: 关闭控制面板后继续运行
-- **智能管理**: 自动刷新已有标签页或后台打开新标签页
-- **执行记录**: 详细记录每次执行时间和成功/失败状态
-- **状态监控**: 实时显示运行状态、启动时间、上次执行和下次执行时间
+### Python服务无法启动
+```bash
+# 检查端口占用
+lsof -i :1123  # Mac/Linux
 
-#### 注意事项
+# 查看日志
+tail -f bloomberg_service.log
+tail -f nohup.out
+```
 
-- Chrome浏览器需保持运行（可最小化）
-- 建议启动Python服务（`main.py`）保存数据到本地文件
-- 推荐间隔：30-60分钟（根据数据更新频率调整）
+### 定时任务未执行
+- 检查系统时间是否正确
+- 查看日志文件确认调度器状态
+- 确认有待处理的新闻数据
+
+### AI接口调用失败
+- 检查API密钥是否有效
+- 确认网络连接正常
+- 查看日志了解具体错误信息
+
+### 数据库连接失败
+- 检查数据库配置是否正确
+- 确认数据库服务运行正常
+- 验证网络连通性
+
+## 📊 监控与维护
+
+### 查看服务状态
+
+#### 方式1：查看日志
+```bash
+# 查看实时日志
+tail -f bloomberg_service.log
+
+# 查看后台输出
+tail -f nohup.out
+```
+
+#### 方式2：API接口
+```bash
+# 健康检查
+curl http://localhost:1123/api/health
+
+# 统计信息
+curl http://localhost:1123/api/stats
+```
+
+#### 方式3：进程状态
+```bash
+# 查看进程
+cat scheduler.pid
+ps aux | grep main.py
+```
+
+### 查看数据文件
+```bash
+# 查看本地存储的新闻数量
+cat captured_data/bloomberg_news.json | python -m json.tool
+```
+
+### 测试定时任务
+```bash
+# 手动触发处理任务
+curl -X POST http://localhost:1123/api/process_now
+```
+
+## 📝 日志文件
+
+- `bloomberg_service.log`: 服务主日志（程序内部日志）
+- `nohup.out`: 标准输出日志（后台运行输出）
+- `scheduler.pid`: 进程ID文件
+
+## 🔐 安全说明
+
+代码中包含的敏感信息（数据库密码、API密钥）仅用于开发环境。生产环境建议：
+
+1. 使用环境变量存储敏感信息
+2. 配置文件不要提交到代码仓库
+3. 定期更换密钥和密码
+4. 限制数据库访问IP白名单
+
+## 📞 技术支持
+
+如有问题，请查看：
+1. 日志文件：`bloomberg_service.log`
+2. 数据文件：`captured_data/bloomberg_news.json`
+3. 插件控制台：Chrome开发者工具
+
+## 🎉 总结
+
+这是一个完整的自动化新闻处理系统，实现了从采集到存储的全流程自动化：
+
+✅ 自动采集（Chrome插件）  
+✅ 实时接收（Flask API）  
+✅ 定时处理（APScheduler）  
+✅ AI筛选（OpenAI接口）  
+✅ 数据存储（MySQL）  
+✅ 自动清理（本地数据）
+
+系统可以24小时无人值守运行，自动完成新闻的采集、筛选、翻译和存储工作。
+
+### 第一步：安装依赖
+```bash
+cd spiderx/bbgnews
+pip3 install -r requirements.txt
+```
+
+### 第二步：启动服务
+
+#### Linux/Mac
+```bash
+# 添加执行权限（首次运行）
+chmod +x *.sh
+
+# 启动服务
+./start_scheduler.sh
+
+# 停止服务
+./stop_scheduler.sh
+```

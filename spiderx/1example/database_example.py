@@ -49,7 +49,7 @@ def create_tables():
                 title VARCHAR(500) NOT NULL COMMENT '新闻标题',
                 content TEXT NOT NULL COMMENT '新闻内容',
                 ai_analysis MEDIUMTEXT COMMENT 'AI分析结果（软硬消息判断）',
-                message_score TINYINT UNSIGNED COMMENT '消息评分（0-100）',
+                message_score TINYINT UNSIGNED COMMENT '消息评分（0-10）',
                 message_label ENUM('hard','soft','unknown') DEFAULT 'unknown' COMMENT '消息标签',
                 message_type VARCHAR(64) COMMENT '消息类型',
                 market_react VARCHAR(255) COMMENT '市场反应',
