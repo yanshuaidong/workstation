@@ -1,0 +1,14 @@
+# 爬虫调度器示例 - Python依赖
+# 
+# 安装方法：
+#   pip install -r requirements.txt
+# 
+# 推荐使用虚拟环境：
+#   python3 -m venv venv
+#   source venv/bin/activate  (Linux/macOS)
+#   venv\Scripts\activate     (Windows)
+#   pip install -r requirements.txt
+
+# APScheduler - 任务调度库
+APScheduler>=3.10.0
+

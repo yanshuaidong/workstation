@@ -1,14 +1,18 @@
 #!/bin/bash
-# 停止国泰君安持仓数据爬虫调度器
+# 停止爬虫调度器示例
 
-echo "🛑 停止国泰君安持仓数据爬虫调度器..."
+echo "🛑 停止调度器..."
 echo "⏰ 停止时间: $(date)"
 echo ""
+
+# 获取脚本所在目录（支持从任意位置运行）
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 # 检查是否存在scheduler.pid文件
 if [ ! -f "scheduler.pid" ]; then
     echo "⚠️  未找到scheduler.pid文件"
-    echo "📝 调度器未运行或已停止（可能是误操作）"
+    echo "📝 调度器可能未运行或已停止"
     echo "💡 如需启动调度器，请运行: ./start_scheduler.sh"
     exit 0
 fi
