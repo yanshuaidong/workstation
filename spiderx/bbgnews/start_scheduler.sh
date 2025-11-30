@@ -5,6 +5,10 @@ echo "🚀 启动 Bloomberg 新闻处理服务..."
 echo "⏰ 启动时间: $(date)"
 echo ""
 
+# 获取脚本所在目录（支持从任意位置运行）
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 # 检查是否已在运行
 if [ -f "scheduler.pid" ]; then
     PID=$(cat scheduler.pid)
@@ -18,14 +22,29 @@ if [ -f "scheduler.pid" ]; then
     fi
 fi
 
-# 检查Python环境
-if command -v python3 &> /dev/null; then
-    PYTHON_CMD="python3"
-elif command -v python &> /dev/null; then
+# 检查并激活虚拟环境
+if [ -d "venv" ]; then
+    echo "🐍 检测到虚拟环境，正在激活..."
+    source venv/bin/activate
     PYTHON_CMD="python"
+    echo "✅ 虚拟环境已激活: $(which python)"
+elif [ -d ".venv" ]; then
+    echo "🐍 检测到虚拟环境，正在激活..."
+    source .venv/bin/activate
+    PYTHON_CMD="python"
+    echo "✅ 虚拟环境已激活: $(which python)"
 else
-    echo "❌ 错误: 未找到Python解释器"
-    exit 1
+    echo "⚠️  未检测到虚拟环境，尝试使用系统Python..."
+    # 检查Python环境
+    if command -v python3 &> /dev/null; then
+        PYTHON_CMD="python3"
+    elif command -v python &> /dev/null; then
+        PYTHON_CMD="python"
+    else
+        echo "❌ 错误: 未找到Python解释器"
+        echo "💡 建议创建虚拟环境: python3 -m venv venv"
+        exit 1
+    fi
 fi
 
 # 检查必要文件

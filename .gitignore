@@ -42,6 +42,7 @@ Thumbs.db
 *.tmp
 *.temp
 *.log
+nohup.out
 
 # 运行时文件
 *.pid
@@ -75,6 +76,8 @@ coverage/
 __pycache__/
 *.py[cod]
 *$py.class
+venv/
+.venv/
 *.so
 .Python
 build/

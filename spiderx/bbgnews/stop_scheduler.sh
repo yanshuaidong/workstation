@@ -5,6 +5,10 @@ echo "🛑 停止 Bloomberg 新闻处理服务..."
 echo "⏰ 停止时间: $(date)"
 echo ""
 
+# 获取脚本所在目录（支持从任意位置运行）
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 # 检查是否存在scheduler.pid文件
 if [ ! -f "scheduler.pid" ]; then
     echo "⚠️  未找到scheduler.pid文件"
