@@ -24,13 +24,13 @@ echo "📋 Python 进程ID: $PYTHON_PID"
 
 # 检查 Python 进程是否存在
 if ! ps -p $PYTHON_PID > /dev/null 2>&1; then
-    echo "⚠️  Python 进程 $PYTHON_PID 不存在（进程已意外退出）"
+    echo "⚠️  Python 进程 $PYTHON_PID 不存在（可能是系统重启后遗留的PID文件）"
     # 清理 caffeinate 进程（如果还在运行）
     if [ -n "$CAFFEINATE_PID" ] && ps -p $CAFFEINATE_PID > /dev/null 2>&1; then
         echo "🧹 清理残留的 caffeinate 进程..."
         kill $CAFFEINATE_PID 2>/dev/null
     fi
-    rm scheduler.pid
+    rm -f scheduler.pid
     echo "🗑️  已清理过期的PID文件"
     exit 0
 fi
@@ -75,7 +75,7 @@ if [ -n "$CAFFEINATE_PID" ] && ps -p $CAFFEINATE_PID > /dev/null 2>&1; then
 fi
 
 # 删除PID文件
-rm scheduler.pid
+rm -f scheduler.pid
 echo "✅ 调度器已停止"
 echo "🗑️  已删除PID文件"
 echo ""

@@ -23,8 +23,8 @@ echo "📋 进程ID: $PID"
 
 # 检查进程是否存在
 if ! ps -p $PID > /dev/null 2>&1; then
-    echo "⚠️  进程 $PID 不存在（进程已意外退出）"
-    rm scheduler.pid
+    echo "⚠️  进程 $PID 不存在（可能是系统重启后遗留的PID文件）"
+    rm -f scheduler.pid
     echo "🗑️  已清理过期的PID文件"
     exit 0
 fi
@@ -48,7 +48,7 @@ if ps -p $PID > /dev/null 2>&1; then
 fi
 
 # 删除PID文件
-rm scheduler.pid
+rm -f scheduler.pid
 echo "✅ 服务已停止"
 echo "🗑️  已删除PID文件"
 echo ""

@@ -16,7 +16,7 @@ if [ -f "scheduler.pid" ]; then
         exit 1
     else
         echo "⚠️  发现过期的PID文件，清理中..."
-        rm scheduler.pid
+        rm -f scheduler.pid
     fi
 fi
 

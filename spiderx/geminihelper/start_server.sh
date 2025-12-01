@@ -29,7 +29,8 @@ if [ -f "server.pid" ]; then
         echo "如需重启，请先运行 ./stop_server.sh"
         exit 1
     else
-        rm server.pid
+        echo "🗑️  清理过期的PID文件..."
+        rm -f server.pid
     fi
 fi
 
