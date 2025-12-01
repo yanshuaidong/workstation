@@ -17,34 +17,63 @@ if [ ! -f "scheduler.pid" ]; then
     exit 0
 fi
 
-# 读取PID
-PID=$(cat scheduler.pid)
-echo "📋 进程ID: $PID"
+# 读取PID（支持多行：第一行 Python PID，第二行 caffeinate PID）
+PYTHON_PID=$(sed -n '1p' scheduler.pid)
+CAFFEINATE_PID=$(sed -n '2p' scheduler.pid)
 
-# 检查进程是否存在
-if ! ps -p $PID > /dev/null 2>&1; then
-    echo "⚠️  进程 $PID 不存在（进程已意外退出）"
+echo "📋 Python 进程ID: $PYTHON_PID"
+[ -n "$CAFFEINATE_PID" ] && echo "📋 Caffeinate 进程ID: $CAFFEINATE_PID"
+
+# 检查 Python 进程是否存在
+if ! ps -p $PYTHON_PID > /dev/null 2>&1; then
+    echo "⚠️  Python 进程 $PYTHON_PID 不存在（进程已意外退出）"
+    # 清理 caffeinate 进程（如果还在运行）
+    if [ -n "$CAFFEINATE_PID" ] && ps -p $CAFFEINATE_PID > /dev/null 2>&1; then
+        echo "🧹 清理残留的 caffeinate 进程..."
+        kill $CAFFEINATE_PID 2>/dev/null
+    fi
     rm scheduler.pid
     echo "🗑️  已清理过期的PID文件"
     exit 0
 fi
 
-# 尝试优雅停止
-echo "🔍 正在停止进程..."
-kill $PID
-sleep 3
+# 尝试优雅停止 Python 进程（发送 SIGTERM）
+echo "🔍 正在优雅停止 Python 进程..."
+kill $PYTHON_PID
 
-# 检查是否成功停止
-if ps -p $PID > /dev/null 2>&1; then
+# 等待进程响应，最多等待 10 秒
+for i in {1..10}; do
+    if ! ps -p $PYTHON_PID > /dev/null 2>&1; then
+        echo "✅ Python 进程已优雅停止"
+        break
+    fi
+    sleep 1
+    echo "   等待中... ($i/10)"
+done
+
+# 如果还没停止，强制停止
+if ps -p $PYTHON_PID > /dev/null 2>&1; then
     echo "⚠️  进程未响应，强制停止..."
-    kill -9 $PID
-    sleep 2
+    kill -9 $PYTHON_PID
+    sleep 1
 fi
 
-# 确认关闭成功
-if ps -p $PID > /dev/null 2>&1; then
-    echo "❌ 进程停止失败，请手动处理: kill -9 $PID"
+# 确认 Python 进程已关闭
+if ps -p $PYTHON_PID > /dev/null 2>&1; then
+    echo "❌ Python 进程停止失败，请手动处理: kill -9 $PYTHON_PID"
     exit 1
+fi
+
+# 停止 caffeinate 进程（如果存在且还在运行）
+if [ -n "$CAFFEINATE_PID" ] && ps -p $CAFFEINATE_PID > /dev/null 2>&1; then
+    echo "🧹 停止 caffeinate 进程..."
+    kill $CAFFEINATE_PID 2>/dev/null
+    sleep 1
+    # 强制停止
+    if ps -p $CAFFEINATE_PID > /dev/null 2>&1; then
+        kill -9 $CAFFEINATE_PID 2>/dev/null
+    fi
+    echo "✅ caffeinate 进程已停止"
 fi
 
 # 删除PID文件

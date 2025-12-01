@@ -1,3 +1,7 @@
+# 禁用 requests 内部 urllib3 的警告（macOS 用 LibreSSL 而非 OpenSSL，不影响功能）
+import warnings
+warnings.filterwarnings('ignore', module='urllib3')
+
 import requests
 import json
 from datetime import datetime

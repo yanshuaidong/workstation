@@ -22,10 +22,10 @@ class FuturesScheduler:
     
     def __init__(self):
         self.start_time = datetime.now()
-        self.end_time = self.start_time + timedelta(days=14)  # 运行14天
+        self.end_time = self.start_time + timedelta(days=40)  # 运行40天
         self.execution_hour = 16  # 下午4点执行
         self.execution_count = 0
-        self.max_executions = 10  # 最多执行10次（2周的交易日）
+        self.max_executions = 30  # 最多执行30次（40天约28-30个交易日）
         self.shutdown_requested = False  # 优雅退出标志
         
         # 创建logs目录

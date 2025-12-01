@@ -9,20 +9,17 @@ echo "====================================="
 echo "启动 Gemini Helper 后端服务"
 echo "====================================="
 
-# 检查虚拟环境是否存在
-if [ ! -d "venv" ]; then
-    echo "未找到虚拟环境，正在创建..."
-    python3 -m venv venv
-    echo "虚拟环境创建完成"
+# 检查 Python 环境
+if command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
+    PYTHON_CMD="python"
+else
+    echo "❌ 错误: 未找到Python解释器"
+    exit 1
 fi
 
-# 激活虚拟环境
-echo "激活虚拟环境..."
-source venv/bin/activate
-
-# 安装依赖
-echo "检查并安装依赖..."
-pip install -q -r requirements.txt
+echo "🐍 使用 Python: $($PYTHON_CMD --version)"
 
 # 检查是否已经在运行
 if [ -f "server.pid" ]; then
@@ -38,7 +35,7 @@ fi
 
 # 启动服务
 echo "启动服务（端口 1124）..."
-nohup python main.py > nohup.out 2>&1 &
+nohup $PYTHON_CMD main.py > nohup.out 2>&1 &
 PID=$!
 
 # 保存 PID

@@ -22,11 +22,11 @@ class PositionScheduler:
     
     def __init__(self):
         self.start_time = datetime.now()
-        self.end_time = self.start_time + timedelta(days=14)  # 运行14天
+        self.end_time = self.start_time + timedelta(days=40)  # 运行40天
         self.execution_hour = 18  # 下午6点
         self.execution_minute = 30  # 30分
         self.execution_count = 0
-        self.max_executions = 10  # 最多执行10次（2周的交易日）
+        self.max_executions = 30  # 最多执行30次（40天约28-30个交易日）
         self.shutdown_requested = False  # 优雅退出标志
         
         # 创建logs目录
@@ -38,6 +38,22 @@ class PositionScheduler:
         
         # 设置信号处理
         self.setup_signal_handlers()
+    
+    def interruptible_sleep(self, seconds):
+        """
+        可中断的睡眠函数，每秒检查一次是否需要停止
+        
+        Args:
+            seconds: 总睡眠时间（秒）
+        
+        Returns:
+            bool: 是否被中断（True 表示收到停止信号）
+        """
+        for _ in range(int(seconds)):
+            if self.shutdown_requested:
+                return True
+            time.sleep(1)
+        return False
         
     def setup_logging(self):
         """设置日志配置"""
@@ -322,8 +338,9 @@ class PositionScheduler:
                 
                 # 检查是否为交易日
                 if not self.is_trading_day(current_time):
-                    # 非交易日，睡眠1小时后再检查
-                    time.sleep(3600)
+                    # 非交易日，睡眠1小时后再检查（可中断）
+                    if self.interruptible_sleep(3600):
+                        break
                     continue
                 
                 # 检查是否到了执行时间
@@ -350,7 +367,8 @@ class PositionScheduler:
                             return
                     else:
                         # 今天已经执行过，等待到明天
-                        time.sleep(300)  # 睡眠5分钟
+                        if self.interruptible_sleep(300):  # 睡眠5分钟（可中断）
+                            break
                 else:
                     # 还没到执行时间
                     target_time = current_time.replace(
@@ -365,14 +383,17 @@ class PositionScheduler:
                         wait_seconds = (target_time - current_time).total_seconds()
                         
                         if wait_seconds > 3600:
-                            # 如果等待时间超过1小时，先睡眠1小时
-                            time.sleep(3600)
+                            # 如果等待时间超过1小时，先睡眠1小时（可中断）
+                            if self.interruptible_sleep(3600):
+                                break
                         else:
-                            # 否则睡眠5分钟
-                            time.sleep(300)
+                            # 否则睡眠5分钟（可中断）
+                            if self.interruptible_sleep(300):
+                                break
                     else:
-                        # 今天已经过了执行时间，等待到明天
-                        time.sleep(3600)
+                        # 今天已经过了执行时间，等待到明天（可中断）
+                        if self.interruptible_sleep(3600):
+                            break
                 
                 # 检查停止信号
                 if self.shutdown_requested:

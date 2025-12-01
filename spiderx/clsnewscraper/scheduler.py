@@ -22,10 +22,10 @@ class NewsScheduler:
     
     def __init__(self):
         self.start_time = datetime.now()
-        self.end_time = self.start_time + timedelta(days=10)  # 运行10天
+        self.end_time = self.start_time + timedelta(days=40)  # 运行40天
         self.interval_hours = 1  # 每1小时执行一次
         self.execution_count = 0
-        self.max_executions = 240  # 10天 × 24小时 ÷ 1小时 = 240次
+        self.max_executions = 960  # 40天 × 24小时 ÷ 1小时 = 960次
         self.shutdown_requested = False  # 优雅退出标志
         
         # 创建logs目录

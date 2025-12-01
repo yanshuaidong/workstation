@@ -30,6 +30,8 @@ else
     exit 1
 fi
 
+echo "🐍 使用Python: $($PYTHON_CMD --version 2>&1)"
+
 # 检查main.py是否存在
 if [ ! -f "main.py" ]; then
     echo "❌ 错误: 未找到main.py文件"
@@ -39,21 +41,38 @@ fi
 # 启动进程
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍎 macOS系统，使用caffeinate防止休眠"
-    nohup caffeinate -i $PYTHON_CMD main.py schedule > nohup.out 2>&1 &
+    nohup $PYTHON_CMD main.py schedule > nohup.out 2>&1 &
+    PYTHON_PID=$!
+    # 使用 caffeinate 跟踪 Python 进程，防止系统休眠
+    caffeinate -i -w $PYTHON_PID &
+    CAFFEINATE_PID=$!
+    # 保存两个 PID：第一行 Python，第二行 caffeinate
+    echo "$PYTHON_PID" > scheduler.pid
+    echo "$CAFFEINATE_PID" >> scheduler.pid
+    echo "☕ caffeinate 已启动 (PID: $CAFFEINATE_PID)，跟踪 Python 进程"
 else
     echo "🐧 启动调度器..."
     nohup $PYTHON_CMD main.py schedule > nohup.out 2>&1 &
+    PYTHON_PID=$!
+    echo "$PYTHON_PID" > scheduler.pid
 fi
 
-# 保存进程ID
-PID=$!
-echo $PID > scheduler.pid
+# 等待进程实际启动
+sleep 1
 
-echo "✅ 调度器已启动"
-echo "🆔 进程ID: $PID"
-echo "📝 实时查看输出: tail -f nohup.out"
-echo "🛑 停止程序: ./stop_scheduler.sh"
+# 验证进程是否成功启动
+if ps -p $PYTHON_PID > /dev/null 2>&1; then
+    echo "✅ 调度器已启动 (PID: $PYTHON_PID)"
+    echo "📝 实时查看输出: tail -f nohup.out"
+    echo "🛑 停止程序: ./stop_scheduler.sh"
+else
+    echo "❌ 调度器启动失败，请检查日志"
+    rm -f scheduler.pid
+    cat nohup.out 2>/dev/null
+    exit 1
+fi
+
 echo ""
 echo "👀 输出预览："
-sleep 2
+sleep 1
 head -10 nohup.out 2>/dev/null || echo "输出文件生成中，请稍等..."

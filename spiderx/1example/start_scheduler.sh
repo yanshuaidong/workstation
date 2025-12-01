@@ -12,9 +12,10 @@ echo "📂 工作目录: $SCRIPT_DIR"
 
 # 检查是否已在运行
 if [ -f "scheduler.pid" ]; then
-    PID=$(cat scheduler.pid)
-    if ps -p $PID > /dev/null 2>&1; then
-        echo "⚠️  调度器已在运行 (PID: $PID)"
+    # 读取第一行作为 Python PID
+    PYTHON_PID=$(head -1 scheduler.pid)
+    if ps -p $PYTHON_PID > /dev/null 2>&1; then
+        echo "⚠️  调度器已在运行 (PID: $PYTHON_PID)"
         echo "🛑 如需重启，请先运行: ./stop_scheduler.sh"
         exit 1
     else
@@ -23,31 +24,14 @@ if [ -f "scheduler.pid" ]; then
     fi
 fi
 
-# 检查并激活虚拟环境（推荐使用，但不强制）
-if [ -d "venv" ]; then
-    echo "🐍 检测到虚拟环境 venv，正在激活..."
-    source venv/bin/activate
+# 检查 Python 环境
+if command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
     PYTHON_CMD="python"
-    echo "✅ 虚拟环境已激活: $(which python)"
-elif [ -d ".venv" ]; then
-    echo "🐍 检测到虚拟环境 .venv，正在激活..."
-    source .venv/bin/activate
-    PYTHON_CMD="python"
-    echo "✅ 虚拟环境已激活: $(which python)"
 else
-    echo "⚠️  未检测到虚拟环境，使用系统Python"
-    echo "💡 推荐创建虚拟环境: python3 -m venv venv"
-    echo "   然后激活: source venv/bin/activate"
-    echo ""
-    # 检查系统Python环境
-    if command -v python3 &> /dev/null; then
-        PYTHON_CMD="python3"
-    elif command -v python &> /dev/null; then
-        PYTHON_CMD="python"
-    else
-        echo "❌ 错误: 未找到Python解释器"
-        exit 1
-    fi
+    echo "❌ 错误: 未找到Python解释器"
+    exit 1
 fi
 
 echo "🐍 使用Python: $($PYTHON_CMD --version)"
@@ -79,26 +63,41 @@ fi
 echo ""
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍎 macOS系统，使用caffeinate防止休眠"
-    nohup caffeinate -i $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
+    nohup $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
+    PYTHON_PID=$!
+    # 使用 caffeinate 跟踪 Python 进程，防止系统休眠
+    caffeinate -i -w $PYTHON_PID &
+    CAFFEINATE_PID=$!
+    # 保存两个 PID：第一行 Python，第二行 caffeinate
+    echo "$PYTHON_PID" > scheduler.pid
+    echo "$CAFFEINATE_PID" >> scheduler.pid
+    echo "☕ caffeinate 已启动 (PID: $CAFFEINATE_PID)，跟踪 Python 进程"
 else
     echo "🐧 Linux系统"
     nohup $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
+    PYTHON_PID=$!
+    echo "$PYTHON_PID" > scheduler.pid
 fi
 
-# 保存PID
-PID=$!
-echo $PID > scheduler.pid
+# 等待进程实际启动
+sleep 1
 
-echo "✅ 调度器已启动 (PID: $PID)"
-echo "📝 查看日志: tail -f scheduler.log"
-echo "📝 查看输出: tail -f nohup.out"
-echo "🛑 停止程序: ./stop_scheduler.sh"
+# 验证进程是否成功启动
+if ps -p $PYTHON_PID > /dev/null 2>&1; then
+    echo "✅ 调度器已启动 (PID: $PYTHON_PID)"
+    echo "📝 查看日志: tail -f scheduler.log"
+    echo "📝 查看输出: tail -f nohup.out"
+    echo "🛑 停止程序: ./stop_scheduler.sh"
+else
+    echo "❌ 调度器启动失败，请检查日志"
+    rm -f scheduler.pid
+    cat nohup.out 2>/dev/null
+    exit 1
+fi
+
 echo ""
-
-# 等待启动
-sleep 2
-
 # 输出预览
 echo "👀 日志预览："
+sleep 1
 tail -10 scheduler.log 2>/dev/null || tail -10 nohup.out 2>/dev/null || echo "日志文件尚未生成，请稍等..."
 

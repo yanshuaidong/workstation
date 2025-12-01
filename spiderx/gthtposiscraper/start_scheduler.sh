@@ -5,11 +5,15 @@ echo "🚀 启动国泰君安持仓数据爬虫调度器..."
 echo "⏰ 启动时间: $(date)"
 echo ""
 
+# 切换到脚本所在目录
+cd "$(dirname "$0")" || exit 1
+
 # 检查是否已在运行
 if [ -f "scheduler.pid" ]; then
-    PID=$(cat scheduler.pid)
-    if ps -p $PID > /dev/null 2>&1; then
-        echo "⚠️  调度器已在运行 (PID: $PID)"
+    # 读取第一行作为 Python PID
+    PYTHON_PID=$(head -1 scheduler.pid)
+    if ps -p $PYTHON_PID > /dev/null 2>&1; then
+        echo "⚠️  调度器已在运行 (PID: $PYTHON_PID)"
         echo "🛑 如需重启，请先运行: ./stop_scheduler.sh"
         exit 1
     else
@@ -18,7 +22,7 @@ if [ -f "scheduler.pid" ]; then
     fi
 fi
 
-# 检查Python环境
+# 检查 Python 环境
 if command -v python3 &> /dev/null; then
     PYTHON_CMD="python3"
 elif command -v python &> /dev/null; then
@@ -28,32 +32,45 @@ else
     exit 1
 fi
 
+echo "🐍 使用 Python: $($PYTHON_CMD --version)"
+
 # 检查必要文件
 if [ ! -f "scheduler.py" ] || [ ! -f "main.py" ]; then
     echo "❌ 错误: 缺少必要文件，请确保在正确的目录下运行"
     exit 1
 fi
 
-# 启动调度器
+# 启动调度器，保存所有相关进程的 PID
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍎 macOS系统，使用caffeinate防止休眠"
-    nohup caffeinate -i $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
+    nohup $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
+    PYTHON_PID=$!
+    # 使用 caffeinate 跟踪 Python 进程，防止系统休眠
+    caffeinate -i -w $PYTHON_PID &
+    CAFFEINATE_PID=$!
+    # 保存两个 PID：第一行 Python，第二行 caffeinate
+    echo "$PYTHON_PID" > scheduler.pid
+    echo "$CAFFEINATE_PID" >> scheduler.pid
+    echo "☕ caffeinate 已启动 (PID: $CAFFEINATE_PID)，跟踪 Python 进程"
 else
     echo "🐧 Linux系统"
     nohup $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
+    PYTHON_PID=$!
+    echo "$PYTHON_PID" > scheduler.pid
 fi
 
-# 保存PID
-PID=$!
-echo $PID > scheduler.pid
+# 等待进程实际启动
+sleep 1
 
-echo "✅ 调度器已启动 (PID: $PID)"
-echo "📝 查看输出: tail -f nohup.out"
-echo "🛑 停止程序: ./stop_scheduler.sh"
-echo ""
-
-# 输出预览
-sleep 2
-echo "👀 输出预览："
-head -10 nohup.out 2>/dev/null || echo "输出文件尚未生成，请稍等..."
+# 验证进程是否成功启动
+if ps -p $PYTHON_PID > /dev/null 2>&1; then
+    echo "✅ 调度器已启动 (PID: $PYTHON_PID)"
+    echo "📝 查看输出: tail -f nohup.out"
+    echo "🛑 停止程序: ./stop_scheduler.sh"
+else
+    echo "❌ 调度器启动失败，请检查日志"
+    rm -f scheduler.pid
+    cat nohup.out 2>/dev/null
+    exit 1
+fi
 

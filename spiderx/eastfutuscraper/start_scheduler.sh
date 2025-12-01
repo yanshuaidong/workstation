@@ -52,31 +52,44 @@ echo ""
 # 检查操作系统类型
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍎 检测到macOS系统，使用caffeinate防止系统休眠"
-    # macOS使用caffeinate防止系统休眠
-    nohup caffeinate -i $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
+    nohup $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
+    PYTHON_PID=$!
+    # 使用 caffeinate 跟踪 Python 进程，防止系统休眠
+    caffeinate -i -w $PYTHON_PID &
+    CAFFEINATE_PID=$!
+    # 保存两个 PID：第一行 Python，第二行 caffeinate
+    echo "$PYTHON_PID" > scheduler.pid
+    echo "$CAFFEINATE_PID" >> scheduler.pid
+    echo "☕ caffeinate 已启动 (PID: $CAFFEINATE_PID)，跟踪 Python 进程"
 else
     echo "🐧 检测到非macOS系统，直接启动"
-    # 其他系统直接运行
     nohup $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
+    PYTHON_PID=$!
+    echo "$PYTHON_PID" > scheduler.pid
 fi
 
-# 获取进程ID
-PID=$!
+# 等待进程实际启动
+sleep 1
 
-# 保存进程信息到PID文件
-echo $PID > scheduler.pid
+# 验证进程是否成功启动
+if ps -p $PYTHON_PID > /dev/null 2>&1; then
+    echo "✅ 调度器已在后台启动"
+    echo "🆔 进程ID: $PYTHON_PID"
+    echo "📝 进程信息已保存到: scheduler.pid"
+    echo ""
+    echo "📖 查看命令："
+    echo "  - 实时查看输出: tail -f nohup.out"
+    echo "  - 查看详细日志: tail -f logs/futures_crawler_\$(date +%Y-%m-%d).log"
+    echo "🛑 停止命令: ./stop_scheduler.sh"
+else
+    echo "❌ 调度器启动失败，请检查日志"
+    rm -f scheduler.pid
+    cat nohup.out 2>/dev/null
+    exit 1
+fi
 
-echo "✅ 调度器已在后台启动"
-echo "🆔 进程ID: $PID"
-echo "📝 进程信息已保存到: scheduler.pid"
 echo ""
-echo "📖 查看命令："
-echo "  - 实时查看输出: tail -f nohup.out"
-echo "  - 查看详细日志: tail -f logs/futures_crawler_\$(date +%Y-%m-%d).log"
-echo "🛑 停止命令: ./stop_scheduler.sh"
-echo ""
-
 echo "👀 前10行输出预览："
-sleep 2
+sleep 1
 head -10 nohup.out 2>/dev/null || echo "输出文件尚未生成，请稍等..."
 
