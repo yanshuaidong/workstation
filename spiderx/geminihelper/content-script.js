@@ -14,7 +14,7 @@
     }
 
     if (request.action === 'EXECUTE_PROMPT') {
-      processGeminiQuestion(request.prompt, request.title)
+      processGeminiQuestion(request.prompt, request.title, request.task_id)
         .then(result => {
             console.log('[Content] 执行成功:', result);
             sendResponse({ success: true, result });
@@ -29,9 +29,10 @@
 
   // ==================== 核心处理逻辑 ====================
   
-  async function processGeminiQuestion(promptText, title) {
+  async function processGeminiQuestion(promptText, title, taskId) {
     console.log("[Content] 开始执行 - 标题:", title);
     console.log("[Content] Prompt 长度:", promptText.length);
+    console.log("[Content] 任务ID:", taskId);
     
     // 步骤1: 点击"发起新对话"
     console.log("[Content] 步骤1: 发起新对话");
@@ -82,10 +83,20 @@
     
     // 步骤5: 发送到后端
     console.log("[Content] 步骤4: 保存到后端");
+    const requestData = { 
+      title: title, 
+      content: content 
+    };
+    
+    // 如果有任务ID，一起发送
+    if (taskId) {
+      requestData.task_id = taskId;
+    }
+    
     const response = await fetch('http://localhost:1124/save-result', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title, content: content })
+      body: JSON.stringify(requestData)
     });
     
     if (!response.ok) {

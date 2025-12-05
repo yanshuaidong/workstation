@@ -82,30 +82,40 @@ async function handleStartScheduler() {
     // 清除已有的定时器
     await chrome.alarms.clear(ALARM_NAME);
     
-    // 创建每天早上7点的定时器
-    const now = new Date();
-    const nextRun = new Date();
-    nextRun.setHours(7, 0, 0, 0);
+    // 定义执行时间点：4点、8点、12点、16点、20点、24点
+    const executionHours = [4, 8, 12, 16, 20, 24];
     
-    // 如果今天7点已过，设置为明天7点
-    if (nextRun <= now) {
+    // 找到下一个执行时间
+    const now = new Date();
+    const currentHour = now.getHours();
+    
+    let nextHour = executionHours.find(hour => hour > currentHour);
+    const nextRun = new Date();
+    
+    if (nextHour) {
+      // 今天还有执行时间
+      nextRun.setHours(nextHour, 0, 0, 0);
+    } else {
+      // 今天没有了，设置为明天第一个执行时间
       nextRun.setDate(nextRun.getDate() + 1);
+      nextRun.setHours(executionHours[0], 0, 0, 0);
     }
     
     const delayInMinutes = (nextRun.getTime() - now.getTime()) / (1000 * 60);
     
-    // 创建定时器（每24小时执行一次）
+    // 创建定时器（每4小时执行一次）
     await chrome.alarms.create(ALARM_NAME, {
       delayInMinutes: delayInMinutes,
-      periodInMinutes: 24 * 60 // 24小时
+      periodInMinutes: 4 * 60 // 4小时
     });
     
     console.log("[Background] 定时器已创建");
+    console.log("[Background] 执行时间点:", executionHours.join('点、') + '点');
     console.log("[Background] 下次执行时间:", nextRun.toLocaleString('zh-CN'));
     
     return {
       success: true,
-      message: '定时器已启动',
+      message: '定时器已启动（每天6次：4点、8点、12点、16点、20点、24点）',
       nextRunTime: nextRun.toLocaleString('zh-CN')
     };
     
@@ -170,18 +180,23 @@ async function executeScheduledTask(isTest = false) {
       }
     }
     
-    // 2. 从后端获取 prompts
-    console.log("[Background] 步骤1: 获取 prompts...");
-    const promptsData = await fetchPromptsFromBackend();
+    // 2. 从后端获取待分析任务
+    console.log("[Background] 步骤1: 获取待分析任务...");
+    const tasksData = await fetchTasksFromBackend();
     
-    if (!promptsData.success || !promptsData.promptList) {
-      throw new Error('获取 prompts 失败: ' + (promptsData.message || '未知错误'));
+    if (!tasksData.success) {
+      throw new Error('获取任务失败: ' + (tasksData.message || '未知错误'));
     }
     
-    const promptList = promptsData.promptList;
-    const chineseDate = promptsData.chinese_date;
-    console.log(`[Background] 获取到 ${promptList.length} 条 prompts`);
-    console.log(`[Background] 日期: ${chineseDate}`);
+    // 检查是否有任务
+    if (!tasksData.tasks || tasksData.tasks.length === 0) {
+      console.log("[Background] ⚠️  没有待分析的任务，跳过本次执行");
+      logger.info("没有待分析的任务");
+      return;
+    }
+    
+    const taskList = tasksData.tasks;
+    console.log(`[Background] 获取到 ${taskList.length} 个待分析任务`);
     
     // 3. 打开或找到 Gemini 标签页
     console.log("[Background] 步骤2: 打开 Gemini 标签页...");
@@ -197,30 +212,37 @@ async function executeScheduledTask(isTest = false) {
     }
     console.log("[Background] Content Script 已准备就绪");
     
-    // 4. 逐个处理 prompt
-    console.log("[Background] 步骤3: 开始处理 prompts...");
+    // 4. 逐个处理任务
+    console.log("[Background] 步骤3: 开始处理任务...");
     const results = [];
     
-    for (let i = 0; i < promptList.length; i++) {
-      const item = promptList[i];
-      console.log(`[Background] 处理 ${i + 1}/${promptList.length}: ${item.title}`);
+    for (let i = 0; i < taskList.length; i++) {
+      const task = taskList[i];
+      console.log(`[Background] 处理 ${i + 1}/${taskList.length}: ${task.title}`);
       
       try {
-        // 构建完整标题（中文日期 + title）
-        const fullTitle = `${chineseDate.replace('今天是', '')}${item.title}`;
+        // 执行单个任务 (通过 Content Script)
+        const result = await executePrompt(tabId, task.prompt, task.title, task.id);
+        results.push({ 
+          task_id: task.id,
+          title: task.title, 
+          success: true, 
+          result 
+        });
         
-        // 执行单个 prompt (通过 Content Script)
-        const result = await executePrompt(tabId, item.prompt, fullTitle);
-        results.push({ title: fullTitle, success: true, result });
-        
-        console.log(`[Background] ✓ ${item.title} 执行成功`);
+        console.log(`[Background] ✓ ${task.title} 执行成功`);
         
         // 等待一下再执行下一个
         await sleep(3000);
         
       } catch (error) {
-        console.error(`[Background] ✗ ${item.title} 执行失败:`, error);
-        results.push({ title: item.title, success: false, error: error.message });
+        console.error(`[Background] ✗ ${task.title} 执行失败:`, error);
+        results.push({ 
+          task_id: task.id,
+          title: task.title, 
+          success: false, 
+          error: error.message 
+        });
       }
     }
     
@@ -271,11 +293,11 @@ async function executeScheduledTask(isTest = false) {
   }
 }
 
-// ==================== 从后端获取 prompts ====================
-async function fetchPromptsFromBackend() {
+// ==================== 从后端获取待分析任务 ====================
+async function fetchTasksFromBackend() {
   try {
-    console.log("[Background] 请求后端获取 prompts...");
-    const response = await fetch(`${BACKEND_URL}/get-prompts`);
+    console.log("[Background] 请求后端获取待分析任务...");
+    const response = await fetch(`${BACKEND_URL}/get-tasks`);
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -287,10 +309,12 @@ async function fetchPromptsFromBackend() {
     return data;
     
   } catch (error) {
-    console.error("[Background] 获取 prompts 失败:", error);
+    console.error("[Background] 获取任务失败:", error);
     return {
       success: false,
-      message: error.message
+      message: error.message,
+      count: 0,
+      tasks: []
     };
   }
 }
@@ -386,15 +410,16 @@ async function waitForContentScriptReady(tabId, maxRetries = 10) {
   return false;
 }
 
-// ==================== 执行单个 prompt (通过消息发送给 Content Script) ====================
-async function executePrompt(tabId, promptText, title) {
-  console.log(`[Background] 发送消息给 Content Script: ${title}`);
+// ==================== 执行单个任务 (通过消息发送给 Content Script) ====================
+async function executePrompt(tabId, promptText, title, taskId) {
+  console.log(`[Background] 发送消息给 Content Script: ${title} (任务ID: ${taskId})`);
   
   return new Promise((resolve, reject) => {
     chrome.tabs.sendMessage(tabId, {
       action: 'EXECUTE_PROMPT',
       prompt: promptText,
-      title: title
+      title: title,
+      task_id: taskId
     }, (response) => {
       if (chrome.runtime.lastError) {
         // 可能是 Content Script 还没加载完成，重试一次? 

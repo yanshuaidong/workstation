@@ -3,15 +3,15 @@
 """
 Gemini Helper 后端服务
 功能：
-1. 读取 prompts.json 配置
-2. 为每条 prompt 加上中文日期
-3. 接收插件发送的 Gemini 响应结果
-4. 将结果写入阿里云数据库
+1. 从本地 SQLite 数据库读取待分析任务
+2. 接收插件发送的 Gemini 响应结果
+3. 将结果写入阿里云 MySQL 数据库
 """
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pymysql
+import sqlite3
 import os
 import json
 import time
@@ -58,11 +58,8 @@ CORS(app)  # 允许跨域请求
 
 # ==================== 配置 ====================
 
-# 结果文件路径
-RESULT_FILE = os.path.join(os.path.dirname(__file__), 'result.md')
-
-# prompts.json 文件路径
-PROMPTS_FILE = os.path.join(os.path.dirname(__file__), 'prompts.json')
+# 本地数据库路径（crawler.db）
+LOCAL_DB_PATH = os.path.join(os.path.dirname(__file__), '../db/crawler.db')
 
 # 数据库配置（阿里云）
 DB_CONFIG = {
@@ -78,17 +75,130 @@ DB_CONFIG = {
 # ==================== 数据库操作 ====================
 
 def get_db_connection():
-    """获取数据库连接"""
+    """获取阿里云数据库连接"""
     return pymysql.connect(**DB_CONFIG)
 
 
-def save_to_database(title, content):
+def get_local_db_connection():
+    """获取本地 SQLite 数据库连接"""
+    if not os.path.exists(LOCAL_DB_PATH):
+        raise FileNotFoundError(f"本地数据库不存在: {LOCAL_DB_PATH}")
+    return sqlite3.connect(LOCAL_DB_PATH)
+
+
+def get_unanalyzed_tasks():
     """
-    将结果保存到数据库
+    从本地数据库获取未分析的任务
+    
+    Returns:
+        dict: 包含任务列表的字典
+    """
+    conn = None
+    try:
+        conn = get_local_db_connection()
+        cursor = conn.cursor()
+        cursor.row_factory = sqlite3.Row  # 使结果可以像字典一样访问
+        
+        # 查询未分析的任务
+        query_sql = """
+            SELECT id, title, prompt, news_time, created_at
+            FROM analysis_task
+            WHERE is_analyzed = 0
+            ORDER BY news_time DESC, created_at DESC
+        """
+        cursor.execute(query_sql)
+        rows = cursor.fetchall()
+        
+        # 转换为字典列表
+        tasks = []
+        for row in rows:
+            tasks.append({
+                'id': row[0],
+                'title': row[1],
+                'prompt': row[2],
+                'news_time': row[3],
+                'created_at': row[4]
+            })
+        
+        logger.info(f"从本地数据库获取到 {len(tasks)} 个未分析任务")
+        
+        return {
+            'success': True,
+            'count': len(tasks),
+            'tasks': tasks
+        }
+        
+    except Exception as e:
+        logger.error(f"查询本地数据库失败: {e}")
+        return {
+            'success': False,
+            'message': f'查询本地数据库失败: {str(e)}',
+            'count': 0,
+            'tasks': []
+        }
+        
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_task_status(task_id, ai_result):
+    """
+    更新本地数据库中任务的分析状态
     
     Args:
-        title: 标题（格式：中文日期 + promptList.title）
+        task_id: 任务ID
+        ai_result: AI分析结果
+    
+    Returns:
+        dict: 包含成功状态和消息
+    """
+    conn = None
+    try:
+        conn = get_local_db_connection()
+        cursor = conn.cursor()
+        
+        # 更新任务状态
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        update_sql = """
+            UPDATE analysis_task
+            SET is_analyzed = 1,
+                ai_result = ?,
+                updated_at = ?
+            WHERE id = ?
+        """
+        cursor.execute(update_sql, (ai_result, current_time, task_id))
+        conn.commit()
+        
+        logger.info(f"本地数据库任务状态已更新: task_id={task_id}")
+        
+        return {
+            'success': True,
+            'message': '任务状态已更新'
+        }
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"更新任务状态失败: {e}")
+        return {
+            'success': False,
+            'message': f'更新任务状态失败: {str(e)}'
+        }
+        
+    finally:
+        if conn:
+            conn.close()
+
+
+def save_to_database(title, content, task_id=None):
+    """
+    将结果保存到阿里云数据库
+    
+    Args:
+        title: 标题
         content: AI 返回的内容
+        task_id: 本地数据库任务ID（如果有）
     
     Returns:
         dict: 包含成功状态和消息
@@ -130,7 +240,13 @@ def save_to_database(title, content):
         
         conn.commit()
         
-        logger.info(f"数据库成功保存: news_id={news_id}, title={title}")
+        logger.info(f"阿里云数据库成功保存: news_id={news_id}, title={title}")
+        
+        # 如果有本地任务ID，更新本地数据库状态
+        if task_id:
+            update_result = update_task_status(task_id, content)
+            if not update_result['success']:
+                logger.warning(f"本地数据库更新失败: {update_result['message']}")
         
         return {
             'success': True,
@@ -155,60 +271,40 @@ def save_to_database(title, content):
 
 # ==================== API 接口 ====================
 
-@app.route('/get-prompts', methods=['GET'])
-def get_prompts():
+@app.route('/get-tasks', methods=['GET'])
+def get_tasks():
     """
-    获取 prompt 列表（已加工）
+    获取待分析的任务列表（从本地数据库）
     返回格式：
     {
       "success": true,
-      "promptList": [
+      "count": 2,
+      "tasks": [
         {
-          "title": "股票新闻",
-          "prompt": "今天是2025年11月1日\n今天有哪些重点股票新闻..."
+          "id": 1,
+          "title": "标题",
+          "prompt": "分析内容",
+          "news_time": "2025-12-05 12:00:00",
+          "created_at": "2025-12-05 12:00:00"
         }
       ]
     }
     """
     try:
-        # 读取 prompts.json
-        if not os.path.exists(PROMPTS_FILE):
-            return jsonify({
-                'success': False,
-                'message': f'prompts.json 文件不存在: {PROMPTS_FILE}'
-            }), 404
+        result = get_unanalyzed_tasks()
         
-        with open(PROMPTS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        if result['success']:
+            logger.info(f"成功返回 {result['count']} 个待分析任务")
         
-        prompt_list = data.get('promptList', [])
-        
-        # 获取当前中文日期
-        now = datetime.now()
-        chinese_date = f"今天是{now.year}年{now.month}月{now.day}日"
-        
-        # 为每条 prompt 加上日期前缀
-        processed_list = []
-        for item in prompt_list:
-            processed_item = {
-                'title': item['title'],
-                'prompt': f"{chinese_date}\n{item['prompt']}"
-            }
-            processed_list.append(processed_item)
-        
-        logger.info(f"成功返回 {len(processed_list)} 条 prompt")
-        
-        return jsonify({
-            'success': True,
-            'promptList': processed_list,
-            'chinese_date': chinese_date
-        }), 200
+        return jsonify(result), 200
         
     except Exception as e:
-        logger.error(f"读取 prompts 失败: {e}")
+        logger.error(f"获取任务列表失败: {e}")
         return jsonify({
             'success': False,
-            'message': str(e)
+            'message': str(e),
+            'count': 0,
+            'tasks': []
         }), 500
 
 
@@ -219,7 +315,8 @@ def save_result():
     请求格式：
     {
       "title": "2025年11月1日股票新闻",
-      "content": "AI 返回的内容"
+      "content": "AI 返回的内容",
+      "task_id": 123  // 可选，本地数据库任务ID
     }
     """
     try:
@@ -233,34 +330,20 @@ def save_result():
         
         title = data['title']
         content = data['content']
+        task_id = data.get('task_id')  # 可选参数
         
-        logger.info(f"收到保存请求 - 标题: {title}, 内容长度: {len(content)}")
+        logger.info(f"收到保存请求 - 标题: {title}, 内容长度: {len(content)}, 任务ID: {task_id}")
         
-        # 保存到数据库
-        db_result = save_to_database(title, content)
+        # 保存到阿里云数据库（同时会更新本地数据库状态）
+        db_result = save_to_database(title, content, task_id)
         
         if not db_result['success']:
             return jsonify(db_result), 500
         
-        # 同时保存到文件（备份）
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        formatted_content = f"\n\n{'='*80}\n"
-        formatted_content += f"保存时间: {timestamp}\n"
-        formatted_content += f"标题: {title}\n"
-        formatted_content += f"{'='*80}\n\n"
-        formatted_content += content
-        formatted_content += f"\n\n{'='*80}\n"
-        
-        with open(RESULT_FILE, 'a', encoding='utf-8') as f:
-            f.write(formatted_content)
-        
-        logger.info(f"成功保存结果到文件: {title}")
-        
         return jsonify({
             'success': True,
-            'message': '结果已保存到数据库和文件',
-            'news_id': db_result.get('news_id'),
-            'file': RESULT_FILE
+            'message': '结果已保存到数据库',
+            'news_id': db_result.get('news_id')
         }), 200
         
     except Exception as e:
@@ -297,17 +380,22 @@ if __name__ == '__main__':
     logger.info("=" * 60)
     logger.info("Gemini Helper 后端服务启动中...")
     logger.info(f"日志文件: {LOG_FILE}")
-    logger.info(f"结果将保存到: {RESULT_FILE}")
-    logger.info(f"Prompts 配置文件: {PROMPTS_FILE}")
-    logger.info(f"数据库: {DB_CONFIG['host']}/{DB_CONFIG['database']}")
+    logger.info(f"本地数据库: {LOCAL_DB_PATH}")
+    logger.info(f"阿里云数据库: {DB_CONFIG['host']}/{DB_CONFIG['database']}")
     logger.info("服务地址: http://localhost:1124")
     logger.info("=" * 60)
     
-    # 测试数据库连接
+    # 测试阿里云数据库连接
     if test_db_connection():
-        logger.info("✅ 数据库连接成功")
+        logger.info("✅ 阿里云数据库连接成功")
     else:
-        logger.warning("⚠️  数据库连接失败，请检查配置")
+        logger.warning("⚠️  阿里云数据库连接失败，请检查配置")
+    
+    # 测试本地数据库
+    if os.path.exists(LOCAL_DB_PATH):
+        logger.info("✅ 本地数据库文件存在")
+    else:
+        logger.warning("⚠️  本地数据库文件不存在")
     
     logger.info("=" * 60)
     
