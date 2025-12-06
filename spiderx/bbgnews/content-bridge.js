@@ -39,7 +39,8 @@
       const filteredData = newsArray.map(item => ({
         publishedAt: item.publishedAt || item.published_at || item.date || null,
         brand: item.brand || item.source || null,
-        headline: item.headline || item.title || null
+        headline: item.headline || item.title || null,
+        url: item.url || item.link || item.href || null
       })).filter(item => item.headline); // 至少要有标题才保留
       
       safeLog(`📊 数据过滤完成: ${newsArray.length} 条 → ${filteredData.length} 条`);

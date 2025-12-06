@@ -42,7 +42,7 @@ def init_db():
         );
         """)
 
-        # 创建索引以提高查询效率
+        # 创建 bloomberg_news 表的索引以提高查询效率
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_published_at 
         ON bloomberg_news(published_at DESC);
@@ -56,6 +56,45 @@ def init_db():
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_created_at 
         ON bloomberg_news(created_at DESC);
+        """)
+        
+        # 创建 published_at 唯一索引用于去重
+        cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_published_at 
+        ON bloomberg_news(published_at);
+        """)
+
+        # 创建 analysis_task 表
+        # 字段说明：
+        # - title: 任务标题
+        # - prompt: 提示词/分析内容
+        # - news_time: 新闻时间
+        # - ai_result: AI分析结果
+        # - is_analyzed: 是否已分析（0/1）
+        # - created_at: 创建时间
+        # - updated_at: 更新时间
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS analysis_task (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            news_time DATETIME,
+            ai_result TEXT DEFAULT '',
+            is_analyzed INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        
+        # 创建 analysis_task 表的索引
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_analysis_task_is_analyzed 
+        ON analysis_task(is_analyzed);
+        """)
+        
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_analysis_task_created_at 
+        ON analysis_task(created_at DESC);
         """)
 
         conn.commit()

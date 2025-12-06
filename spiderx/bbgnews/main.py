@@ -5,13 +5,14 @@ Bloomberg 新闻自动处理服务
 
 功能说明：
 1. 接收浏览器扩展发送的新闻数据（Flask API）
-2. 定时处理新闻（每天6/12/18/24点）
-3. AI筛选相关新闻并翻译成中文
-4. 保存到MySQL数据库两个表
-5. 自动删除已处理的本地数据
+2. 实时存储到本地SQLite数据库 bloomberg_news 表
+3. 定时处理新闻（每天6/12/18/24点）
+4. AI筛选期货相关新闻并格式化输出
+5. 保存到本地SQLite数据库 analysis_task 表
+6. 删除已处理的新闻数据
 
 工作流程：
-插件发送 -> 本地存储 -> 定时触发 -> AI筛选 -> 数据库保存 -> 删除本地数据
+插件发送 -> bloomberg_news表 -> 定时触发 -> AI筛选 -> analysis_task表 -> 删除已处理数据
 """
 
 from flask import Flask, request, jsonify
@@ -20,11 +21,12 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import json
 import os
 import time
-import pymysql
+import sqlite3
 import requests
 import signal
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 import logging
 
 # ==================== 配置部分 ====================
@@ -44,93 +46,255 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 数据文件配置
-DATA_DIR = 'captured_data'
-DATA_FILE = os.path.join(DATA_DIR, 'bloomberg_news.json')
+# 数据库路径配置（使用 spiderx/db 目录下的数据库）
+DB_DIR = Path(__file__).parent.parent / "db"
+DB_PATH = DB_DIR / "crawler.db"
 
-# AI API 配置（写死在代码里）
+# AI API 配置
 AI_API_KEY = "sk-qVU4OZNspU5cSTPONFBFD000t2Oy8Tq9U8h74Wm5Phnl8tsB"
 AI_BASE_URL = "https://poloai.top/v1/chat/completions"
 
-# 数据库配置（写死在代码里）
-DB_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
+# Bloomberg URL前缀
+BLOOMBERG_URL_PREFIX = "https://www.bloomberg.com"
 
 # 服务端口
 SERVICE_PORT = 1123
-
-# 确保数据目录存在
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR)
 
 # ==================== 数据库操作 ====================
 
 def get_db_connection():
     """获取数据库连接"""
-    return pymysql.connect(**DB_CONFIG)
+    if not DB_PATH.exists():
+        logger.warning("⚠️ 数据库文件不存在，请先运行 init_db.py")
+        # 尝试初始化数据库
+        sys.path.insert(0, str(DB_DIR))
+        from init_db import init_db
+        init_db()
+    
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # 支持字典式访问
+    return conn
 
-def save_to_database(title, content, ctime):
+
+def save_news_to_db(news_item):
     """
-    保存新闻到数据库两个表
+    保存新闻到 bloomberg_news 表（带去重）
     
     参数：
-        title: 新闻标题
-        content: AI筛选后的内容
-        ctime: 新闻发生时间的时间戳（秒）
+        news_item: 新闻数据字典，包含 publishedAt, headline, brand, url
     
     返回：
-        bool: 是否成功
+        bool: 是否成功插入（重复数据返回 False）
     """
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 1. 插入新闻表 news_red_telegraph
-        insert_news_sql = """
-            INSERT INTO news_red_telegraph 
-            (ctime, title, content, ai_analysis, message_score, message_label, message_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        # 补全URL（使用 or 确保 None 值被处理为空字符串）
+        url = news_item.get('url') or ''
+        if url and not url.startswith('http'):
+            url = BLOOMBERG_URL_PREFIX + url
+        
+        # 解析发布时间
+        published_at = news_item.get('publishedAt') or ''
+        
+        # 使用 INSERT OR IGNORE 实现去重（基于 published_at 唯一索引）
+        insert_sql = """
+            INSERT OR IGNORE INTO bloomberg_news 
+            (published_at, headline, brand, url, status)
+            VALUES (?, ?, ?, ?, 0)
         """
-        cursor.execute(insert_news_sql, (
-            ctime,
-            title,
-            content,
-            '暂无分析',
-            6,
-            'hard',
-            '彭博社新闻'
+        cursor.execute(insert_sql, (
+            published_at,
+            news_item.get('headline', ''),
+            news_item.get('brand', ''),
+            url
         ))
         
-        # 获取插入的新闻ID
-        news_id = cursor.lastrowid
-        
-        # 2. 插入跟踪表 news_process_tracking（使用默认值）
-        insert_tracking_sql = """
-            INSERT INTO news_process_tracking (news_id, ctime)
-            VALUES (%s, %s)
-        """
-        cursor.execute(insert_tracking_sql, (news_id, ctime))
-        
         conn.commit()
-        logger.info(f"✅ 数据库保存成功 - 新闻ID: {news_id}")
-        return True
+        
+        # rowcount > 0 表示插入成功，= 0 表示重复数据被忽略
+        return cursor.rowcount > 0
         
     except Exception as e:
-        logger.error(f"❌ 数据库保存失败: {e}")
+        logger.error(f"❌ 保存新闻到数据库失败: {e}")
         if conn:
             conn.rollback()
         return False
     finally:
         if conn:
-            cursor.close()
             conn.close()
+
+
+def get_pending_news(start_time, end_time):
+    """
+    获取指定时间范围内待处理的新闻（status=0）
+    
+    参数：
+        start_time: 开始时间（datetime对象）
+        end_time: 结束时间（datetime对象）
+    
+    返回：
+        list: 新闻列表
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 根据 created_at 筛选时间范围内的未处理新闻
+        select_sql = """
+            SELECT id, published_at, headline, brand, url
+            FROM bloomberg_news
+            WHERE status = 0 
+            AND created_at >= ? 
+            AND created_at < ?
+            ORDER BY created_at ASC
+        """
+        cursor.execute(select_sql, (
+            start_time.strftime('%Y-%m-%d %H:%M:%S'),
+            end_time.strftime('%Y-%m-%d %H:%M:%S')
+        ))
+        
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+        
+    except Exception as e:
+        logger.error(f"❌ 获取待处理新闻失败: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def mark_news_as_processed(news_ids):
+    """
+    将指定新闻标记为已处理（status=1）
+    
+    参数：
+        news_ids: 新闻ID列表
+    """
+    if not news_ids:
+        return
+    
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        placeholders = ','.join(['?' for _ in news_ids])
+        update_sql = f"""
+            UPDATE bloomberg_news 
+            SET status = 1, updated_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+        """
+        cursor.execute(update_sql, news_ids)
+        conn.commit()
+        
+        logger.info(f"✅ 已标记 {len(news_ids)} 条新闻为已处理")
+        
+    except Exception as e:
+        logger.error(f"❌ 标记新闻状态失败: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
+def delete_processed_news():
+    """
+    删除已处理的新闻（status=1）
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 先统计要删除的数量
+        cursor.execute("SELECT COUNT(*) FROM bloomberg_news WHERE status = 1")
+        count = cursor.fetchone()[0]
+        
+        if count == 0:
+            logger.info("ℹ️ 没有需要删除的已处理新闻")
+            return
+        
+        # 删除已处理的新闻
+        delete_sql = "DELETE FROM bloomberg_news WHERE status = 1"
+        cursor.execute(delete_sql)
+        conn.commit()
+        
+        logger.info(f"🗑️ 已删除 {count} 条已处理新闻")
+        
+    except Exception as e:
+        logger.error(f"❌ 删除已处理新闻失败: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
+def save_analysis_task(title, prompt, news_time):
+    """
+    保存分析任务到 analysis_task 表
+    
+    参数：
+        title: 任务标题
+        prompt: 提示词/分析内容
+        news_time: 新闻时间（datetime对象）
+    
+    返回：
+        int or None: 成功返回任务ID，失败返回None
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        insert_sql = """
+            INSERT INTO analysis_task 
+            (title, prompt, news_time, ai_result, is_analyzed)
+            VALUES (?, ?, ?, '', 0)
+        """
+        cursor.execute(insert_sql, (
+            title,
+            prompt,
+            news_time.strftime('%Y-%m-%d %H:%M:%S')
+        ))
+        
+        task_id = cursor.lastrowid
+        conn.commit()
+        
+        logger.info(f"✅ 分析任务保存成功 - 任务ID: {task_id}")
+        return task_id
+        
+    except Exception as e:
+        logger.error(f"❌ 保存分析任务失败: {e}")
+        if conn:
+            conn.rollback()
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_pending_news_count():
+    """获取待处理新闻数量"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM bloomberg_news WHERE status = 0")
+        return cursor.fetchone()[0]
+    except Exception as e:
+        logger.error(f"❌ 获取待处理新闻数量失败: {e}")
+        return 0
+    finally:
+        if conn:
+            conn.close()
+
 
 # ==================== AI接口调用 ====================
 
@@ -139,7 +303,7 @@ def call_ai_api(news_list, max_retries=2):
     调用AI接口筛选新闻（带重试机制）
     
     参数：
-        news_list: 新闻列表
+        news_list: 新闻列表，每条包含 headline, brand, url
         max_retries: 最大重试次数（默认2次）
     
     返回：
@@ -152,7 +316,7 @@ def call_ai_api(news_list, max_retries=2):
 你是一个专业的期货市场新闻筛选与翻译助手，服务于量化交易系统。
 
 【核心目标】
-从给定新闻中，只保留那些对“可交易期货资产”价格在短期内可能产生显著影响的新闻，并翻译成中文标题。
+从给定新闻中，只保留那些对"可交易期货资产"价格在短期内可能产生显著影响的新闻，并翻译成中文标题。
 若影响不确定或极弱，应宁可不选。
 
 【严格筛选范围（必须直接关联期货交易驱动）】
@@ -170,7 +334,7 @@ def call_ai_api(news_list, max_retries=2):
 
 3. 超预期的关键宏观数据：
    - CPI、PPI、GDP、PMI、就业、库存、贸易数据等
-   - 且新闻明确表述“超预期/不及预期/市场震动/价格反应”
+   - 且新闻明确表述"超预期/不及预期/市场震动/价格反应"
 
 4. 评级机构或国家风险事件：
    - 主权或大型机构评级调整、违约、流动性危机
@@ -187,22 +351,21 @@ def call_ai_api(news_list, max_retries=2):
 6. 行业观点、预测、研究报告、展望类描述
 
 三、审查逻辑：
-- 站在“可交易期货市场（商品、股指、外汇、利率等）交易者”角度评估冲击性。
+- 站在"可交易期货市场（商品、股指、外汇、利率等）交易者"角度评估冲击性。
 - 若没有明显影响或新闻内容偏泛化，直接忽略。
 - 若不确定冲击是否显著，应宁可不选。
 - 若所有新闻均无有效冲击，应输出：无重要相关新闻
 
 【输出格式要求】
-1. 对保留的新闻标题翻译成简洁自然的中文。
-2. 格式严格为：
-1、[标题1]
-2、[标题2]
-……
-3. 不保留任何解释、评语或额外内容。
-4. 无符合内容时输出：无重要相关新闻
+1. 对保留的新闻标题翻译成简洁自然的中文，并标明相关期货品种。
+2. 格式严格为（每条新闻一行）：
+【XX期货相关】【翻译后的中文标题】新闻URL
+3. XX为具体期货品种，如：原油、黄金、铜、大豆、玉米、股指、外汇等。
+4. 不保留任何解释、评语或额外内容。
+5. 无符合内容时输出：无重要相关新闻
 """
 
-    user_message = f"""请从以下新闻中筛选出对期货市场价格在短期内可能产生明显影响的内容，并按要求翻译成中文输出：
+    user_message = f"""请从以下新闻中筛选出对期货市场价格在短期内可能产生明显影响的内容，并按要求格式输出：
 
 {news_json}"""
 
@@ -246,77 +409,46 @@ def call_ai_api(news_list, max_retries=2):
     
     return None
 
-# ==================== 数据文件操作 ====================
-
-def load_news_data():
-    """加载本地新闻数据"""
-    if not os.path.exists(DATA_FILE):
-        return []
-    
-    try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data if isinstance(data, list) else []
-    except Exception as e:
-        logger.error(f"❌ 加载数据文件失败: {e}")
-        return []
-
-def save_news_data(news_list):
-    """保存新闻数据到本地文件"""
-    try:
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(news_list, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        logger.error(f"❌ 保存数据文件失败: {e}")
-        return False
-
-def add_news_item(news_item):
-    """添加新闻条目（带去重）"""
-    news_list = load_news_data()
-    
-    # 去重：根据 publishedAt 判断
-    existing_times = {item.get('publishedAt') for item in news_list}
-    
-    if news_item.get('publishedAt') not in existing_times:
-        news_list.append(news_item)
-        save_news_data(news_list)
-        return True
-    return False
-
-def delete_news_in_timerange(start_time, end_time):
-    """
-    删除指定时间范围内的新闻
-    
-    参数：
-        start_time: 开始时间（datetime对象）
-        end_time: 结束时间（datetime对象）
-    """
-    news_list = load_news_data()
-    original_count = len(news_list)
-    
-    # 过滤掉时间范围内的新闻
-    filtered_list = []
-    for item in news_list:
-        local_time_str = item.get('localReceivedTime', '')
-        if local_time_str:
-            try:
-                local_time = datetime.fromisoformat(local_time_str)
-                # 保留不在删除范围内的新闻
-                if not (start_time <= local_time < end_time):
-                    filtered_list.append(item)
-            except:
-                # 如果时间解析失败，保留该条新闻
-                filtered_list.append(item)
-        else:
-            # 没有本地时间的新闻也保留
-            filtered_list.append(item)
-    
-    deleted_count = original_count - len(filtered_list)
-    save_news_data(filtered_list)
-    logger.info(f"🗑️ 删除了 {deleted_count} 条新闻 (原有{original_count}条，剩余{len(filtered_list)}条)")
 
 # ==================== 定时任务 ====================
+
+def build_analysis_prompt(ai_result):
+    """
+    构建分析任务的提示词
+    
+    参数：
+        ai_result: AI筛选后的新闻内容
+    
+    返回：
+        str: 完整的分析提示词
+    """
+    analysis_instruction = """
+请根据以上新闻信息，进行深度分析并给出可操作的交易建议：
+
+【分析要求】
+1. 市场影响分析：
+   - 分析每条新闻对相关期货品种的潜在影响方向（利多/利空）
+   - 评估影响的时效性（短期/中期）和强度（强/中/弱）
+
+2. 交易机会识别：
+   - 明确指出可能存在的交易机会
+   - 给出建议的交易方向（做多/做空）
+   - 说明入场时机和注意事项
+
+3. 风险提示：
+   - 指出可能的风险因素
+   - 给出止损建议或观察要点
+
+4. 关联性分析：
+   - 分析不同品种之间的联动关系
+   - 指出可能的套利或对冲机会
+
+【输出格式】
+请按品种分类输出分析结果，每个品种包含：影响分析、交易建议、风险提示。
+"""
+    
+    return f"{ai_result}\n\n{analysis_instruction}"
+
 
 def process_news_task():
     """
@@ -354,20 +486,8 @@ def process_news_task():
     else:
         end_time = now.replace(hour=end_hour, minute=0, second=0, microsecond=0)
     
-    # 加载所有新闻
-    all_news = load_news_data()
-    
-    # 筛选时间范围内的新闻
-    target_news = []
-    for item in all_news:
-        local_time_str = item.get('localReceivedTime', '')
-        if local_time_str:
-            try:
-                local_time = datetime.fromisoformat(local_time_str)
-                if start_time <= local_time < end_time:
-                    target_news.append(item)
-            except Exception as e:
-                logger.warning(f"⚠️ 时间解析失败: {e}")
+    # 从数据库获取待处理新闻
+    target_news = get_pending_news(start_time, end_time)
     
     logger.info(f"📊 找到 {len(target_news)} 条待处理新闻")
     
@@ -376,12 +496,16 @@ def process_news_task():
         logger.info(f"{'='*60}\n")
         return
     
-    # 准备发送给AI的新闻列表（只包含必要字段）
+    # 获取新闻ID列表，用于后续标记
+    news_ids = [item['id'] for item in target_news]
+    
+    # 准备发送给AI的新闻列表
     news_for_ai = [
         {
-            'publishedAt': item.get('publishedAt'),
+            'publishedAt': item.get('published_at'),
             'headline': item.get('headline'),
-            'brand': item.get('brand', '')
+            'brand': item.get('brand', ''),
+            'url': item.get('url', '')
         }
         for item in target_news
     ]
@@ -394,28 +518,32 @@ def process_news_task():
         logger.info(f"{'='*60}\n")
         return
     
-    # 构建标题和内容
+    # 构建标题
     date_str = now.strftime('%Y年%m月%d日')
     title = f"【彭博社{date_str}{time_label}新闻】"
-    content = ai_result.strip()
     
-    # 计算 ctime（使用时间段的开始时间作为新闻发生时间）
-    ctime = int(start_time.timestamp())
+    # 构建完整的分析提示词
+    prompt = build_analysis_prompt(ai_result.strip())
     
     logger.info(f"📝 标题: {title}")
-    logger.info(f"📄 内容预览: {content[:100]}...")
+    logger.info(f"📄 AI筛选结果预览: {ai_result[:200]}...")
     
-    # 保存到数据库
-    success = save_to_database(title, content, ctime)
+    # 保存到 analysis_task 表
+    task_id = save_analysis_task(title, prompt, start_time)
     
-    if success:
+    if task_id:
+        # 标记新闻为已处理
+        mark_news_as_processed(news_ids)
+        
         # 删除已处理的新闻
-        delete_news_in_timerange(start_time, end_time)
+        delete_processed_news()
+        
         logger.info("✅ 新闻处理完成")
     else:
-        logger.error("❌ 数据库保存失败，不删除本地数据")
+        logger.error("❌ 分析任务保存失败，不删除新闻数据")
     
     logger.info(f"{'='*60}\n")
+
 
 # ==================== Flask路由 ====================
 
@@ -438,34 +566,34 @@ def capture_data():
         # 获取新闻列表
         captured_data = data.get('capturedData', [])
         
+        # 调试：打印第一条数据查看结构
+        if captured_data:
+            logger.info(f"🔍 调试 - 第一条原始数据: {captured_data[0]}")
+        
         if not captured_data:
             return jsonify({
                 'success': False,
                 'message': '数据列表为空'
             }), 400
         
-        # 当前本地时间
-        local_time = datetime.now().isoformat()
-        
-        # 添加新闻到本地存储
+        # 添加新闻到数据库
         added_count = 0
         for item in captured_data:
-            # 为每条新闻添加本地接收时间
+            brand = (item.get('brand') or '').lower().strip()
             news_item = {
                 'publishedAt': item.get('publishedAt'),
                 'headline': item.get('headline'),
-                'brand': item.get('brand', ''),
-                'localReceivedTime': local_time  # 添加本地接收时间
+                'brand': brand,
+                'url': item.get('url') or ''  # 使用 or 处理 None 值
             }
             
-            if add_news_item(news_item):
+            if save_news_to_db(news_item):
                 added_count += 1
         
-        # 获取当前总数
-        all_news = load_news_data()
-        total_count = len(all_news)
+        # 获取当前待处理总数
+        total_count = get_pending_news_count()
         
-        logger.info(f'✅ 新闻接收成功 - 新增: {added_count} 条 | 总计: {total_count} 条')
+        logger.info(f'✅ 新闻接收成功 - 新增: {added_count} 条 | 待处理总计: {total_count} 条')
         
         return jsonify({
             'success': True,
@@ -481,26 +609,66 @@ def capture_data():
             'message': f'保存失败: {str(e)}'
         }), 500
 
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """健康检查接口"""
-    news_list = load_news_data()
+    pending_count = get_pending_news_count()
     return jsonify({
         'status': 'ok',
         'service': 'Bloomberg新闻处理服务',
-        'port': 1123,
+        'port': SERVICE_PORT,
         'time': datetime.now().isoformat(),
-        'pending_news': len(news_list)
+        'pending_news': pending_count,
+        'database': str(DB_PATH)
     })
+
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     """获取统计信息"""
-    news_list = load_news_data()
-    return jsonify({
-        'total': len(news_list),
-        'file': DATA_FILE
-    })
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 待处理新闻数量
+        cursor.execute("SELECT COUNT(*) FROM bloomberg_news WHERE status = 0")
+        pending = cursor.fetchone()[0]
+        
+        # 已处理新闻数量
+        cursor.execute("SELECT COUNT(*) FROM bloomberg_news WHERE status = 1")
+        processed = cursor.fetchone()[0]
+        
+        # 分析任务数量
+        cursor.execute("SELECT COUNT(*) FROM analysis_task")
+        tasks = cursor.fetchone()[0]
+        
+        # 待分析任务数量
+        cursor.execute("SELECT COUNT(*) FROM analysis_task WHERE is_analyzed = 0")
+        pending_tasks = cursor.fetchone()[0]
+        
+        return jsonify({
+            'bloomberg_news': {
+                'pending': pending,
+                'processed': processed,
+                'total': pending + processed
+            },
+            'analysis_task': {
+                'total': tasks,
+                'pending': pending_tasks,
+                'analyzed': tasks - pending_tasks
+            },
+            'database': str(DB_PATH)
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+    finally:
+        if conn:
+            conn.close()
+
 
 @app.route('/api/process_now', methods=['POST'])
 def process_now():
@@ -517,11 +685,13 @@ def process_now():
             'message': str(e)
         }), 500
 
+
 # ==================== 主程序 ====================
 
 # 全局变量
 scheduler = None
 shutdown_flag = False
+
 
 def signal_handler(signum, frame):
     """信号处理器，用于优雅退出"""
@@ -541,11 +711,12 @@ def signal_handler(signum, frame):
     logger.info("服务已安全停止")
     sys.exit(0)
 
+
 if __name__ == '__main__':
     logger.info('='*60)
     logger.info('🚀 Bloomberg新闻处理服务启动')
     logger.info(f'📍 监听端口: {SERVICE_PORT}')
-    logger.info(f'💾 数据文件: {os.path.abspath(DATA_FILE)}')
+    logger.info(f'💾 数据库路径: {DB_PATH.absolute()}')
     logger.info(f'🔗 接收接口: http://localhost:{SERVICE_PORT}/api/capture')
     logger.info(f'💚 健康检查: http://localhost:{SERVICE_PORT}/api/health')
     logger.info(f'📊 统计信息: http://localhost:{SERVICE_PORT}/api/stats')
