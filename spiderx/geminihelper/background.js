@@ -26,7 +26,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     const config = result[STORAGE_KEYS.TASK_CONFIG];
     if (config && config.isRunning) {
       console.log("[Background] 检测到运行中的任务，重新启动定时器");
-      startScheduler();
+      handleStartScheduler();
     }
   });
 });
