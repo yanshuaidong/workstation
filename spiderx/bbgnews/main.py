@@ -518,15 +518,26 @@ def process_news_task():
         logger.info(f"{'='*60}\n")
         return
     
+    # 检查是否无重要新闻
+    ai_result_stripped = ai_result.strip()
+    if "无重要相关新闻" in ai_result_stripped:
+        logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过入库")
+        # 仍然标记新闻为已处理并删除
+        mark_news_as_processed(news_ids)
+        delete_processed_news()
+        logger.info("✅ 新闻已标记处理完成（无需创建分析任务）")
+        logger.info(f"{'='*60}\n")
+        return
+    
     # 构建标题
     date_str = now.strftime('%Y年%m月%d日')
     title = f"【彭博社{date_str}{time_label}新闻】"
     
     # 构建完整的分析提示词
-    prompt = build_analysis_prompt(ai_result.strip())
+    prompt = build_analysis_prompt(ai_result_stripped)
     
     logger.info(f"📝 标题: {title}")
-    logger.info(f"📄 AI筛选结果预览: {ai_result[:200]}...")
+    logger.info(f"📄 AI筛选结果预览: {ai_result_stripped[:200]}...")
     
     # 保存到 analysis_task 表
     task_id = save_analysis_task(title, prompt, start_time)
@@ -683,6 +694,137 @@ def process_now():
         return jsonify({
             'success': False,
             'message': str(e)
+        }), 500
+
+
+def process_all_pending_news_for_test():
+    """
+    测试用：处理所有待处理的新闻（不受时间限制）
+    """
+    now = datetime.now()
+    
+    logger.info(f"\n{'='*60}")
+    logger.info(f"🧪 [测试模式] 开始处理所有待处理新闻")
+    logger.info(f"{'='*60}")
+    
+    # 获取所有待处理的新闻（不限时间范围）
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        select_sql = """
+            SELECT id, published_at, headline, brand, url
+            FROM bloomberg_news
+            WHERE status = 0
+            ORDER BY created_at ASC
+        """
+        cursor.execute(select_sql)
+        rows = cursor.fetchall()
+        target_news = [dict(row) for row in rows]
+        
+    except Exception as e:
+        logger.error(f"❌ 获取待处理新闻失败: {e}")
+        return {'success': False, 'message': f'获取新闻失败: {str(e)}', 'processed': 0}
+    finally:
+        if conn:
+            conn.close()
+    
+    logger.info(f"📊 找到 {len(target_news)} 条待处理新闻")
+    
+    if len(target_news) == 0:
+        logger.info("ℹ️ 没有需要处理的新闻")
+        logger.info(f"{'='*60}\n")
+        return {'success': True, 'message': '没有需要处理的新闻', 'processed': 0}
+    
+    # 获取新闻ID列表
+    news_ids = [item['id'] for item in target_news]
+    
+    # 准备发送给AI的新闻列表
+    news_for_ai = [
+        {
+            'publishedAt': item.get('published_at'),
+            'headline': item.get('headline'),
+            'brand': item.get('brand', ''),
+            'url': item.get('url', '')
+        }
+        for item in target_news
+    ]
+    
+    # 调用AI接口筛选
+    ai_result = call_ai_api(news_for_ai)
+    
+    if ai_result is None:
+        logger.error("❌ AI筛选失败，本次任务终止")
+        logger.info(f"{'='*60}\n")
+        return {'success': False, 'message': 'AI筛选失败', 'processed': 0}
+    
+    # 检查是否无重要新闻
+    ai_result_stripped = ai_result.strip()
+    if "无重要相关新闻" in ai_result_stripped:
+        logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过入库")
+        # 仍然标记新闻为已处理并删除
+        mark_news_as_processed(news_ids)
+        delete_processed_news()
+        logger.info("✅ 测试处理完成（无重要新闻，未创建分析任务）")
+        logger.info(f"{'='*60}\n")
+        return {
+            'success': True, 
+            'message': '无重要相关新闻，已清理原始数据', 
+            'processed': len(news_ids),
+            'task_id': None
+        }
+    
+    # 构建标题（测试模式）
+    date_str = now.strftime('%Y年%m月%d日')
+    time_str = now.strftime('%H:%M')
+    title = f"【彭博社{date_str} {time_str} 测试】"
+    
+    # 构建完整的分析提示词
+    prompt = build_analysis_prompt(ai_result_stripped)
+    
+    logger.info(f"📝 标题: {title}")
+    logger.info(f"📄 AI筛选结果预览: {ai_result_stripped[:200]}...")
+    
+    # 保存到 analysis_task 表
+    task_id = save_analysis_task(title, prompt, now)
+    
+    if task_id:
+        # 标记新闻为已处理
+        mark_news_as_processed(news_ids)
+        
+        # 删除已处理的新闻
+        delete_processed_news()
+        
+        logger.info("✅ 测试处理完成")
+        logger.info(f"{'='*60}\n")
+        return {
+            'success': True, 
+            'message': f'处理完成，已创建分析任务 ID: {task_id}', 
+            'processed': len(news_ids),
+            'task_id': task_id
+        }
+    else:
+        logger.error("❌ 分析任务保存失败")
+        logger.info(f"{'='*60}\n")
+        return {'success': False, 'message': '分析任务保存失败', 'processed': 0}
+
+
+@app.route('/api/process_test', methods=['POST'])
+def process_test():
+    """
+    测试接口：立即处理所有待处理新闻（不受时间限制）
+    用于测试，无需等待定时任务的具体时间
+    """
+    try:
+        result = process_all_pending_news_for_test()
+        return jsonify(result), 200 if result['success'] else 500
+    except Exception as e:
+        logger.error(f"❌ 测试处理失败: {e}")
+        return jsonify({
+            'success': False,
+            'message': str(e),
+            'processed': 0
         }), 500
 
 

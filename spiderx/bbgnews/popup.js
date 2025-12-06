@@ -175,6 +175,59 @@ document.getElementById('clearRecordsBtn').addEventListener('click', async () =>
   }
 });
 
+// ==================== 测试功能 ====================
+
+// 测试按钮 - 立即处理所有待处理新闻
+document.getElementById('testProcessBtn').addEventListener('click', async () => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('🧪 测试：立即处理所有待处理新闻');
+  
+  const btn = document.getElementById('testProcessBtn');
+  const resultDiv = document.getElementById('testResult');
+  
+  // 禁用按钮，显示加载状态
+  btn.disabled = true;
+  btn.textContent = '⏳ 处理中...';
+  resultDiv.className = 'test-result loading';
+  resultDiv.textContent = '正在调用AI处理新闻，请稍候（可能需要30-60秒）...';
+  
+  try {
+    const response = await fetch('http://localhost:1123/api/process_test', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    console.log('📊 处理结果:', data);
+    
+    if (data.success) {
+      resultDiv.className = 'test-result success';
+      if (data.processed > 0) {
+        resultDiv.textContent = `✅ 处理成功！已处理 ${data.processed} 条新闻，任务ID: ${data.task_id}`;
+      } else {
+        resultDiv.textContent = `ℹ️ ${data.message}`;
+      }
+      console.log('✅ 测试处理成功');
+    } else {
+      resultDiv.className = 'test-result error';
+      resultDiv.textContent = `❌ 处理失败: ${data.message}`;
+      console.error('❌ 测试处理失败:', data.message);
+    }
+  } catch (error) {
+    console.error('❌ 请求失败:', error);
+    resultDiv.className = 'test-result error';
+    resultDiv.textContent = `❌ 请求失败: ${error.message}。请确保后端服务已启动（端口1123）`;
+  } finally {
+    // 恢复按钮状态
+    btn.disabled = false;
+    btn.textContent = '🚀 立即处理所有待处理新闻';
+  }
+  
+  console.log('═══════════════════════════════════════════════');
+});
+
 // 监听storage变化，更新记录表格和状态
 console.log('👂 开始监听 storage 变化...');
 chrome.storage.onChanged.addListener((changes, namespace) => {
