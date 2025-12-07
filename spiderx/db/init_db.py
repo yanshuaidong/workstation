@@ -64,6 +64,48 @@ def init_db():
         ON bloomberg_news(published_at);
         """)
 
+        # 创建 reuters_news 表（路透社新闻）
+        # 字段说明：
+        # - published_time: 新闻发布时间
+        # - title: 新闻标题
+        # - url: 新闻地址（完整URL）
+        # - status: 状态（0-未处理，1-已处理）
+        # - created_at: 创建时间
+        # - updated_at: 更新时间
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reuters_news (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            published_time DATETIME NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL,
+            status INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
+        # 创建 reuters_news 表的索引以提高查询效率
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_reuters_published_time 
+        ON reuters_news(published_time DESC);
+        """)
+        
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_reuters_status 
+        ON reuters_news(status);
+        """)
+        
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_reuters_created_at 
+        ON reuters_news(created_at DESC);
+        """)
+        
+        # 创建 published_time 唯一索引用于去重
+        cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_reuters_published_time 
+        ON reuters_news(published_time);
+        """)
+
         # 创建 analysis_task 表
         # 字段说明：
         # - title: 任务标题

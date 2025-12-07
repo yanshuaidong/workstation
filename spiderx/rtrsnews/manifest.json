@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Reuters News Interceptor",
+  "version": "1.0.0",
+  "description": "拦截Reuters路透社API请求并展示响应数据，支持定时自动采集",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.reuters.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.reuters.com/*"],
+      "js": ["content-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.reuters.com/*"],
+      "js": ["content-bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}

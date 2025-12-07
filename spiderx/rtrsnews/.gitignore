@@ -30,6 +30,7 @@ instance/
 # Data files
 data/
 *.json
+!manifest.json
 
 # IDE
 .vscode/

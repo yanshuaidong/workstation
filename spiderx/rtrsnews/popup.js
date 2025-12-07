@@ -1,347 +1,257 @@
-/**
- * Popup UI Controller - 扩展弹出界面
- * 职责：
- * 1. 用户界面交互
- * 2. 配置管理
- * 3. 状态展示
- * 4. 历史记录查看
- */
+console.log('═══════════════════════════════════════════════');
+console.log('📱 Popup 窗口已打开');
+console.log('⏰ 打开时间:', new Date().toLocaleString('zh-CN'));
+console.log('═══════════════════════════════════════════════');
 
-// ==================== 初始化 ====================
+// ==================== 定时任务功能 ====================
 
-document.addEventListener('DOMContentLoaded', () => {
-  initUI();
-  checkServerHealth();
-  loadStats();
-  loadSettings();
-  
-  // 每30秒检查一次服务器状态
-  setInterval(checkServerHealth, 30000);
-});
-
-// ==================== 标签页切换 ====================
-
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', (e) => {
-    const tabName = e.target.dataset.tab;
-    switchTab(tabName);
-  });
-});
-
-function switchTab(tabName) {
-  // 切换标签样式
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-  
-  // 切换内容
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById(`${tabName}Tab`).classList.add('active');
-  
-  // 加载对应数据
-  if (tabName === 'history') {
-    loadHistory();
-  }
-}
-
-// ==================== 提取文章功能 ====================
-
-document.getElementById('extractBtn').addEventListener('click', async () => {
-  const button = document.getElementById('extractBtn');
-  const btnText = document.getElementById('btnText');
-  const messageDiv = document.getElementById('message');
-  const previewDiv = document.getElementById('preview');
-  
-  // 禁用按钮
-  button.disabled = true;
-  btnText.textContent = '⏳ 提取中...';
-  
-  // 显示处理信息
-  showMessage('正在提取文章内容...', 'info');
-  previewDiv.style.display = 'none';
-  
-  try {
-    // 通过background提取内容
-    const extractResponse = await sendMessageToBackground({
-      action: 'extractContent'
-    });
-    
-    if (!extractResponse.success) {
-      throw new Error(extractResponse.error || '提取失败');
-    }
-    
-    const articleData = extractResponse.data;
-    
-    // 显示预览
-    showPreview(articleData);
-    
-    // 保存文章
-    showMessage('正在保存到服务器...', 'info');
-    
-    const saveResponse = await sendMessageToBackground({
-      action: 'saveArticle',
-      data: articleData
-    });
-    
-    if (saveResponse.success) {
-      showMessage(
-        `✓ 成功保存 ${articleData.count} 个段落到 ${saveResponse.filename}`, 
-        'success'
-      );
-      
-      // 更新统计信息
-      loadStats();
-    } else {
-      throw new Error(saveResponse.error || '保存失败');
-    }
-    
-  } catch (error) {
-    console.error('操作失败:', error);
-    showMessage(`✗ ${error.message}`, 'error');
-  } finally {
-    // 恢复按钮
-    button.disabled = false;
-    btnText.textContent = '📥 提取当前文章';
-  }
-});
-
-// ==================== 设置功能 ====================
-
-document.getElementById('saveSettings').addEventListener('click', async () => {
-  const apiUrl = document.getElementById('apiUrl').value.trim();
-  
-  if (!apiUrl) {
-    showMessage('请输入API地址', 'error');
-    return;
-  }
-  
-  try {
-    const response = await sendMessageToBackground({
-      action: 'updateSettings',
-      settings: {
-        apiUrl: apiUrl,
-        autoSave: true
-      }
-    });
-    
-    if (response.success) {
-      showMessage('✓ 设置已保存', 'success');
-      checkServerHealth(); // 重新检查服务器
-    }
-  } catch (error) {
-    showMessage(`✗ ${error.message}`, 'error');
-  }
-});
-
-document.getElementById('testConnection').addEventListener('click', async () => {
-  showMessage('正在测试连接...', 'info');
-  await checkServerHealth();
-});
-
-// ==================== 工具函数 ====================
-
-/**
- * 初始化UI
- */
-function initUI() {
-  console.log('Popup UI 初始化');
-}
-
-/**
- * 检查服务器健康状态
- */
-async function checkServerHealth() {
-  try {
-    const response = await sendMessageToBackground({
-      action: 'checkServerHealth'
-    });
-    
-    const statusDot = document.getElementById('serverStatus');
-    const statusText = document.getElementById('serverText');
-    
-    if (response.success && response.status === 'online') {
-      statusDot.className = 'status-dot online';
-      statusText.textContent = '在线';
-    } else {
-      statusDot.className = 'status-dot offline';
-      statusText.textContent = '离线';
-    }
-  } catch (error) {
-    const statusDot = document.getElementById('serverStatus');
-    const statusText = document.getElementById('serverText');
-    statusDot.className = 'status-dot offline';
-    statusText.textContent = '离线';
-  }
-}
-
-/**
- * 加载统计信息
- */
-async function loadStats() {
-  try {
-    const response = await sendMessageToBackground({
-      action: 'getStats'
-    });
-    
-    if (response.success) {
-      document.getElementById('totalArticles').textContent = 
-        response.stats.totalArticles || 0;
-    }
-  } catch (error) {
-    console.error('加载统计信息失败:', error);
-  }
-}
-
-/**
- * 加载设置
- */
-async function loadSettings() {
-  try {
-    const response = await sendMessageToBackground({
-      action: 'getSettings'
-    });
-    
-    if (response.success) {
-      document.getElementById('apiUrl').value = 
-        response.settings.apiUrl || 'http://localhost:1125';
-    }
-  } catch (error) {
-    console.error('加载设置失败:', error);
-  }
-}
-
-/**
- * 加载历史记录
- */
-async function loadHistory() {
-  try {
-    const response = await sendMessageToBackground({
-      action: 'getArticlesList'
-    });
-    
-    const historyList = document.getElementById('historyList');
-    
-    if (response.success && response.articles && response.articles.length > 0) {
-      historyList.innerHTML = response.articles.map(article => `
-        <div class="history-item" title="${article.url}">
-          <div class="history-title">${escapeHtml(article.title || '无标题')}</div>
-          <div class="history-meta">
-            ${article.paragraph_count || 0} 个段落 • 
-            ${formatDate(article.saved_at)}
-          </div>
-        </div>
-      `).join('');
-    } else {
-      historyList.innerHTML = `
-        <div class="empty-state">
-          <div>📚</div>
-          <div>暂无历史记录</div>
-        </div>
-      `;
-    }
-  } catch (error) {
-    console.error('加载历史记录失败:', error);
-  }
-}
-
-/**
- * 显示预览
- */
-function showPreview(articleData) {
-  const previewDiv = document.getElementById('preview');
-  const { paragraphs, count, totalChars } = articleData;
-  
-  const previewContent = `
-    <strong>提取成功</strong><br>
-    共 ${count} 个段落，总字数: ${totalChars || '未知'}<br><br>
-    ${paragraphs.slice(0, 3).map((p, i) => `
-      <div class="preview-item">
-        <strong>段落 ${i + 1}:</strong><br>
-        ${escapeHtml(p.substring(0, 150))}${p.length > 150 ? '...' : ''}
-      </div>
-    `).join('')}
-    ${count > 3 ? `<div style="text-align:center;color:#6c757d;"><em>...还有 ${count - 3} 个段落</em></div>` : ''}
-  `;
-  
-  previewDiv.innerHTML = previewContent;
-  previewDiv.style.display = 'block';
-}
-
-/**
- * 显示消息
- */
-function showMessage(text, type = 'info') {
-  const messageDiv = document.getElementById('message');
-  messageDiv.textContent = text;
-  messageDiv.className = `msg-${type}`;
-  messageDiv.style.display = 'block';
-  
-  // 自动隐藏成功消息
-  if (type === 'success') {
-    setTimeout(() => {
-      messageDiv.style.display = 'none';
-    }, 3000);
-  }
-}
-
-/**
- * 发送消息到background
- */
-function sendMessageToBackground(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve(response);
-      }
-    });
-  });
-}
-
-/**
- * HTML转义
- */
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-/**
- * 格式化日期
- */
-function formatDate(dateString) {
-  if (!dateString) return '未知';
-  
-  const date = new Date(dateString);
-  const now = new Date();
-  const diff = now - date;
-  
-  // 小于1分钟
-  if (diff < 60000) {
-    return '刚刚';
-  }
-  // 小于1小时
-  if (diff < 3600000) {
-    return `${Math.floor(diff / 60000)} 分钟前`;
-  }
-  // 小于24小时
-  if (diff < 86400000) {
-    return `${Math.floor(diff / 3600000)} 小时前`;
-  }
-  // 小于7天
-  if (diff < 604800000) {
-    return `${Math.floor(diff / 86400000)} 天前`;
-  }
-  
-  // 超过7天，显示具体日期
-  return date.toLocaleDateString('zh-CN', {
+// 格式化时间显示
+function formatTime(isoString) {
+  if (!isoString) return '-';
+  const date = new Date(isoString);
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    second: '2-digit'
   });
 }
 
-console.log('Popup UI 脚本已加载');
+// 更新执行记录表格
+async function updateRecordsTable() {
+  const result = await chrome.storage.local.get(['taskRecords']);
+  const records = result.taskRecords || [];
+  
+  const tbody = document.getElementById('recordsTableBody');
+  
+  if (records.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-records">暂无执行记录</td></tr>';
+    return;
+  }
+  
+  // 最新的记录在上面
+  tbody.innerHTML = records.map((record, index) => `
+    <tr>
+      <td>#${records.length - index}</td>
+      <td>${formatTime(record.time)}</td>
+      <td><span class="badge-${record.success ? 'success' : 'fail'}">${record.success ? '✓ 成功' : '✗ 失败'}</span></td>
+    </tr>
+  `).join('');
+}
 
+// 添加执行记录
+async function addTaskRecord(success) {
+  const result = await chrome.storage.local.get(['taskRecords']);
+  const records = result.taskRecords || [];
+  
+  // 添加新记录到开头（最新的在前面）
+  records.unshift({
+    time: new Date().toISOString(),
+    success: success
+  });
+  
+  // 最多保留100条记录
+  if (records.length > 100) {
+    records.pop();
+  }
+  
+  await chrome.storage.local.set({ taskRecords: records });
+  await updateRecordsTable();
+}
+
+// 更新定时任务状态显示
+async function updateSchedulerStatus() {
+  console.log('🔄 更新定时任务状态...');
+  
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_SCHEDULER_STATUS' });
+    
+    if (response.success) {
+      const { status } = response;
+      console.log('📊 定时任务状态:', status);
+      
+      // 更新UI
+      const statusText = document.getElementById('statusText');
+      const startTimeText = document.getElementById('startTimeText');
+      const lastRefreshText = document.getElementById('lastRefreshText');
+      const nextRefreshText = document.getElementById('nextRefreshText');
+      const startBtn = document.getElementById('startSchedulerBtn');
+      const stopBtn = document.getElementById('stopSchedulerBtn');
+      const intervalInput = document.getElementById('intervalInput');
+      
+      if (status.enabled) {
+        statusText.textContent = '🟢 运行中';
+        statusText.className = 'status-value active';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        intervalInput.disabled = true;
+        intervalInput.value = status.interval;
+      } else {
+        statusText.textContent = '⚪ 未启动';
+        statusText.className = 'status-value inactive';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        intervalInput.disabled = false;
+      }
+      
+      startTimeText.textContent = formatTime(status.startTime);
+      lastRefreshText.textContent = formatTime(status.lastRefreshTime);
+      nextRefreshText.textContent = formatTime(status.nextRefreshTime);
+      
+      console.log('✅ 状态显示已更新');
+    }
+  } catch (error) {
+    console.error('❌ 更新状态失败:', error);
+  }
+}
+
+// 启动定时任务
+document.getElementById('startSchedulerBtn').addEventListener('click', async () => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('▶️ 启动定时任务');
+  
+  const interval = parseInt(document.getElementById('intervalInput').value);
+  
+  if (!interval || interval < 1 || interval > 1440) {
+    alert('请输入有效的时间间隔（1-1440分钟）');
+    return;
+  }
+  
+  console.log('⏰ 设置间隔:', interval, '分钟');
+  
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'START_SCHEDULER',
+      interval: interval
+    });
+    
+    if (response.success) {
+      console.log('✅ 定时任务启动成功，已立即执行第一次');
+      await updateSchedulerStatus();
+      await updateRecordsTable();
+    } else {
+      console.error('❌ 启动失败:', response.error);
+      alert('启动失败: ' + response.error);
+    }
+  } catch (error) {
+    console.error('❌ 启动定时任务出错:', error);
+    alert('启动失败: ' + error.message);
+  }
+  
+  console.log('═══════════════════════════════════════════════');
+});
+
+// 停止定时任务
+document.getElementById('stopSchedulerBtn').addEventListener('click', async () => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('⏸️ 停止定时任务');
+  
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'STOP_SCHEDULER' });
+    
+    if (response.success) {
+      console.log('✅ 定时任务已停止');
+      await updateSchedulerStatus();
+    } else {
+      console.error('❌ 停止失败:', response.error);
+      alert('停止失败: ' + response.error);
+    }
+  } catch (error) {
+    console.error('❌ 停止定时任务出错:', error);
+    alert('停止失败: ' + error.message);
+  }
+  
+  console.log('═══════════════════════════════════════════════');
+});
+
+// 清空执行记录
+document.getElementById('clearRecordsBtn').addEventListener('click', async () => {
+  if (confirm('确定要清空所有执行记录吗？')) {
+    await chrome.storage.local.set({ taskRecords: [] });
+    await updateRecordsTable();
+    console.log('✅ 执行记录已清空');
+  }
+});
+
+// ==================== 测试功能 ====================
+
+// 测试按钮 - 立即处理所有待处理新闻
+document.getElementById('testProcessBtn').addEventListener('click', async () => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('🧪 测试：立即处理所有待处理新闻');
+  
+  const btn = document.getElementById('testProcessBtn');
+  const resultDiv = document.getElementById('testResult');
+  
+  // 禁用按钮，显示加载状态
+  btn.disabled = true;
+  btn.textContent = '⏳ 处理中...';
+  resultDiv.className = 'test-result loading';
+  resultDiv.textContent = '正在调用AI处理新闻，请稍候（可能需要30-60秒）...';
+  
+  try {
+    // Reuters使用端口1125
+    const response = await fetch('http://localhost:1125/api/process_test', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    console.log('📊 处理结果:', data);
+    
+    if (data.success) {
+      resultDiv.className = 'test-result success';
+      if (data.processed > 0) {
+        resultDiv.textContent = `✅ 处理成功！已处理 ${data.processed} 条新闻，任务ID: ${data.task_id}`;
+      } else {
+        resultDiv.textContent = `ℹ️ ${data.message}`;
+      }
+      console.log('✅ 测试处理成功');
+    } else {
+      resultDiv.className = 'test-result error';
+      resultDiv.textContent = `❌ 处理失败: ${data.message}`;
+      console.error('❌ 测试处理失败:', data.message);
+    }
+  } catch (error) {
+    console.error('❌ 请求失败:', error);
+    resultDiv.className = 'test-result error';
+    resultDiv.textContent = `❌ 请求失败: ${error.message}。请确保后端服务已启动（端口1125）`;
+  } finally {
+    // 恢复按钮状态
+    btn.disabled = false;
+    btn.textContent = '🚀 立即处理所有待处理新闻';
+  }
+  
+  console.log('═══════════════════════════════════════════════');
+});
+
+// 监听storage变化，更新记录表格和状态
+console.log('👂 开始监听 storage 变化...');
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  console.log('📢 Storage 发生变化:', namespace, changes);
+  
+  if (namespace === 'local') {
+    if (changes.taskRecords) {
+      console.log('🔔 检测到新的执行记录');
+      updateRecordsTable();
+    }
+    if (changes.capturedData || changes.schedulerEnabled || changes.lastAutoRefreshTime) {
+      updateSchedulerStatus();
+    }
+  }
+});
+
+// 初始化
+console.log('🔄 初始化界面...');
+updateSchedulerStatus();
+updateRecordsTable();
+
+// 每5秒自动更新一次状态
+setInterval(updateSchedulerStatus, 5000);
+
+console.log('✅ Popup 初始化完成');
+console.log('═══════════════════════════════════════════════');

@@ -1,177 +1,143 @@
-# Reuters News Scraper
+# Reuters 路透社新闻采集系统
 
-一个用于提取路透社新闻文章内容的 Chrome 浏览器插件，配合 Flask 后端服务保存数据。
+路透社新闻自动采集和处理系统，包含浏览器插件和后端服务。
 
-## 功能特点
+## 📋 系统架构
 
-- 🚀 点击按钮即可提取文章内容
-- 📝 自动提取所有 `data-testid="paragraph-xx"` 的段落
-- 💾 将数据保存为 JSON 文件
-- 🌐 支持跨域请求
-- 📊 提供文章列表和查询接口
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  浏览器插件      │────▶│  后端服务        │────▶│  数据库          │
+│  (API拦截)      │     │  (Flask/1125)   │     │  (SQLite/MySQL) │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+         │                       │
+         │                       ▼
+         │              ┌─────────────────┐
+         └─────────────▶│  定时任务        │
+                        │  (5/11/17/23点)  │
+                        └─────────────────┘
+```
 
-## 项目结构
+## 🎯 功能说明
+
+### 浏览器插件
+- 拦截 Reuters Commodities 页面的 API 请求
+- 提取新闻数据：标题、发布时间、URL
+- 自动发送到本地后端服务
+
+### 后端服务
+- 接收插件发送的新闻数据
+- 存储到 SQLite 数据库 `reuters_news` 表
+- 定时任务在 **5点、11点、17点、23点** 执行（与彭博社错开1小时）
+- AI 筛选期货相关新闻
+- 保存结果到 MySQL 和 `analysis_task` 表
+
+## 📁 文件结构
 
 ```
 rtrsnews/
-├── manifest.json       # Chrome 插件配置文件
-├── popup.html          # 插件弹出页面
-├── popup.js            # 弹出页面脚本
-├── content.js          # 内容脚本（用于提取页面内容）
-├── main.py             # Flask 后端服务
-├── requirements.txt    # Python 依赖
-├── data/               # 数据存储目录（自动创建）
-└── README.md           # 项目文档
+├── main.py              # 后端服务主程序
+├── manifest.json        # 插件配置文件
+├── background.js        # 后台服务脚本
+├── content-main.js      # API拦截脚本（MAIN world）
+├── content-bridge.js    # 数据发送脚本（ISOLATED world）
+├── popup.html           # 插件弹窗界面
+├── popup.js             # 弹窗交互逻辑
+├── icon.png             # 插件图标
+├── requirements.txt     # Python依赖
+├── start_scheduler.sh   # 启动脚本
+├── stop_scheduler.sh    # 停止脚本
+└── README.md            # 说明文档
 ```
 
-## 安装步骤
+## 🚀 快速开始
 
-### 1. 安装 Python 依赖
+### 1. 启动后端服务
 
 ```bash
 cd spiderx/rtrsnews
-pip install -r requirements.txt
+
+# 启动服务
+./start_scheduler.sh
+
+# 停止服务
+./stop_scheduler.sh
 ```
 
-### 2. 启动 Flask 服务
+### 2. 安装浏览器插件
 
-```bash
-python main.py
+1. 打开 Chrome 浏览器，访问 `chrome://extensions/`
+2. 开启"开发者模式"
+3. 点击"加载已解压的扩展程序"
+4. 选择 `rtrsnews` 目录
+
+### 3. 使用插件
+
+1. 访问 [Reuters Markets Commodities](https://www.reuters.com/markets/commodities/)
+2. 插件会自动拦截 API 请求并发送数据
+3. 点击插件图标可以：
+   - 启动/停止定时刷新任务
+   - 查看执行记录
+   - 手动测试处理
+
+## 🔗 API 接口
+
+| 接口 | 方法 | 说明 |
+|-----|------|------|
+| `/api/capture` | POST | 接收插件发送的新闻数据 |
+| `/api/health` | GET | 健康检查 |
+| `/api/stats` | GET | 获取统计信息 |
+| `/api/process_test` | POST | 测试处理（立即处理所有待处理新闻） |
+
+## 📊 数据库表结构
+
+### reuters_news 表
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | INTEGER | 主键，自增ID |
+| published_time | DATETIME | 新闻发布时间（唯一，用于去重） |
+| title | TEXT | 新闻标题 |
+| url | TEXT | 新闻完整URL |
+| status | INTEGER | 状态：0-未处理，1-已处理 |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
+
+## ⏰ 定时任务
+
+与彭博社（6/12/18/0点）错开1小时：
+
+| 时间 | 处理范围 |
+|-----|---------|
+| 5:00 | 23点到5点的新闻 |
+| 11:00 | 5点到11点的新闻 |
+| 17:00 | 11点到17点的新闻 |
+| 23:00 | 17点到23点的新闻 |
+
+## 🔧 拦截的 API
+
+```
+https://www.reuters.com/pf/api/v3/content/fetch/articles-by-section-alias-or-id-v1?query=...
 ```
 
-服务将在 `http://localhost:1125` 启动。
+参数说明：
+- `section_id`: `/markets/commodities`
+- `size`: 返回条数
+- `orderby`: 排序方式
 
-### 3. 安装 Chrome 插件
+## 📝 日志
 
-1. 打开 Chrome 浏览器
-2. 访问 `chrome://extensions/`
-3. 开启右上角的 "开发者模式"
-4. 点击 "加载已解压的扩展程序"
-5. 选择 `spiderx/rtrsnews` 目录
-6. 插件安装完成！
+- 服务日志：`reuters_service.log`
+- 查看日志：`tail -f reuters_service.log`
 
-**注意：** 由于插件需要图标文件，你需要准备三个图标文件：
-- `icon16.png` (16x16)
-- `icon48.png` (48x48)
-- `icon128.png` (128x128)
+## 🔍 调试
 
-如果没有图标，可以临时注释掉 `manifest.json` 中的 `icons` 和 `action.default_icon` 配置。
+1. 打开 Chrome 开发者工具（F12）
+2. 查看 Console 标签页的日志
+3. 后台脚本日志在 `chrome://extensions/` 点击插件的"服务工作进程"查看
 
-## 使用方法
+## ⚠️ 注意事项
 
-1. 打开路透社新闻文章页面（包含 `data-testid="ArticleBody"` 的页面）
-2. 点击浏览器工具栏中的插件图标
-3. 在弹出窗口中点击 "提取文章内容" 按钮
-4. 插件会自动：
-   - 提取所有段落内容
-   - 显示预览信息
-   - 将数据发送到本地服务器
-   - 保存为 JSON 文件
-
-## API 接口
-
-### POST /save-article
-保存文章数据
-
-**请求体：**
-```json
-{
-  "url": "文章URL",
-  "title": "文章标题",
-  "paragraphs": ["段落1", "段落2", ...],
-  "timestamp": "ISO时间戳"
-}
-```
-
-**响应：**
-```json
-{
-  "success": true,
-  "message": "文章保存成功",
-  "filename": "article_20231203_143025.json",
-  "paragraph_count": 15
-}
-```
-
-### GET /articles
-获取所有已保存文章的列表
-
-**响应：**
-```json
-{
-  "success": true,
-  "count": 5,
-  "articles": [...]
-}
-```
-
-### GET /article/<filename>
-获取指定文章的完整内容
-
-**响应：**
-```json
-{
-  "success": true,
-  "article": {...}
-}
-```
-
-### GET /health
-健康检查
-
-**响应：**
-```json
-{
-  "status": "running",
-  "message": "Reuters News Scraper API is running"
-}
-```
-
-## 数据存储
-
-所有提取的文章数据保存在 `data/` 目录下，文件命名格式为：
-```
-article_YYYYMMDD_HHMMSS.json
-```
-
-每个 JSON 文件包含：
-- `url`: 文章 URL
-- `title`: 文章标题
-- `paragraphs`: 段落文本数组
-- `paragraph_count`: 段落数量
-- `timestamp`: 提取时间
-- `saved_at`: 保存时间
-
-## 技术栈
-
-- **前端（插件）**：Chrome Extension Manifest V3
-- **后端**：Flask + Flask-CORS
-- **数据格式**：JSON
-
-## 注意事项
-
-1. 确保 Flask 服务在使用插件前已启动
-2. 插件只在 Reuters 网站（www.reuters.com）上运行
-3. 插件只能在包含 `data-testid="ArticleBody"` 的页面上正常工作
-4. 需要允许浏览器访问 `http://localhost:1125`
-
-## 故障排查
-
-### 插件无法提取内容
-- 检查页面是否包含 `data-testid="ArticleBody"` 元素
-- 打开浏览器控制台查看错误信息
-
-### 无法连接到服务器
-- 确认 Flask 服务已启动
-- 检查端口 1125 是否被占用
-- 确认浏览器允许跨域请求
-
-### 插件安装失败
-- 确认使用的是 Chrome 浏览器（或基于 Chromium 的浏览器）
-- 检查 manifest.json 语法是否正确
-- 准备图标文件或临时移除图标配置
-
-## 许可证
-
-MIT License
-
+1. 确保后端服务在端口 **1125** 运行
+2. 插件只在 `https://www.reuters.com/*` 域名下生效
+3. 定时任务需要保持 Chrome 浏览器运行
+4. 数据去重基于 `published_time` 字段

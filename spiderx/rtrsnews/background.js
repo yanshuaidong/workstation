@@ -1,353 +1,265 @@
-/**
- * Background Service Worker - 扩展控制中心
- * 职责：
- * 1. 消息路由和调度
- * 2. 与Flask后端通信
- * 3. 状态管理和持久化
- * 4. 错误处理和重试逻辑
- */
+// Background service worker
+// 用于监听和处理扩展的后台事件
+// 注意：只接收和处理简要信息（时间、状态），不保存具体数据
 
-const CONFIG = {
-  API_BASE_URL: 'http://localhost:1125',
-  MAX_RETRY_TIMES: 3,
-  RETRY_DELAY: 1000, // 毫秒
-  STORAGE_KEY: {
-    ARTICLES: 'articles_history',
-    SETTINGS: 'scraper_settings',
-    STATS: 'scraper_stats'
-  }
-};
+console.log('═══════════════════════════════════════════════');
+console.log('🎬 Reuters News Interceptor Background Script 启动');
+console.log('⏰ 启动时间:', new Date().toLocaleString('zh-CN'));
+console.log('═══════════════════════════════════════════════');
 
-// 初始化扩展
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('Reuters News Scraper 已安装');
-  // 初始化默认配置
-  chrome.storage.local.set({
-    [CONFIG.STORAGE_KEY.SETTINGS]: {
-      autoSave: true,
-      apiUrl: CONFIG.API_BASE_URL
-    },
-    [CONFIG.STORAGE_KEY.STATS]: {
-      totalArticles: 0,
-      lastSaveTime: null
-    }
-  });
-});
+// ==================== 定时任务管理 ====================
+const ALARM_NAME = 'reuters-auto-refresh';
+const DEFAULT_INTERVAL = 60; // 默认60分钟（1小时）
 
-/**
- * 消息路由器 - 处理来自popup和content script的消息
- */
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('Background收到消息:', request.action);
+// 刷新Reuters页面并拦截数据
+async function refreshReutersPage() {
+  console.log('═══════════════════════════════════════════════');
+  console.log('⏰ 定时任务触发 - 准备刷新Reuters页面');
+  console.log('⏰ 触发时间:', new Date().toLocaleString('zh-CN'));
   
-  switch (request.action) {
-    case 'extractContent':
-      handleExtractContent(sendResponse);
-      return true; // 异步响应
-      
-    case 'saveArticle':
-      handleSaveArticle(request.data, sendResponse);
-      return true;
-      
-    case 'getArticlesList':
-      handleGetArticlesList(sendResponse);
-      return true;
-      
-    case 'getSettings':
-      handleGetSettings(sendResponse);
-      return true;
-      
-    case 'updateSettings':
-      handleUpdateSettings(request.settings, sendResponse);
-      return true;
-      
-    case 'getStats':
-      handleGetStats(sendResponse);
-      return true;
-      
-    case 'checkServerHealth':
-      handleCheckServerHealth(sendResponse);
-      return true;
-      
-    default:
-      sendResponse({ success: false, error: '未知的操作类型' });
-      return false;
-  }
-});
-
-/**
- * 处理内容提取请求
- */
-async function handleExtractContent(sendResponse) {
+  let success = false;
+  
   try {
-    // 获取当前活动的tab
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    // 查找所有Reuters标签页
+    const reutersTabs = await chrome.tabs.query({ url: 'https://www.reuters.com/*' });
     
-    if (!tab) {
-      sendResponse({ 
-        success: false, 
-        error: '无法获取当前标签页' 
-      });
-      return;
-    }
-    
-    // 检查是否是有效的URL
-    if (!tab.url || !tab.url.startsWith('http')) {
-      sendResponse({ 
-        success: false, 
-        error: '当前页面不是有效的网页' 
-      });
-      return;
-    }
-    
-    // 向content script发送提取指令
-    const response = await chrome.tabs.sendMessage(tab.id, { 
-      action: 'doExtractContent' 
-    });
-    
-    if (response.success) {
-      // 组装完整数据
-      const articleData = {
-        url: tab.url,
-        title: tab.title,
-        paragraphs: response.data.paragraphs,
-        timestamp: new Date().toISOString(),
-        count: response.data.count
-      };
+    if (reutersTabs.length === 0) {
+      console.log('⚠️ 未找到Reuters标签页，尝试打开新标签页...');
       
-      sendResponse({ 
-        success: true, 
-        data: articleData 
+      // 打开Reuters Markets Commodities页面（目标页面）
+      const newTab = await chrome.tabs.create({
+        url: 'https://www.reuters.com/markets/commodities/',
+        active: false // 后台打开
       });
+      console.log('✅ 已创建新的Reuters标签页:', newTab.id);
+      
+      // 等待页面加载完成，content script会自动注入并拦截
+      console.log('⏳ 等待页面加载并拦截数据...');
+      success = true;
     } else {
-      sendResponse(response);
-    }
-  } catch (error) {
-    console.error('提取内容失败:', error);
-    sendResponse({ 
-      success: false, 
-      error: error.message || '无法连接到页面' 
-    });
-  }
-}
-
-/**
- * 处理保存文章请求（带重试机制）
- */
-async function handleSaveArticle(articleData, sendResponse) {
-  try {
-    // 获取配置
-    const settings = await getSettings();
-    const apiUrl = settings.apiUrl || CONFIG.API_BASE_URL;
-    
-    // 尝试保存到服务器
-    const result = await saveToServerWithRetry(apiUrl, articleData);
-    
-    if (result.success) {
-      // 更新统计信息
-      await updateStats(articleData);
+      console.log(`✅ 找到 ${reutersTabs.length} 个Reuters标签页`);
       
-      // 保存到本地历史记录（可选）
-      await saveToLocalHistory(articleData, result.filename);
+      // 刷新第一个Reuters标签页
+      const targetTab = reutersTabs[0];
+      console.log('🔄 正在刷新标签页:', targetTab.id, targetTab.url);
       
-      sendResponse({
-        success: true,
-        message: '文章保存成功',
-        filename: result.filename,
-        paragraph_count: articleData.paragraphs.length
-      });
-    } else {
-      sendResponse({
-        success: false,
-        error: result.error
-      });
-    }
-  } catch (error) {
-    console.error('保存文章失败:', error);
-    sendResponse({
-      success: false,
-      error: error.message
-    });
-  }
-}
-
-/**
- * 带重试机制的保存到服务器
- */
-async function saveToServerWithRetry(apiUrl, articleData, retryCount = 0) {
-  try {
-    const response = await fetch(`${apiUrl}/save-article`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(articleData)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`服务器返回错误: ${response.status}`);
+      await chrome.tabs.reload(targetTab.id);
+      console.log('✅ 页面刷新完成，content script将自动拦截数据');
+      success = true;
     }
     
-    const result = await response.json();
-    return { success: true, ...result };
-    
-  } catch (error) {
-    console.error(`保存失败 (尝试 ${retryCount + 1}/${CONFIG.MAX_RETRY_TIMES}):`, error);
-    
-    // 重试逻辑
-    if (retryCount < CONFIG.MAX_RETRY_TIMES - 1) {
-      await sleep(CONFIG.RETRY_DELAY * (retryCount + 1)); // 递增延迟
-      return saveToServerWithRetry(apiUrl, articleData, retryCount + 1);
-    }
-    
-    return { 
-      success: false, 
-      error: `保存失败（已重试${CONFIG.MAX_RETRY_TIMES}次）: ${error.message}` 
-    };
-  }
-}
-
-/**
- * 获取文章列表
- */
-async function handleGetArticlesList(sendResponse) {
-  try {
-    const settings = await getSettings();
-    const apiUrl = settings.apiUrl || CONFIG.API_BASE_URL;
-    
-    const response = await fetch(`${apiUrl}/articles`);
-    const data = await response.json();
-    
-    sendResponse(data);
-  } catch (error) {
-    console.error('获取文章列表失败:', error);
-    sendResponse({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-}
-
-/**
- * 获取配置
- */
-async function handleGetSettings(sendResponse) {
-  const settings = await getSettings();
-  sendResponse({ success: true, settings });
-}
-
-async function getSettings() {
-  const result = await chrome.storage.local.get(CONFIG.STORAGE_KEY.SETTINGS);
-  return result[CONFIG.STORAGE_KEY.SETTINGS] || {
-    autoSave: true,
-    apiUrl: CONFIG.API_BASE_URL
-  };
-}
-
-/**
- * 更新配置
- */
-async function handleUpdateSettings(newSettings, sendResponse) {
-  try {
+    // 更新最后执行时间
     await chrome.storage.local.set({
-      [CONFIG.STORAGE_KEY.SETTINGS]: newSettings
+      lastAutoRefreshTime: new Date().toISOString()
     });
-    sendResponse({ success: true });
+    
   } catch (error) {
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-/**
- * 获取统计信息
- */
-async function handleGetStats(sendResponse) {
-  const result = await chrome.storage.local.get(CONFIG.STORAGE_KEY.STATS);
-  const stats = result[CONFIG.STORAGE_KEY.STATS] || {
-    totalArticles: 0,
-    lastSaveTime: null
-  };
-  sendResponse({ success: true, stats });
-}
-
-/**
- * 更新统计信息
- */
-async function updateStats(articleData) {
-  const result = await chrome.storage.local.get(CONFIG.STORAGE_KEY.STATS);
-  const stats = result[CONFIG.STORAGE_KEY.STATS] || { totalArticles: 0 };
-  
-  stats.totalArticles += 1;
-  stats.lastSaveTime = new Date().toISOString();
-  stats.lastArticleTitle = articleData.title;
-  
-  await chrome.storage.local.set({
-    [CONFIG.STORAGE_KEY.STATS]: stats
-  });
-}
-
-/**
- * 保存到本地历史记录
- */
-async function saveToLocalHistory(articleData, filename) {
-  const result = await chrome.storage.local.get(CONFIG.STORAGE_KEY.ARTICLES);
-  const history = result[CONFIG.STORAGE_KEY.ARTICLES] || [];
-  
-  // 添加新记录（保留最近50条）
-  history.unshift({
-    filename,
-    title: articleData.title,
-    url: articleData.url,
-    paragraphCount: articleData.paragraphs.length,
-    savedAt: new Date().toISOString()
-  });
-  
-  // 限制历史记录数量
-  if (history.length > 50) {
-    history.length = 50;
+    console.error('❌ 自动刷新失败:', error);
+    success = false;
   }
   
-  await chrome.storage.local.set({
-    [CONFIG.STORAGE_KEY.ARTICLES]: history
-  });
+  // 添加执行记录
+  await addTaskRecord(success);
+  
+  console.log('═══════════════════════════════════════════════');
 }
 
-/**
- * 检查服务器健康状态
- */
-async function handleCheckServerHealth(sendResponse) {
+// 添加执行记录
+async function addTaskRecord(success) {
+  const result = await chrome.storage.local.get(['taskRecords']);
+  const records = result.taskRecords || [];
+  
+  // 添加新记录到开头（最新的在前面）
+  records.unshift({
+    time: new Date().toISOString(),
+    success: success
+  });
+  
+  // 最多保留100条记录
+  if (records.length > 100) {
+    records.pop();
+  }
+  
+  await chrome.storage.local.set({ taskRecords: records });
+  console.log('📝 已添加执行记录:', success ? '成功' : '失败');
+}
+
+// 创建或更新定时任务
+async function createAlarm(intervalMinutes) {
+  console.log('⏰ 创建定时任务，间隔:', intervalMinutes, '分钟');
+  
+  // 清除已存在的alarm
+  await chrome.alarms.clear(ALARM_NAME);
+  
+  // 创建新的alarm
+  await chrome.alarms.create(ALARM_NAME, {
+    delayInMinutes: intervalMinutes,
+    periodInMinutes: intervalMinutes
+  });
+  
+  // 保存配置
+  await chrome.storage.local.set({
+    schedulerEnabled: true,
+    schedulerInterval: intervalMinutes,
+    schedulerStartTime: new Date().toISOString()
+  });
+  
+  console.log('✅ 定时任务已创建');
+  
+  // 立即执行第一次
+  console.log('🚀 立即执行第一次爬虫任务...');
+  await refreshReutersPage();
+}
+
+// 停止定时任务
+async function stopAlarm() {
+  console.log('🛑 停止定时任务');
+  await chrome.alarms.clear(ALARM_NAME);
+  await chrome.storage.local.set({
+    schedulerEnabled: false,
+    schedulerStopTime: new Date().toISOString()
+  });
+  console.log('✅ 定时任务已停止');
+}
+
+// 监听alarm触发
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_NAME) {
+    console.log('🔔 定时器触发:', alarm.name);
+    refreshReutersPage();
+  }
+});
+
+// ==================== 原有功能 ====================
+
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('✅ Reuters News Interceptor 已安装/更新');
+  console.log('📝 安装原因:', details.reason);
+  console.log('📝 Content Script 将自动在 Reuters 页面上运行');
+  console.log('🎯 匹配域名: https://www.reuters.com/*');
+  console.log('⚡ 运行时机: document_start (页面加载前)');
+  console.log('═══════════════════════════════════════════════');
+});
+
+// 扩展启动时，检查并恢复定时任务
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('🚀 Chrome 启动 - 检查定时任务状态');
+  
   try {
-    const settings = await getSettings();
-    const apiUrl = settings.apiUrl || CONFIG.API_BASE_URL;
+    const config = await chrome.storage.local.get(['schedulerEnabled', 'schedulerInterval']);
     
-    const response = await fetch(`${apiUrl}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(3000) // 3秒超时
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      sendResponse({ 
-        success: true, 
-        status: 'online',
-        message: data.message 
-      });
+    if (config.schedulerEnabled) {
+      const interval = config.schedulerInterval || DEFAULT_INTERVAL;
+      console.log('🔄 恢复定时任务，间隔:', interval, '分钟');
+      await createAlarm(interval);
+      console.log('✅ 定时任务已恢复');
     } else {
-      throw new Error('服务器响应异常');
+      console.log('ℹ️ 定时任务未启用，无需恢复');
     }
   } catch (error) {
-    sendResponse({ 
-      success: false, 
-      status: 'offline',
-      error: error.message 
-    });
+    console.error('❌ 恢复定时任务失败:', error);
   }
-}
+  
+  console.log('═══════════════════════════════════════════════');
+});
 
-// 工具函数
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+// 监听来自content script和popup的消息
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('📨 收到消息:', request.type);
+  console.log('📍 来源:', sender.tab?.id ? `标签页 ${sender.tab.id}` : 'Popup');
+  
+  if (request.type === 'API_CAPTURED') {
+    console.log('═══════════════════════════════════════════════');
+    console.log('🎉 ✅ 收到拦截的API数据!');
+    console.log('   📍 URL:', request.data.url);
+    console.log('   📦 原始数据大小:', request.data.dataSize, 'bytes');
+    console.log('   ⏰ 拦截时间:', request.data.time);
+    console.log('   🌐 发送到服务器:', request.data.sentToServer ? '✅ 成功' : '❌ 失败');
+    console.log('   🔗 来源页面:', sender.tab?.url);
+    console.log('═══════════════════════════════════════════════');
+    
+    // 设置徽章通知
+    console.log('🎯 正在设置徽章通知...');
+    chrome.action.setBadgeText({ text: '✓' }).then(() => {
+      console.log('✅ 徽章文本已设置');
+    }).catch(err => {
+      console.error('❌ 设置徽章文本失败:', err);
+    });
+    
+    chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' }).then(() => {
+      console.log('✅ 徽章颜色已设置');
+    }).catch(err => {
+      console.error('❌ 设置徽章颜色失败:', err);
+    });
+    
+    // 3秒后清除徽章
+    console.log('⏱️ 3秒后将清除徽章...');
+    setTimeout(() => {
+      chrome.action.setBadgeText({ text: '' });
+      console.log('🗑️ 徽章已清除');
+    }, 3000);
+    
+    sendResponse({ success: true });
+    console.log('✅ 已回复 content script');
+  } 
+  // 处理定时任务控制消息
+  else if (request.type === 'START_SCHEDULER') {
+    console.log('🟢 收到启动定时任务请求，间隔:', request.interval, '分钟');
+    createAlarm(request.interval || DEFAULT_INTERVAL)
+      .then(() => {
+        console.log('✅ 定时任务启动成功');
+        sendResponse({ success: true });
+      })
+      .catch(err => {
+        console.error('❌ 启动定时任务失败:', err);
+        sendResponse({ success: false, error: err.message });
+      });
+    return true; // 异步响应
+  } 
+  else if (request.type === 'STOP_SCHEDULER') {
+    console.log('🔴 收到停止定时任务请求');
+    stopAlarm()
+      .then(() => {
+        console.log('✅ 定时任务停止成功');
+        sendResponse({ success: true });
+      })
+      .catch(err => {
+        console.error('❌ 停止定时任务失败:', err);
+        sendResponse({ success: false, error: err.message });
+      });
+    return true; // 异步响应
+  }
+  else if (request.type === 'GET_SCHEDULER_STATUS') {
+    console.log('📊 查询定时任务状态');
+    Promise.all([
+      chrome.storage.local.get(['schedulerEnabled', 'schedulerInterval', 'schedulerStartTime', 'lastAutoRefreshTime']),
+      chrome.alarms.get(ALARM_NAME)
+    ])
+      .then(([config, alarm]) => {
+        const status = {
+          enabled: config.schedulerEnabled || false,
+          interval: config.schedulerInterval || DEFAULT_INTERVAL,
+          startTime: config.schedulerStartTime,
+          lastRefreshTime: config.lastAutoRefreshTime,
+          nextRefreshTime: alarm ? new Date(alarm.scheduledTime).toISOString() : null
+        };
+        console.log('📊 定时任务状态:', status);
+        sendResponse({ success: true, status });
+      })
+      .catch(err => {
+        console.error('❌ 获取状态失败:', err);
+        sendResponse({ success: false, error: err.message });
+      });
+    return true; // 异步响应
+  }
+  else {
+    console.log('⚠️ 未知消息类型:', request.type);
+    sendResponse({ success: false, error: 'Unknown message type' });
+  }
+  
+  return true;
+});
 
-console.log('Background Service Worker 已启动');
-
+console.log('✅ Background Script 初始化完成，开始监听消息...');
