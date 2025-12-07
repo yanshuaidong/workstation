@@ -6,8 +6,6 @@
 
 import time
 import logging
-import os
-import sys
 import signal
 import traceback
 from datetime import datetime, timedelta
@@ -60,37 +58,24 @@ class PositionScheduler:
         # 创建logger
         self.logger = logging.getLogger('position_scheduler')
         self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False  # 禁止传播到根logger，避免重复输出
         
         # 清除已有的handlers
         for handler in self.logger.handlers[:]:
             self.logger.removeHandler(handler)
         
-        # 文件handler - 按日期轮转
-        current_date = datetime.now().strftime('%Y-%m-%d')
-        log_file = self.logs_dir / f"position_crawler_{current_date}.log"
+        # 文件handler - 按月轮转
+        current_month = datetime.now().strftime('%Y-%m')
+        log_file = self.logs_dir / f"position_crawler_{current_month}.log"
         
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setLevel(logging.INFO)
         
-        # 控制台handler
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.INFO)
-        
-        # 设置格式
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
+        # 设置格式（简化格式，去掉logger名称）
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
         
         self.logger.addHandler(file_handler)
-        self.logger.addHandler(console_handler)
-        
-        # 设置主程序的logger也使用相同配置
-        main_logger = logging.getLogger()
-        main_logger.handlers.clear()
-        main_logger.addHandler(file_handler)
-        main_logger.setLevel(logging.INFO)
     
     def setup_signal_handlers(self):
         """设置信号处理器，用于优雅退出"""
@@ -105,34 +90,25 @@ class PositionScheduler:
         signal.signal(signal.SIGTERM, signal_handler)  # kill命令
         
     def update_log_file_if_needed(self):
-        """检查是否需要切换到新的日志文件"""
-        current_date = datetime.now().strftime('%Y-%m-%d')
-        expected_log_file = self.logs_dir / f"position_crawler_{current_date}.log"
+        """检查是否需要切换到新的日志文件（按月切换）"""
+        current_month = datetime.now().strftime('%Y-%m')
+        expected_log_file = self.logs_dir / f"position_crawler_{current_month}.log"
         
         # 检查当前文件handler的文件名
         for handler in self.logger.handlers:
             if isinstance(handler, logging.FileHandler):
                 current_log_file = Path(handler.baseFilename)
                 if current_log_file != expected_log_file:
-                    # 需要切换日志文件
+                    # 需要切换日志文件（跨月）
                     self.logger.removeHandler(handler)
                     handler.close()
                     
                     # 创建新的文件handler
                     new_handler = logging.FileHandler(expected_log_file, encoding='utf-8')
                     new_handler.setLevel(logging.INFO)
-                    formatter = logging.Formatter(
-                        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-                    )
+                    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
                     new_handler.setFormatter(formatter)
                     self.logger.addHandler(new_handler)
-                    
-                    # 更新主程序logger
-                    main_logger = logging.getLogger()
-                    main_logger.handlers.clear()
-                    main_logger.addHandler(new_handler)
-                    
-                    self.logger.info(f"切换到新日志文件: {expected_log_file}")
                 break
     
     def is_trading_day(self, check_date=None):
@@ -209,119 +185,75 @@ class PositionScheduler:
     
     def print_heartbeat(self):
         """打印心跳信息到控制台"""
-        current_time = datetime.now()
-        elapsed = current_time - self.start_time
-        remaining = self.end_time - current_time
-        
-        heartbeat_msg = (
-            f"💓 心跳 #{self.execution_count}/10 | "
-            f"已运行: {elapsed.total_seconds() / 3600:.1f}h ({elapsed.days}天) | "
-            f"剩余: {remaining.total_seconds() / 3600:.1f}h ({remaining.days}天) | "
-            f"预计结束: {self.end_time.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-        
-        print(heartbeat_msg)  # 直接打印到控制台
-        self.logger.info(heartbeat_msg)
+        heartbeat_msg = f"已执行 {self.execution_count}/{self.max_executions} 次"
+        print(f"💓 {heartbeat_msg}")  # 直接打印到控制台
     
     def execute_crawl_task(self):
         """执行一次持仓数据爬取任务"""
         try:
-            self.logger.info(f"=== 开始第 {self.execution_count + 1} 次执行 ===")
-            self.logger.info(f"执行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            current_date = datetime.now().strftime('%Y-%m-%d')
+            self.logger.info(f"[{current_date}] 开始执行第 {self.execution_count + 1} 次任务")
             
             # 1. 获取当天数据
-            self.logger.info("步骤1: 获取国泰君安持仓数据...")
             data = fetch_today_positions()
             
             if not data:
-                self.logger.error("数据获取失败！")
+                self.logger.error(f"[{current_date}] 数据获取失败")
                 return False
             
             # 2. 分析数据，获取前3大进攻品种
-            self.logger.info("步骤2: 分析数据...")
             top3 = analyze_today_data(data)
             
             if not top3:
-                self.logger.warning("今日没有符合条件的进攻品种")
+                self.logger.warning(f"[{current_date}] 无符合条件的进攻品种")
                 self.execution_count += 1
                 self.print_heartbeat()
-                self.logger.info(f"=== 第 {self.execution_count} 次执行完成（无有效数据） ===")
                 return True
             
             # 3. 打印分析结果
-            self.logger.info("步骤3: 打印分析结果...")
             print_top3_result(top3)
             
             # 4. 保存结果到数据库
-            self.logger.info("步骤4: 保存数据到数据库...")
             save_success = save_to_database(top3)
             
-            if save_success:
-                self.logger.info("数据库保存成功")
-            else:
-                self.logger.error("数据库保存失败")
-            
-            # 5. 打印心跳
-            self.print_heartbeat()
-            
             self.execution_count += 1
-            self.logger.info(f"=== 第 {self.execution_count} 次执行完成 ===")
             
+            if save_success:
+                self.logger.info(f"[{current_date}] 任务完成 | Top3: {', '.join([item['name'] for item in top3])}")
+            else:
+                self.logger.error(f"[{current_date}] 数据库保存失败")
+            
+            self.print_heartbeat()
             return True
             
         except Exception as e:
-            error_msg = f"执行过程中发生异常: {e}"
-            self.logger.error(error_msg)
-            self.logger.error(traceback.format_exc())
-            
-            # 控制台打印error并停止
-            print("❌ ERROR: 程序执行异常，立即停止")
-            print(f"错误详情: {error_msg}")
-            
+            self.logger.error(f"执行异常: {e}\n{traceback.format_exc()}")
+            print(f"❌ ERROR: {e}")
             return False
     
     def run(self):
         """运行调度器"""
         try:
-            self.logger.info("=" * 60)
-            self.logger.info("国泰君安持仓数据爬虫调度器启动")
-            self.logger.info(f"开始时间: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            self.logger.info(f"结束时间: {self.end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            self.logger.info(f"执行时间: 每个交易日（周一到周五）{self.execution_hour}:{self.execution_minute:02d}")
-            self.logger.info(f"预计执行次数: 最多 {self.max_executions} 次")
-            self.logger.info("=" * 60)
+            self.logger.info(f"调度器启动 | 运行至 {self.end_time.strftime('%Y-%m-%d')} | 每交易日 {self.execution_hour}:{self.execution_minute:02d} 执行")
             
             print(f"🚀 国泰君安持仓数据爬虫调度器启动")
-            print(f"📅 运行期间: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} ~ {self.end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"⏰ 执行时间: 每个交易日（周一到周五）{self.execution_hour}:{self.execution_minute:02d}")
-            print(f"🔄 预计执行: 最多 {self.max_executions} 次")
-            print("=" * 60)
+            print(f"📅 运行期间: {self.start_time.strftime('%Y-%m-%d')} ~ {self.end_time.strftime('%Y-%m-%d')}")
+            print(f"⏰ 执行时间: 每个交易日 {self.execution_hour}:{self.execution_minute:02d}")
             
             # 检查当前是否应该立即执行
             if self.should_execute_now():
-                self.logger.info("当前时间符合执行条件，立即执行第一次任务")
                 if not self.execute_crawl_task():
                     return
             else:
+                # 计算下一次执行时间
                 current_time = datetime.now()
-                # 检查今天是否还有机会执行
                 if self.is_trading_day() and (current_time.hour < self.execution_hour or 
                     (current_time.hour == self.execution_hour and current_time.minute < self.execution_minute)):
-                    # 今天还没到执行时间
-                    today_exec_time = current_time.replace(
-                        hour=self.execution_hour, 
-                        minute=self.execution_minute, 
-                        second=0, 
-                        microsecond=0
-                    )
-                    self.logger.info(f"今天是交易日，等待到 {today_exec_time.strftime('%H:%M:%S')} 执行")
+                    print(f"⏳ 等待今日 {self.execution_hour}:{self.execution_minute:02d} 执行")
                 else:
-                    # 今天不是交易日或已经过了执行时间，计算下一次执行时间
                     next_time = self.get_next_execution_time()
                     if next_time:
-                        self.logger.info(f"下一次执行时间: {next_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                    else:
-                        self.logger.info("在运行周期内没有更多的交易日执行时间")
+                        print(f"⏳ 下次执行: {next_time.strftime('%Y-%m-%d %H:%M')}")
             
             # 主循环
             last_execution_date = None
@@ -348,19 +280,12 @@ class PositionScheduler:
                     self.execution_minute <= current_time.minute < self.execution_minute + 5):
                     # 检查今天是否已经执行过
                     if last_execution_date != current_date:
-                        self.logger.info(f"到达执行时间，开始执行任务...")
-                        
                         if self.execute_crawl_task():
                             last_execution_date = current_date
                             
                             # 执行完成后，计算下一次执行时间
                             next_time = self.get_next_execution_time(current_time)
-                            if next_time:
-                                wait_seconds = (next_time - datetime.now()).total_seconds()
-                                self.logger.info(f"下次执行时间: {next_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                                self.logger.info(f"等待 {wait_seconds / 3600:.1f} 小时...")
-                            else:
-                                self.logger.info("所有任务已完成，准备退出")
+                            if not next_time:
                                 break
                         else:
                             # 执行失败，立即停止
@@ -400,35 +325,20 @@ class PositionScheduler:
                     break
             
             # 结束处理
+            run_days = (datetime.now() - self.start_time).days
             if self.shutdown_requested:
-                self.logger.info("=" * 60)
-                self.logger.info("调度器收到停止信号，优雅退出")
-                self.logger.info(f"总执行次数: {self.execution_count}")
-                self.logger.info(f"实际运行时长: {(datetime.now() - self.start_time).total_seconds() / 3600:.2f} 小时 ({(datetime.now() - self.start_time).days}天)")
-                self.logger.info("=" * 60)
-                
-                print("🛑 调度器已安全停止")
-                print(f"📊 总执行次数: {self.execution_count}")
-                print(f"⏱️  实际运行时长: {(datetime.now() - self.start_time).total_seconds() / 3600:.2f} 小时 ({(datetime.now() - self.start_time).days}天)")
+                self.logger.info(f"调度器停止 | 总执行 {self.execution_count} 次 | 运行 {run_days} 天")
+                print(f"🛑 调度器已停止 | 执行 {self.execution_count} 次")
             else:
-                self.logger.info("=" * 60)
-                self.logger.info("调度器正常结束")
-                self.logger.info(f"总执行次数: {self.execution_count}")
-                self.logger.info(f"实际运行时长: {(datetime.now() - self.start_time).total_seconds() / 3600:.2f} 小时 ({(datetime.now() - self.start_time).days}天)")
-                self.logger.info("=" * 60)
-                
-                print("✅ 调度器正常结束")
-                print(f"📊 总执行次数: {self.execution_count}")
-                print(f"⏱️  实际运行时长: {(datetime.now() - self.start_time).total_seconds() / 3600:.2f} 小时 ({(datetime.now() - self.start_time).days}天)")
+                self.logger.info(f"调度器结束 | 总执行 {self.execution_count} 次 | 运行 {run_days} 天")
+                print(f"✅ 调度器结束 | 执行 {self.execution_count} 次")
             
         except KeyboardInterrupt:
-            self.logger.info("收到键盘中断信号，调度器停止")
-            print("⏹️  收到键盘中断信号，调度器停止")
+            self.logger.info("键盘中断，调度器停止")
+            print("⏹️ 键盘中断，调度器停止")
         except Exception as e:
-            error_msg = f"调度器运行异常: {e}"
-            self.logger.error(error_msg)
-            self.logger.error(traceback.format_exc())
-            print(f"❌ ERROR: {error_msg}")
+            self.logger.error(f"调度器异常: {e}\n{traceback.format_exc()}")
+            print(f"❌ ERROR: {e}")
 
 
 def main():

@@ -332,11 +332,15 @@ def save_to_mysql(title, content, news_timestamp):
         conn = get_mysql_connection()
         cursor = conn.cursor()
         
-        # 1. 保存到 news_red_telegraph 表
+        # 1. 保存到 news_red_telegraph 表（使用 ON DUPLICATE KEY UPDATE 处理重复）
         insert_news_sql = """
             INSERT INTO news_red_telegraph 
             (ctime, title, content, ai_analysis, message_score, message_label, message_type)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE 
+                title = VALUES(title),
+                content = VALUES(content),
+                ai_analysis = VALUES(ai_analysis)
         """
         cursor.execute(insert_news_sql, (
             news_timestamp,          # ctime: 新闻发生时间的时间戳
@@ -349,11 +353,24 @@ def save_to_mysql(title, content, news_timestamp):
         ))
         
         news_id = cursor.lastrowid
-        logger.info(f"✅ MySQL news_red_telegraph 保存成功 - ID: {news_id}")
         
-        # 2. 保存到 news_process_tracking 表
+        # 如果是更新操作，lastrowid 为 0，需要查询获取实际 ID
+        if news_id == 0:
+            cursor.execute("SELECT id FROM news_red_telegraph WHERE ctime = %s", (news_timestamp,))
+            result = cursor.fetchone()
+            if result:
+                news_id = result[0]
+                logger.info(f"✅ MySQL news_red_telegraph 更新成功 - ID: {news_id}")
+            else:
+                logger.warning("⚠️ 无法获取 news_id")
+                conn.commit()
+                return None
+        else:
+            logger.info(f"✅ MySQL news_red_telegraph 保存成功 - ID: {news_id}")
+        
+        # 2. 保存到 news_process_tracking 表（使用 INSERT IGNORE 避免重复）
         insert_tracking_sql = """
-            INSERT INTO news_process_tracking 
+            INSERT IGNORE INTO news_process_tracking 
             (news_id, ctime)
             VALUES (%s, %s)
         """
@@ -362,8 +379,11 @@ def save_to_mysql(title, content, news_timestamp):
             news_timestamp           # ctime: 消息创建时间
         ))
         
-        tracking_id = cursor.lastrowid
-        logger.info(f"✅ MySQL news_process_tracking 保存成功 - ID: {tracking_id}")
+        if cursor.rowcount > 0:
+            tracking_id = cursor.lastrowid
+            logger.info(f"✅ MySQL news_process_tracking 保存成功 - ID: {tracking_id}")
+        else:
+            logger.info(f"ℹ️ MySQL news_process_tracking 已存在，跳过插入")
         
         conn.commit()
         return news_id
@@ -600,8 +620,8 @@ def process_news_task():
     # AI筛选结果
     ai_result_stripped = ai_result.strip()
     
-    # 计算新闻时间段开始时间的时间戳（秒）
-    news_timestamp = int(start_time.timestamp())
+    # 使用当前执行时间的时间戳（秒），确保每次执行都是唯一的
+    news_timestamp = int(now.timestamp())
     
     logger.info(f"📝 标题: {title}")
     logger.info(f"📄 AI筛选结果预览: {ai_result_stripped[:200]}...")

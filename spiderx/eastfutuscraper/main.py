@@ -11,8 +11,13 @@ import pymysql
 from datetime import datetime
 
 # 配置日志
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+# 仅在直接运行时添加控制台 handler，避免与 scheduler 冲突
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(console_handler)
 
 # 数据库配置
 DB_CONFIG = {
@@ -70,7 +75,7 @@ def create_history_table(conn, symbol):
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='期货历史数据_{symbol}'
         """)
         conn.commit()
-        logger.info(f"表 {table_name} 已确认存在")
+        logger.debug(f"表 {table_name} 已确认存在")
     except Exception as e:
         logger.error(f"创建表 {table_name} 失败: {e}")
         conn.rollback()
@@ -190,12 +195,11 @@ def save_all_data_to_db(all_results):
         all_results: 所有交易所的期货数据
     """
     if not all_results:
-        logger.warning("没有数据需要保存到数据库")
-        return
+        logger.warning("没有数据需要保存")
+        return 0, 0
     
     # 获取当前日期作为交易日期
     trade_date = datetime.now().strftime('%Y-%m-%d')
-    logger.info(f"开始将数据保存到数据库，交易日期: {trade_date}")
     
     try:
         conn = get_db_connection()
@@ -205,10 +209,7 @@ def save_all_data_to_db(all_results):
         
         # 遍历所有交易所的数据
         for exchange_id, result in all_results.items():
-            exchange_name = result.get('exchange_name', exchange_id)
             data_list = result.get('list', [])
-            
-            logger.info(f"正在处理 {exchange_name} 的 {len(data_list)} 条数据...")
             
             for item in data_list:
                 if insert_futures_data_to_db(conn, item, trade_date):
@@ -218,11 +219,11 @@ def save_all_data_to_db(all_results):
         
         conn.close()
         
-        logger.info(f"数据库保存完成！成功: {total_success} 条，失败: {total_failed} 条")
+        logger.info(f"入库完成: 成功 {total_success}, 失败 {total_failed}")
         return total_success, total_failed
         
     except Exception as e:
-        logger.error(f"数据库保存过程发生错误: {e}")
+        logger.error(f"数据库保存错误: {e}")
         return 0, 0
 
 def load_contracts_filter():
@@ -243,7 +244,7 @@ def load_contracts_filter():
             if symbol:
                 symbols.add(symbol)
         
-        logger.info(f"已加载 {len(symbols)} 个期货品种作为过滤条件")
+        logger.debug(f"已加载 {len(symbols)} 个期货品种过滤条件")
         return symbols
     except Exception as e:
         logger.error(f"加载 contracts_main.json 失败: {e}")
@@ -268,8 +269,6 @@ def filter_futures_data(data, valid_symbols):
     data['list'] = filtered_list
     data['filtered_count'] = len(filtered_list)
     data['original_count'] = len(original_list)
-    
-    logger.info(f"数据过滤完成: 原始 {len(original_list)} 条 -> 过滤后 {len(filtered_list)} 条")
     
     return data
 
@@ -302,11 +301,10 @@ def get_single_exchange_data(driver, exchange_id, exchange_name):
     """
     try:
         target_url = f"https://quote.eastmoney.com/center/gridlist.html#futures_{exchange_id}"
-        logger.info(f"正在打开 {exchange_name} 页面: {target_url}")
+        logger.debug(f"正在打开 {exchange_name} 页面: {target_url}")
         driver.get(target_url)
         
         # 等待页面加载和请求发送
-        logger.info(f"等待 {exchange_name} 页面加载及数据请求...")
         time.sleep(5)  # 简单等待，确保请求已发出
         
         # 获取性能日志
@@ -314,8 +312,6 @@ def get_single_exchange_data(driver, exchange_id, exchange_name):
         
         api_pattern = f"futsseapi.eastmoney.com/list/{exchange_id}"
         found_url = None
-        
-        logger.info(f"正在扫描 {exchange_name} 网络日志查找 API 请求...")
         for entry in logs:
             try:
                 message_obj = json.loads(entry['message'])
@@ -325,10 +321,10 @@ def get_single_exchange_data(driver, exchange_id, exchange_name):
                 if message.get('method') == 'Network.requestWillBeSent':
                     request_url = message['params']['request']['url']
                     if api_pattern in request_url:
-                        logger.info(f"找到 {exchange_name} API URL: {request_url}")
+                        logger.debug(f"找到 {exchange_name} API URL: {request_url}")
                         found_url = request_url
                         break # 找到第一个匹配的即可
-            except Exception as e:
+            except Exception:
                 continue
         
         if found_url:
@@ -339,7 +335,6 @@ def get_single_exchange_data(driver, exchange_id, exchange_name):
             }
             
             # 第一步：先请求一次获取 total 数量
-            logger.info(f"{exchange_name} - 第一次请求：获取数据总数...")
             try:
                 response = requests.get(found_url, headers=headers)
                 
@@ -347,14 +342,13 @@ def get_single_exchange_data(driver, exchange_id, exchange_name):
                     content = response.text
                     initial_data = parse_jsonp(content)
                     total = initial_data.get('total', 0)
-                    logger.info(f"{exchange_name} - 获取到数据总数: {total}")
+                    logger.debug(f"{exchange_name} - 数据总数: {total}")
                     
                     if total == 0:
-                        logger.warning(f"{exchange_name} - 数据总数为 0，没有可获取的数据")
+                        logger.warning(f"{exchange_name} - 数据总数为 0")
                         return None
                     
                     # 第二步：修改 URL 参数，一次性获取所有数据
-                    logger.info(f"{exchange_name} - 第二次请求：获取全部 {total} 条数据...")
                     parsed_url = urlparse(found_url)
                     query_params = parse_qs(parsed_url.query)
                     
@@ -380,7 +374,7 @@ def get_single_exchange_data(driver, exchange_id, exchange_name):
                         content = response.text
                         final_data = parse_jsonp(content)
                         actual_count = len(final_data.get('list', []))
-                        logger.info(f"{exchange_name} - 成功获取 {actual_count}/{total} 条数据")
+                        logger.debug(f"{exchange_name} - 获取 {actual_count} 条数据")
                         
                         # 添加交易所标识
                         final_data['exchange_id'] = exchange_id
@@ -388,9 +382,9 @@ def get_single_exchange_data(driver, exchange_id, exchange_name):
                         
                         return final_data
                     else:
-                        logger.error(f"{exchange_name} - 第二次请求失败，状态码: {response.status_code}")
+                        logger.error(f"{exchange_name} - 请求失败，状态码: {response.status_code}")
                 else:
-                    logger.error(f"{exchange_name} - 第一次请求失败，状态码: {response.status_code}")
+                    logger.error(f"{exchange_name} - 请求失败，状态码: {response.status_code}")
             except json.JSONDecodeError as e:
                 logger.error(f"{exchange_name} - JSON 解析失败: {e}")
             except Exception as e:
@@ -432,7 +426,6 @@ def get_all_futures_data():
     all_results = {}
     
     try:
-        logger.info("正在启动 Chrome 浏览器...")
         driver = webdriver.Chrome(options=chrome_options)
         
         # 遍历所有交易所
@@ -440,26 +433,21 @@ def get_all_futures_data():
             exchange_id = exchange['id']
             exchange_name = exchange['name']
             
-            logger.info(f"\n{'='*50}")
-            logger.info(f"开始爬取: {exchange_name} (ID: {exchange_id})")
-            logger.info(f"{'='*50}")
-            
             result = get_single_exchange_data(driver, exchange_id, exchange_name)
             
             if result:
                 all_results[exchange_id] = result
-                logger.info(f"{exchange_name} 数据获取成功！")
+                logger.debug(f"{exchange_name} 获取成功")
             else:
-                logger.warning(f"{exchange_name} 数据获取失败！")
+                logger.warning(f"{exchange_name} 获取失败")
             
             # 每个交易所之间稍微等待一下
             time.sleep(2)
             
     except Exception as e:
-        logger.error(f"浏览器操作发生错误: {e}")
+        logger.error(f"浏览器操作错误: {e}")
     finally:
         if driver:
-            logger.info("关闭浏览器...")
             driver.quit()
 
     return all_results
