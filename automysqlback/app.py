@@ -25,7 +25,7 @@ from pathlib import Path
 import requests
 
 # 导入蓝图模块
-from routes import contracts_bp, news_bp
+from routes import contracts_bp, news_bp, positions_bp
 
 # 加载环境变量
 # 优先加载本地 .env 文件，支持多环境配置
@@ -127,6 +127,7 @@ app.config['get_oss_bucket'] = get_oss_bucket
 # 注册蓝图
 app.register_blueprint(contracts_bp, url_prefix='/api')
 app.register_blueprint(news_bp, url_prefix='/api')
+app.register_blueprint(positions_bp, url_prefix='/api')
 
 def init_database():
     """初始化数据库表结构"""
@@ -272,6 +273,21 @@ def init_database():
                 KEY idx_track_status (track_day3_done, track_day7_done, track_day14_done, track_day28_done),
                 FOREIGN KEY (news_id) REFERENCES news_red_telegraph(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息处理流程跟踪表'
+        """)
+        
+        # 8. 期货持仓表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS futures_positions (
+                id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键，自增ID',
+                symbol VARCHAR(64) NOT NULL COMMENT '品种：CU / SC / RB / 铜 / 石油 等',
+                direction VARCHAR(64) NOT NULL COMMENT '方向：LONG / SHORT / 多 / 空 等',
+                status TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '持仓状态：1=有仓(HOLD)，0=空仓(FLAT)',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                INDEX idx_symbol (symbol),
+                INDEX idx_direction (direction),
+                INDEX idx_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='期货持仓表'
         """)
         
         conn.commit()

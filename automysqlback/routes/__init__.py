@@ -5,6 +5,7 @@
 
 from .contracts_routes import contracts_bp
 from .news_routes import news_bp
+from .positions_routes import positions_bp
 
-__all__ = ['contracts_bp', 'news_bp']
+__all__ = ['contracts_bp', 'news_bp', 'positions_bp']
 

@@ -39,6 +39,10 @@
               <el-icon class="menu-icon"><Refresh /></el-icon>
               <span class="menu-text">期货数据更新</span>
             </el-menu-item>
+            <el-menu-item index="/positions" class="mobile-menu-item">
+              <el-icon class="menu-icon"><Wallet /></el-icon>
+              <span class="menu-text">我的持仓</span>
+            </el-menu-item>
           </el-menu>
         </div>
       </el-collapse-transition>
@@ -70,6 +74,10 @@
               <el-icon class="menu-icon"><Refresh /></el-icon>
               <span class="menu-text">期货数据更新</span>
             </el-menu-item>
+            <el-menu-item index="/positions" class="menu-item">
+              <el-icon class="menu-icon"><Wallet /></el-icon>
+              <span class="menu-text">我的持仓</span>
+            </el-menu-item>
           </el-menu>
         </el-aside>
         
@@ -92,7 +100,7 @@
 </template>
 
 <script>
-import { DataBoard, TrendCharts, ChatDotRound, Edit } from '@element-plus/icons-vue'
+import { DataBoard, TrendCharts, ChatDotRound, Edit, Wallet } from '@element-plus/icons-vue'
 import { markRaw } from 'vue'
 import { isMobile, onDeviceChange } from '@/utils/deviceDetector'
 
@@ -104,6 +112,7 @@ export default {
       TrendCharts: markRaw(TrendCharts),
       ChatDotRound: markRaw(ChatDotRound),
       Edit: markRaw(Edit),
+      Wallet: markRaw(Wallet),
       
       // 设备检测
       isMobileDevice: false,
