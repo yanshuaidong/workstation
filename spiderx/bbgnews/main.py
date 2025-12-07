@@ -8,11 +8,12 @@ Bloomberg 新闻自动处理服务
 2. 实时存储到本地SQLite数据库 bloomberg_news 表
 3. 定时处理新闻（每天6/12/18/24点）
 4. AI筛选期货相关新闻并格式化输出
-5. 保存到本地SQLite数据库 analysis_task 表
-6. 删除已处理的新闻数据
+5. 保存到MySQL数据库 news_red_telegraph 和 news_process_tracking 表
+6. 保存到本地SQLite数据库 analysis_task 表
+7. 删除已处理的新闻数据
 
 工作流程：
-插件发送 -> bloomberg_news表 -> 定时触发 -> AI筛选 -> analysis_task表 -> 删除已处理数据
+插件发送 -> bloomberg_news表 -> 定时触发 -> AI筛选 -> MySQL保存 -> analysis_task表 -> 删除已处理数据
 """
 
 from flask import Flask, request, jsonify
@@ -22,6 +23,7 @@ import json
 import os
 import time
 import sqlite3
+import pymysql
 import requests
 import signal
 import sys
@@ -59,6 +61,16 @@ BLOOMBERG_URL_PREFIX = "https://www.bloomberg.com"
 
 # 服务端口
 SERVICE_PORT = 1123
+
+# MySQL数据库配置
+MYSQL_CONFIG = {
+    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
+    'port': 3306,
+    'user': 'ysd',
+    'password': 'Yan1234567',
+    'database': 'futures',
+    'charset': 'utf8mb4'
+}
 
 # ==================== 数据库操作 ====================
 
@@ -296,6 +308,76 @@ def get_pending_news_count():
             conn.close()
 
 
+# ==================== MySQL数据库操作 ====================
+
+def get_mysql_connection():
+    """获取MySQL数据库连接"""
+    return pymysql.connect(**MYSQL_CONFIG)
+
+
+def save_to_mysql(title, content, news_timestamp):
+    """
+    保存AI筛选结果到MySQL数据库
+    
+    参数：
+        title: 标题，如【彭博社2025年11月1日0点到6点新闻】
+        content: AI筛选过滤后的内容
+        news_timestamp: 新闻时间段开始时间的时间戳（秒）
+    
+    返回：
+        int or None: 成功返回news_id，失败返回None
+    """
+    conn = None
+    try:
+        conn = get_mysql_connection()
+        cursor = conn.cursor()
+        
+        # 1. 保存到 news_red_telegraph 表
+        insert_news_sql = """
+            INSERT INTO news_red_telegraph 
+            (ctime, title, content, ai_analysis, message_score, message_label, message_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_news_sql, (
+            news_timestamp,          # ctime: 新闻发生时间的时间戳
+            title,                   # title: 标题
+            content,                 # content: AI筛选过滤后的内容
+            '暂无分析',              # ai_analysis: 默认值
+            6,                       # message_score: 默认值6
+            'hard',                  # message_label: 默认值hard
+            '彭博社新闻'             # message_type: 默认值
+        ))
+        
+        news_id = cursor.lastrowid
+        logger.info(f"✅ MySQL news_red_telegraph 保存成功 - ID: {news_id}")
+        
+        # 2. 保存到 news_process_tracking 表
+        insert_tracking_sql = """
+            INSERT INTO news_process_tracking 
+            (news_id, ctime)
+            VALUES (%s, %s)
+        """
+        cursor.execute(insert_tracking_sql, (
+            news_id,                 # news_id: 关联news_red_telegraph表的id
+            news_timestamp           # ctime: 消息创建时间
+        ))
+        
+        tracking_id = cursor.lastrowid
+        logger.info(f"✅ MySQL news_process_tracking 保存成功 - ID: {tracking_id}")
+        
+        conn.commit()
+        return news_id
+        
+    except Exception as e:
+        logger.error(f"❌ 保存到MySQL失败: {e}")
+        if conn:
+            conn.rollback()
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 # ==================== AI接口调用 ====================
 
 def call_ai_api(news_list, max_retries=2):
@@ -458,18 +540,14 @@ def process_news_task():
     now = datetime.now()
     current_hour = now.hour
     
-    # 确定处理的时间段
+    # 确定时间标签（用于标题显示）
     if current_hour == 6:
-        start_hour, end_hour = 0, 6
         time_label = "0点到6点"
     elif current_hour == 12:
-        start_hour, end_hour = 6, 12
         time_label = "6点到12点"
     elif current_hour == 18:
-        start_hour, end_hour = 12, 18
         time_label = "12点到18点"
     elif current_hour == 0:
-        start_hour, end_hour = 18, 24
         time_label = "18点到24点"
     else:
         logger.warning(f"⚠️ 非预期的执行时间: {current_hour}点")
@@ -479,12 +557,9 @@ def process_news_task():
     logger.info(f"🕐 开始处理 {now.strftime('%Y年%m月%d日')} {time_label} 的新闻")
     logger.info(f"{'='*60}")
     
-    # 计算时间范围
-    start_time = now.replace(hour=start_hour, minute=0, second=0, microsecond=0)
-    if end_hour == 24:
-        end_time = (start_time + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    else:
-        end_time = now.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+    # 计算时间范围：获取过去24小时内未处理的新闻
+    end_time = now
+    start_time = now - timedelta(hours=24)
     
     # 从数据库获取待处理新闻
     target_news = get_pending_news(start_time, end_time)
@@ -518,10 +593,29 @@ def process_news_task():
         logger.info(f"{'='*60}\n")
         return
     
-    # 检查是否无重要新闻
+    # 构建标题
+    date_str = now.strftime('%Y年%m月%d日')
+    title = f"【彭博社{date_str}{time_label}新闻】"
+    
+    # AI筛选结果
     ai_result_stripped = ai_result.strip()
+    
+    # 计算新闻时间段开始时间的时间戳（秒）
+    news_timestamp = int(start_time.timestamp())
+    
+    logger.info(f"📝 标题: {title}")
+    logger.info(f"📄 AI筛选结果预览: {ai_result_stripped[:200]}...")
+    
+    # ========== 保存到MySQL（即使"无重要相关新闻"也要保存） ==========
+    mysql_news_id = save_to_mysql(title, ai_result_stripped, news_timestamp)
+    if mysql_news_id:
+        logger.info(f"✅ MySQL保存成功 - news_id: {mysql_news_id}")
+    else:
+        logger.warning("⚠️ MySQL保存失败，继续执行后续流程")
+    
+    # 检查是否无重要新闻
     if "无重要相关新闻" in ai_result_stripped:
-        logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过入库")
+        logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过analysis_task入库")
         # 仍然标记新闻为已处理并删除
         mark_news_as_processed(news_ids)
         delete_processed_news()
@@ -529,15 +623,8 @@ def process_news_task():
         logger.info(f"{'='*60}\n")
         return
     
-    # 构建标题
-    date_str = now.strftime('%Y年%m月%d日')
-    title = f"【彭博社{date_str}{time_label}新闻】"
-    
     # 构建完整的分析提示词
     prompt = build_analysis_prompt(ai_result_stripped)
-    
-    logger.info(f"📝 标题: {title}")
-    logger.info(f"📄 AI筛选结果预览: {ai_result_stripped[:200]}...")
     
     # 保存到 analysis_task 表
     task_id = save_analysis_task(title, prompt, start_time)
@@ -759,10 +846,30 @@ def process_all_pending_news_for_test():
         logger.info(f"{'='*60}\n")
         return {'success': False, 'message': 'AI筛选失败', 'processed': 0}
     
-    # 检查是否无重要新闻
+    # 构建标题（测试模式）
+    date_str = now.strftime('%Y年%m月%d日')
+    time_str = now.strftime('%H:%M')
+    title = f"【彭博社{date_str} {time_str} 测试】"
+    
+    # AI筛选结果
     ai_result_stripped = ai_result.strip()
+    
+    # 计算新闻时间戳（测试模式使用当前时间）
+    news_timestamp = int(now.timestamp())
+    
+    logger.info(f"📝 标题: {title}")
+    logger.info(f"📄 AI筛选结果预览: {ai_result_stripped[:200]}...")
+    
+    # ========== 保存到MySQL（即使"无重要相关新闻"也要保存） ==========
+    mysql_news_id = save_to_mysql(title, ai_result_stripped, news_timestamp)
+    if mysql_news_id:
+        logger.info(f"✅ MySQL保存成功 - news_id: {mysql_news_id}")
+    else:
+        logger.warning("⚠️ MySQL保存失败，继续执行后续流程")
+    
+    # 检查是否无重要新闻
     if "无重要相关新闻" in ai_result_stripped:
-        logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过入库")
+        logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过analysis_task入库")
         # 仍然标记新闻为已处理并删除
         mark_news_as_processed(news_ids)
         delete_processed_news()
@@ -772,19 +879,12 @@ def process_all_pending_news_for_test():
             'success': True, 
             'message': '无重要相关新闻，已清理原始数据', 
             'processed': len(news_ids),
-            'task_id': None
+            'task_id': None,
+            'mysql_news_id': mysql_news_id
         }
-    
-    # 构建标题（测试模式）
-    date_str = now.strftime('%Y年%m月%d日')
-    time_str = now.strftime('%H:%M')
-    title = f"【彭博社{date_str} {time_str} 测试】"
     
     # 构建完整的分析提示词
     prompt = build_analysis_prompt(ai_result_stripped)
-    
-    logger.info(f"📝 标题: {title}")
-    logger.info(f"📄 AI筛选结果预览: {ai_result_stripped[:200]}...")
     
     # 保存到 analysis_task 表
     task_id = save_analysis_task(title, prompt, now)
@@ -802,7 +902,8 @@ def process_all_pending_news_for_test():
             'success': True, 
             'message': f'处理完成，已创建分析任务 ID: {task_id}', 
             'processed': len(news_ids),
-            'task_id': task_id
+            'task_id': task_id,
+            'mysql_news_id': mysql_news_id
         }
     else:
         logger.error("❌ 分析任务保存失败")

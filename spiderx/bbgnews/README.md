@@ -13,8 +13,9 @@
 1. **实时接收**: 接收插件发送的新闻数据，存储到本地SQLite数据库 `bloomberg_news` 表
 2. **定时处理**: 每天4个时间点（6点、12点、18点、24点）自动处理新闻
 3. **AI筛选**: 调用AI接口筛选出期货相关新闻并翻译成中文
-4. **分析任务**: 将筛选结果保存到本地SQLite数据库 `analysis_task` 表
-5. **自动清理**: 处理完成后删除已处理的新闻数据
+4. **MySQL存储**: 将AI筛选结果保存到MySQL数据库 `news_red_telegraph` 和 `news_process_tracking` 表
+5. **分析任务**: 将筛选结果保存到本地SQLite数据库 `analysis_task` 表
+6. **自动清理**: 处理完成后删除已处理的新闻数据
 
 ## 🔄 完整工作流程
 
@@ -36,7 +37,11 @@ Python服务接收（Flask API）
     ├─ 翻译成中文
     └─ 规范输出格式
     ↓ 
-构建分析任务
+保存到MySQL数据库（即使"无重要相关新闻"也保存）
+    ├─ news_red_telegraph 表（新闻主表）
+    └─ news_process_tracking 表（处理跟踪表）
+    ↓
+构建分析任务（仅有重要新闻时）
     ↓ 标题：【彭博社2025年11月30日0点到6点新闻】
     ↓ 内容：AI筛选结果 + 分析提示词
     ↓ news_time：时间段开始时间
@@ -66,7 +71,9 @@ Python服务接收（Flask API）
 
 ### 2. 数据库存储
 
-#### bloomberg_news 表
+#### SQLite数据库（本地）
+
+##### bloomberg_news 表
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | INTEGER | 主键，自增 |
@@ -78,7 +85,7 @@ Python服务接收（Flask API）
 | created_at | DATETIME | 创建时间 |
 | updated_at | DATETIME | 更新时间 |
 
-#### analysis_task 表
+##### analysis_task 表
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | INTEGER | 主键，自增 |
@@ -89,6 +96,36 @@ Python服务接收（Flask API）
 | is_analyzed | INTEGER | 是否已分析：0-未分析，1-已分析 |
 | created_at | DATETIME | 创建时间 |
 | updated_at | DATETIME | 更新时间 |
+
+#### MySQL数据库（远程）
+
+##### news_red_telegraph 表
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键，自增 |
+| ctime | BIGINT | 新闻时间段开始时间的时间戳（秒） |
+| title | VARCHAR(500) | 标题，如【彭博社2025年11月1日0点到6点新闻】 |
+| content | TEXT | AI筛选过滤后的内容 |
+| ai_analysis | MEDIUMTEXT | 默认值：暂无分析 |
+| message_score | TINYINT | 默认值：6 |
+| message_label | ENUM | 默认值：hard |
+| message_type | VARCHAR(64) | 默认值：彭博社新闻 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+##### news_process_tracking 表
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键，自增 |
+| news_id | BIGINT | 关联 news_red_telegraph 表的 id |
+| ctime | BIGINT | 消息创建时间（冗余字段） |
+| is_reviewed | TINYINT | 是否已完成标签校验，默认0 |
+| track_day3_done | TINYINT | 3天跟踪是否完成，默认0 |
+| track_day7_done | TINYINT | 7天跟踪是否完成，默认0 |
+| track_day14_done | TINYINT | 14天跟踪是否完成，默认0 |
+| track_day28_done | TINYINT | 28天跟踪是否完成，默认0 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
 
 ### 3. 时间段划分
 - **0-6点**: 在6点处理
@@ -280,7 +317,8 @@ bbgnews/
    - **Flask API**: 接收插件发送的数据，存入 `bloomberg_news` 表
    - **定时任务**: APScheduler调度器（6/12/18/24点）
    - **AI筛选**: 调用OpenAI兼容接口筛选期货相关新闻
-   - **数据库操作**: 保存分析任务到 `analysis_task` 表
+   - **MySQL存储**: 保存AI筛选结果到 `news_red_telegraph` 和 `news_process_tracking` 表
+   - **SQLite操作**: 保存分析任务到 `analysis_task` 表
    - **数据清理**: 删除已处理的新闻数据
 
 ## 🔍 技术细节
@@ -341,12 +379,13 @@ scheduler.add_job(process_news_task, 'cron', hour='6,12,18,0', minute=0)
 
 ## ⚠️ 注意事项
 
-1. **数据库路径**: 数据库位于 `spiderx/db/crawler.db`
-2. **AI接口**: 确保API密钥有效且有足够余额
-3. **时区问题**: 服务器时区需要正确设置（系统使用本地时间）
-4. **日志监控**: 定期查看 `bloomberg_service.log` 和 `nohup.out`
-5. **端口占用**: 确保1123端口未被占用
-6. **插件权限**: Bloomberg网站需要授予插件拦截权限
+1. **SQLite数据库**: 本地数据库位于 `spiderx/db/crawler.db`
+2. **MySQL数据库**: 远程MySQL需确保网络可达且账号有效
+3. **AI接口**: 确保API密钥有效且有足够余额
+4. **时区问题**: 服务器时区需要正确设置（系统使用本地时间）
+5. **日志监控**: 定期查看 `bloomberg_service.log` 和 `nohup.out`
+6. **端口占用**: 确保1123端口未被占用
+7. **插件权限**: Bloomberg网站需要授予插件拦截权限
 
 ## 🐛 故障排查
 
@@ -378,12 +417,18 @@ tail -f nohup.out
 - 确认网络连接正常
 - 查看日志了解具体错误信息
 
-### 数据库问题
+### SQLite数据库问题
 ```bash
 # 重新初始化数据库
 cd spiderx/db
 python init_db.py
 ```
+
+### MySQL数据库问题
+- 检查MySQL服务器是否可达
+- 确认账号密码正确
+- 查看日志中的具体错误信息
+- MySQL保存失败不会阻断后续流程（会继续执行analysis_task保存）
 
 ## 📊 监控与维护
 
@@ -465,6 +510,7 @@ curl -X POST http://localhost:1123/api/process_now
 ✅ 本地存储（SQLite数据库）  
 ✅ 定时处理（APScheduler）  
 ✅ AI筛选（OpenAI兼容接口）  
+✅ MySQL存储（news_red_telegraph + news_process_tracking）  
 ✅ 分析任务（analysis_task表）  
 ✅ 自动清理（删除已处理数据）
 
