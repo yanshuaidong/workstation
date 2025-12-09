@@ -10,10 +10,10 @@ Bloomberg 新闻自动处理服务
 4. AI筛选期货相关新闻并格式化输出
 5. 保存到MySQL数据库 news_red_telegraph 和 news_process_tracking 表
 6. 保存到本地SQLite数据库 analysis_task 表
-7. 删除已处理的新闻数据
+7. 标记已处理新闻（status=1），保留1个月后自动清理
 
 工作流程：
-插件发送 -> bloomberg_news表 -> 定时触发 -> AI筛选 -> MySQL保存 -> analysis_task表 -> 删除已处理数据
+插件发送 -> bloomberg_news表 -> 定时触发 -> AI筛选 -> MySQL保存 -> analysis_task表 -> 标记已处理 -> 清理1个月前数据
 """
 
 from flask import Flask, request, jsonify
@@ -215,32 +215,40 @@ def mark_news_as_processed(news_ids):
             conn.close()
 
 
-def delete_processed_news():
+def delete_old_processed_news():
     """
-    删除已处理的新闻（status=1）
+    删除1个月前的已处理新闻（status=1）
+    保留最近1个月的数据，只清理超过1个月的旧数据
     """
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 先统计要删除的数量
-        cursor.execute("SELECT COUNT(*) FROM bloomberg_news WHERE status = 1")
+        # 计算1个月前的时间点
+        one_month_ago = datetime.now() - timedelta(days=30)
+        one_month_ago_str = one_month_ago.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # 统计要删除的数量（1个月前且已处理的新闻）
+        cursor.execute(
+            "SELECT COUNT(*) FROM bloomberg_news WHERE status = 1 AND created_at < ?",
+            (one_month_ago_str,)
+        )
         count = cursor.fetchone()[0]
         
         if count == 0:
-            logger.info("ℹ️ 没有需要删除的已处理新闻")
+            logger.info("ℹ️ 没有超过1个月的已处理新闻需要删除")
             return
         
-        # 删除已处理的新闻
-        delete_sql = "DELETE FROM bloomberg_news WHERE status = 1"
-        cursor.execute(delete_sql)
+        # 删除1个月前的已处理新闻
+        delete_sql = "DELETE FROM bloomberg_news WHERE status = 1 AND created_at < ?"
+        cursor.execute(delete_sql, (one_month_ago_str,))
         conn.commit()
         
-        logger.info(f"🗑️ 已删除 {count} 条已处理新闻")
+        logger.info(f"🗑️ 已删除 {count} 条超过1个月的已处理新闻")
         
     except Exception as e:
-        logger.error(f"❌ 删除已处理新闻失败: {e}")
+        logger.error(f"❌ 删除旧新闻失败: {e}")
         if conn:
             conn.rollback()
     finally:
@@ -873,8 +881,8 @@ def process_news_task():
         logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过analysis_task入库")
         # 仍然标记新闻为已处理并删除
         mark_news_as_processed(news_ids)
-        delete_processed_news()
-        logger.info("✅ 新闻已标记处理完成（无需创建分析任务）")
+        delete_old_processed_news()
+        logger.info("✅ 新闻已标记处理完成（无需创建分析任务），旧数据已清理")
         logger.info(f"{'='*60}\n")
         return
     
@@ -889,7 +897,7 @@ def process_news_task():
         mark_news_as_processed(news_ids)
         
         # 删除已处理的新闻
-        delete_processed_news()
+        delete_old_processed_news()
         
         logger.info("✅ 新闻处理完成")
     else:
@@ -1141,7 +1149,7 @@ def process_all_pending_news_for_test():
         logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过analysis_task入库")
         # 仍然标记新闻为已处理并删除
         mark_news_as_processed(news_ids)
-        delete_processed_news()
+        delete_old_processed_news()
         logger.info("✅ 测试处理完成（无重要新闻，未创建分析任务）")
         logger.info(f"{'='*60}\n")
         return {
@@ -1163,7 +1171,7 @@ def process_all_pending_news_for_test():
         mark_news_as_processed(news_ids)
         
         # 删除已处理的新闻
-        delete_processed_news()
+        delete_old_processed_news()
         
         logger.info("✅ 测试处理完成")
         logger.info(f"{'='*60}\n")
