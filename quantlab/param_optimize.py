@@ -636,9 +636,16 @@ def run_global_optimization(strategy: str = 'breakout', min_bars: int = 500, n_j
     if len(df_results) > 0:
         best_row = df_results.iloc[0]
         best_params = {k: best_row[k] for k in param_names}
+        # 将 NumPy 类型转换为 Python 原生类型（解决 JSON 序列化问题）
+        import numpy as np
         for k in param_names:
-            if isinstance(best_params[k], float) and best_params[k] == int(best_params[k]):
-                best_params[k] = int(best_params[k])
+            v = best_params[k]
+            if isinstance(v, (np.integer, np.int64)):
+                best_params[k] = int(v)
+            elif isinstance(v, (np.floating, np.float64)):
+                best_params[k] = float(v)
+            elif isinstance(v, float) and v == int(v):
+                best_params[k] = int(v)
         
         print("\n" + "=" * 70)
         print(" 最优参数")
