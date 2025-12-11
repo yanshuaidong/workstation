@@ -106,8 +106,8 @@ def _get_strategy_class(strategy_name: str):
         from strategies.atr_channel import ATRChannelTrend
         return ATRChannelTrend
     elif strategy_name == 'voloi':
-        from strategies.vol_oi_breakout import VolOIBreakout
-        return VolOIBreakout
+        from strategies.vol_oi_breakout import VolOIBreakoutDual
+        return VolOIBreakoutDual
     else:
         raise ValueError(f"未知策略: {strategy_name}")
 
@@ -409,25 +409,33 @@ def run_atr_optimization(symbol: str = 'rbm'):
 
 
 def run_voloi_optimization(symbol: str = 'rbm'):
-    """增仓放量突破策略参数优化"""
-    from strategies.vol_oi_breakout import VolOIBreakout
-    
+    """增仓放量突破策略参数优化（多空双向改进版）"""
+    from strategies.vol_oi_breakout import VolOIBreakoutDual
+
     param_grid = {
-        'n_break': [3, 5, 7],
+        # 核心参数
+        'n_break': [5, 7, 10],
         'n_exit': [3, 5],
-        'vol_mult': [1.2, 1.5, 2.0],
-        'oi_threshold': [0.01, 0.02, 0.03],
-        'max_hold': [5, 7, 10],
-        'stop_atr_mult': [1.5, 2.0, 2.5],
+        'vol_mult': [1.5, 2.0],
+        'oi_lookback': [3, 5],
+        'oi_threshold': [0.02, 0.03, 0.05],
+        'max_hold': [7, 10],
+        'stop_atr_mult': [1.5, 2.0],
+        # 改进参数
+        'trend_period': [20, 30],
+        'use_trend_filter': [True],
+        'use_trailing_stop': [True],
+        'trail_atr_mult': [1.5, 2.0],
+        'profit_protect': [1.5, 2.0],
     }
     
     print("=" * 60)
-    print(f" 增仓放量突破策略参数优化 - {symbol.upper()}")
+    print(f" 增仓放量突破策略参数优化（改进版） - {symbol.upper()}")
     print("=" * 60)
     
     df = param_grid_search(
         symbol=symbol,
-        strategy_cls=VolOIBreakout,
+        strategy_cls=VolOIBreakoutDual,
         param_grid=param_grid,
         start_date='2018-01-01',
         end_date='2021-12-31'
@@ -438,7 +446,8 @@ def run_voloi_optimization(symbol: str = 'rbm'):
         return None
     
     print("\nTop 10 参数组合:")
-    display_cols = ['n_break', 'n_exit', 'vol_mult', 'oi_threshold', 'max_hold', 'stop_atr_mult',
+    display_cols = ['n_break', 'n_exit', 'vol_mult', 'oi_lookback', 'oi_threshold', 
+                   'max_hold', 'stop_atr_mult', 'trend_period', 'trail_atr_mult',
                    'sharpe_ratio', 'total_return', 'max_drawdown', 'win_rate', 'total_trades']
     display_cols = [c for c in display_cols if c in df.columns]
     print(df[display_cols].head(10).to_string())
@@ -490,15 +499,24 @@ def get_strategy_config(strategy: str):
             'max_hold': [5, 7, 10],
         }, ['ma_period', 'atr_period', 'channel_mult', 'max_hold']
     elif strategy == 'voloi':
-        from strategies.vol_oi_breakout import VolOIBreakout
-        return VolOIBreakout, {
-            'n_break': [3, 5, 7],
+        from strategies.vol_oi_breakout import VolOIBreakoutDual
+        return VolOIBreakoutDual, {
+            # 核心参数
+            'n_break': [5, 7, 10],
             'n_exit': [3, 5],
-            'vol_mult': [1.2, 1.5, 2.0],
-            'oi_threshold': [0.01, 0.02, 0.03],
-            'max_hold': [5, 7, 10],
-            'stop_atr_mult': [1.5, 2.0, 2.5],
-        }, ['n_break', 'n_exit', 'vol_mult', 'oi_threshold', 'max_hold', 'stop_atr_mult']
+            'vol_mult': [1.5, 2.0],
+            'oi_lookback': [3, 5],
+            'oi_threshold': [0.02, 0.03, 0.05],
+            'max_hold': [7, 10],
+            'stop_atr_mult': [1.5, 2.0],
+            # 改进参数
+            'trend_period': [20, 30],
+            'use_trend_filter': [True],          # 启用趋势过滤
+            'use_trailing_stop': [True],         # 启用跟踪止损
+            'trail_atr_mult': [1.5, 2.0],
+            'profit_protect': [1.5, 2.0],
+        }, ['n_break', 'n_exit', 'vol_mult', 'oi_lookback', 'oi_threshold', 
+            'max_hold', 'stop_atr_mult', 'trend_period', 'trail_atr_mult', 'profit_protect']
     else:
         raise ValueError(f"未知策略: {strategy}")
 
