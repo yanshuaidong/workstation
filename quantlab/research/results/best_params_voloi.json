@@ -1,0 +1,18 @@
+{
+  "strategy": "voloi",
+  "params": {
+    "n_break": 5,
+    "n_exit": 5,
+    "vol_mult": 1.2,
+    "oi_threshold": 0.03,
+    "max_hold": 10,
+    "stop_atr_mult": 2.5
+  },
+  "metrics": {
+    "avg_sharpe": 0.09882799451510428,
+    "avg_return": 0.00021125379624200558,
+    "avg_drawdown": 0.2175095779561722,
+    "positive_ratio": 0.6491228070175439
+  },
+  "updated_at": "20251211_145002"
+}
