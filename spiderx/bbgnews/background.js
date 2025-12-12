@@ -7,43 +7,75 @@ console.log('🎬 Bloomberg News Interceptor Background Script 启动');
 console.log('⏰ 启动时间:', new Date().toLocaleString('zh-CN'));
 console.log('═══════════════════════════════════════════════');
 
-// ==================== 定时任务管理 ====================
+// ==================== 配置 ====================
 const ALARM_NAME = 'bloomberg-auto-refresh';
 const DEFAULT_INTERVAL = 60; // 默认60分钟（1小时）
+const TARGET_URL = 'https://www.bloomberg.com/latest';
+const TARGET_URL_PATTERN = 'https://www.bloomberg.com/latest*';
+
+// 跟踪正在监控的标签页，避免重复重定向
+const monitoredTabs = new Map(); // tabId -> { lastRedirectTime, redirectCount }
+const REDIRECT_COOLDOWN = 5000; // 5秒冷却时间
+const MAX_REDIRECTS = 5; // 最大重定向次数
+const REDIRECT_DELAY = 2000; // 重定向前等待2秒，模拟人工操作
 
 // 刷新Bloomberg页面并拦截数据
 async function refreshBloombergPage() {
   console.log('═══════════════════════════════════════════════');
   console.log('⏰ 定时任务触发 - 准备刷新Bloomberg页面');
   console.log('⏰ 触发时间:', new Date().toLocaleString('zh-CN'));
+  console.log('🎯 目标页面:', TARGET_URL);
   
   let success = false;
   
   try {
-    // 查找所有Bloomberg标签页
-    const bloombergTabs = await chrome.tabs.query({ url: 'https://www.bloomberg.com/*' });
+    // 优先查找 /latest 页面
+    let targetTabs = await chrome.tabs.query({ url: TARGET_URL_PATTERN });
     
-    if (bloombergTabs.length === 0) {
-      console.log('⚠️ 未找到Bloomberg标签页，尝试打开新标签页...');
+    if (targetTabs.length === 0) {
+      // 如果没有 /latest 页面，查找其他 Bloomberg 页面
+      const bloombergTabs = await chrome.tabs.query({ url: 'https://www.bloomberg.com/*' });
       
-      // 打开Bloomberg首页
-      const newTab = await chrome.tabs.create({
-        url: 'https://www.bloomberg.com/',
-        active: false // 后台打开
-      });
-      console.log('✅ 已创建新的Bloomberg标签页:', newTab.id);
-      
-      // 等待页面加载完成，content script会自动注入并拦截
-      console.log('⏳ 等待页面加载并拦截数据...');
-      success = true;
+      if (bloombergTabs.length === 0) {
+        console.log('⚠️ 未找到Bloomberg标签页，尝试打开新标签页...');
+        
+        // 直接打开 /latest 页面
+        const newTab = await chrome.tabs.create({
+          url: TARGET_URL,
+          active: false // 后台打开
+        });
+        console.log('✅ 已创建新的Bloomberg标签页:', newTab.id);
+        console.log('🎯 目标URL:', TARGET_URL);
+        
+        // 开始监控这个标签页
+        startMonitoringTab(newTab.id);
+        
+        // 等待页面加载完成，content script会自动注入并拦截
+        console.log('⏳ 等待页面加载并拦截数据...');
+        success = true;
+      } else {
+        // 有 Bloomberg 页面但不是 /latest，导航到 /latest
+        const targetTab = bloombergTabs[0];
+        console.log('🔄 发现Bloomberg页面但非/latest，正在导航到目标页面...');
+        console.log('   当前URL:', targetTab.url);
+        console.log('   目标URL:', TARGET_URL);
+        
+        await chrome.tabs.update(targetTab.id, { url: TARGET_URL });
+        startMonitoringTab(targetTab.id);
+        
+        console.log('✅ 已导航到 /latest 页面');
+        success = true;
+      }
     } else {
-      console.log(`✅ 找到 ${bloombergTabs.length} 个Bloomberg标签页`);
+      console.log(`✅ 找到 ${targetTabs.length} 个Bloomberg /latest 标签页`);
       
-      // 刷新第一个Bloomberg标签页
-      const targetTab = bloombergTabs[0];
+      // 刷新第一个 /latest 标签页
+      const targetTab = targetTabs[0];
       console.log('🔄 正在刷新标签页:', targetTab.id, targetTab.url);
       
       await chrome.tabs.reload(targetTab.id);
+      startMonitoringTab(targetTab.id);
+      
       console.log('✅ 页面刷新完成，content script将自动拦截数据');
       success = true;
     }
@@ -63,6 +95,150 @@ async function refreshBloombergPage() {
   
   console.log('═══════════════════════════════════════════════');
 }
+
+// ==================== 页面重定向保护 ====================
+
+// 开始监控标签页
+function startMonitoringTab(tabId) {
+  monitoredTabs.set(tabId, {
+    lastRedirectTime: 0,
+    redirectCount: 0,
+    startTime: Date.now()
+  });
+  console.log('👁️ 开始监控标签页:', tabId);
+}
+
+// 停止监控标签页
+function stopMonitoringTab(tabId) {
+  monitoredTabs.delete(tabId);
+  console.log('🛑 停止监控标签页:', tabId);
+}
+
+// 检查是否应该重定向
+function shouldRedirect(tabId) {
+  const tabInfo = monitoredTabs.get(tabId);
+  if (!tabInfo) return false;
+  
+  const now = Date.now();
+  
+  // 检查冷却时间
+  if (now - tabInfo.lastRedirectTime < REDIRECT_COOLDOWN) {
+    console.log('⏳ 重定向冷却中，跳过...');
+    return false;
+  }
+  
+  // 检查重定向次数（每10分钟重置）
+  if (now - tabInfo.startTime > 600000) {
+    tabInfo.redirectCount = 0;
+    tabInfo.startTime = now;
+  }
+  
+  if (tabInfo.redirectCount >= MAX_REDIRECTS) {
+    console.log('⚠️ 达到最大重定向次数，跳过...');
+    return false;
+  }
+  
+  return true;
+}
+
+// 记录重定向
+function recordRedirect(tabId) {
+  const tabInfo = monitoredTabs.get(tabId);
+  if (tabInfo) {
+    tabInfo.lastRedirectTime = Date.now();
+    tabInfo.redirectCount++;
+    console.log(`📊 标签页 ${tabId} 重定向次数: ${tabInfo.redirectCount}`);
+  }
+}
+
+// 检查URL是否是目标页面
+function isTargetPage(url) {
+  if (!url) return false;
+  return url.startsWith('https://www.bloomberg.com/latest');
+}
+
+// 检查URL是否是Bloomberg域名
+function isBloombergDomain(url) {
+  if (!url) return false;
+  return url.startsWith('https://www.bloomberg.com/');
+}
+
+// 监听标签页URL变化
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // 只在URL变化且页面加载完成时处理
+  if (changeInfo.status !== 'complete') return;
+  if (!tab.url) return;
+  
+  // 检查是否是我们监控的标签页
+  if (!monitoredTabs.has(tabId)) {
+    // 如果是 Bloomberg 域名但不是目标页面，也尝试处理
+    if (isBloombergDomain(tab.url) && !isTargetPage(tab.url)) {
+      // 查询是否启用了定时任务
+      chrome.storage.local.get(['schedulerEnabled']).then(config => {
+        if (config.schedulerEnabled) {
+          console.log('═══════════════════════════════════════════════');
+          console.log('🔍 检测到Bloomberg页面离开了目标区域');
+          console.log('   当前URL:', tab.url);
+          console.log('   目标URL:', TARGET_URL);
+          
+          // 开始监控并尝试重定向
+          startMonitoringTab(tabId);
+          
+          if (shouldRedirect(tabId)) {
+            // 添加随机延迟，模拟人工操作
+            const delay = REDIRECT_DELAY + Math.random() * 3000;
+            console.log(`🔄 ${(delay/1000).toFixed(1)}秒后重定向回目标页面...`);
+            
+            setTimeout(() => {
+              chrome.tabs.update(tabId, { url: TARGET_URL }).then(() => {
+                recordRedirect(tabId);
+                console.log('✅ 重定向成功');
+              }).catch(err => {
+                console.error('❌ 重定向失败:', err);
+              });
+            }, delay);
+          }
+          console.log('═══════════════════════════════════════════════');
+        }
+      });
+    }
+    return;
+  }
+  
+  // 已监控的标签页
+  if (!isTargetPage(tab.url) && isBloombergDomain(tab.url)) {
+    console.log('═══════════════════════════════════════════════');
+    console.log('⚠️ 监控的标签页离开了目标页面!');
+    console.log('   标签页ID:', tabId);
+    console.log('   当前URL:', tab.url);
+    console.log('   目标URL:', TARGET_URL);
+    
+    if (shouldRedirect(tabId)) {
+      // 添加随机延迟，模拟人工操作
+      const delay = REDIRECT_DELAY + Math.random() * 3000; // 2-5秒随机延迟
+      console.log(`🔄 ${(delay/1000).toFixed(1)}秒后重定向回目标页面...`);
+      
+      setTimeout(() => {
+        chrome.tabs.update(tabId, { url: TARGET_URL }).then(() => {
+          recordRedirect(tabId);
+          console.log('✅ 重定向成功');
+        }).catch(err => {
+          console.error('❌ 重定向失败:', err);
+        });
+      }, delay);
+    }
+    console.log('═══════════════════════════════════════════════');
+  } else if (isTargetPage(tab.url)) {
+    console.log('✅ 标签页已在目标页面:', tab.url);
+  }
+});
+
+// 监听标签页关闭，清理监控数据
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (monitoredTabs.has(tabId)) {
+    stopMonitoringTab(tabId);
+  }
+});
 
 // 添加执行记录
 async function addTaskRecord(success) {
@@ -125,8 +301,14 @@ async function stopAlarm() {
 // 监听alarm触发
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) {
+    // 添加0-5分钟的随机延迟，避免固定间隔被检测
+    const randomDelay = Math.random() * 5 * 60 * 1000; // 0-5分钟
     console.log('🔔 定时器触发:', alarm.name);
-    refreshBloombergPage();
+    console.log(`⏳ 添加随机延迟: ${(randomDelay/1000/60).toFixed(1)}分钟`);
+    
+    setTimeout(() => {
+      refreshBloombergPage();
+    }, randomDelay);
   }
 });
 

@@ -20,6 +20,7 @@ SKIP_COUNT=0
 # 需要启动的服务目录列表（排除示例目录和没有启动脚本的目录）
 SERVICES=(
     "bbgnews"
+    "chatgpthelper"
     "clsnewscraper"
     "eastfutuscraper"
     "geminihelper"
@@ -43,8 +44,8 @@ for SERVICE in "${SERVICES[@]}"; do
     
     echo "▶️  启动 [$SERVICE]..."
     
-    # 检查启动脚本（geminihelper 使用 start_server.sh，其他使用 start_scheduler.sh）
-    if [ "$SERVICE" = "geminihelper" ]; then
+    # 检查启动脚本（geminihelper/chatgpthelper 使用 start_server.sh，其他使用 start_scheduler.sh）
+    if [ "$SERVICE" = "geminihelper" ] || [ "$SERVICE" = "chatgpthelper" ]; then
         START_SCRIPT="$SERVICE_DIR/start_server.sh"
     else
         START_SCRIPT="$SERVICE_DIR/start_scheduler.sh"

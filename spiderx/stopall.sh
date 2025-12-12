@@ -20,6 +20,7 @@ SKIP_COUNT=0
 # 需要停止的服务目录列表（排除示例目录和没有停止脚本的目录）
 SERVICES=(
     "bbgnews"
+    "chatgpthelper"
     "clsnewscraper"
     "eastfutuscraper"
     "geminihelper"
@@ -43,8 +44,8 @@ for SERVICE in "${SERVICES[@]}"; do
     
     echo "⏹️  停止 [$SERVICE]..."
     
-    # 检查停止脚本（geminihelper 使用 stop_server.sh，其他使用 stop_scheduler.sh）
-    if [ "$SERVICE" = "geminihelper" ]; then
+    # 检查停止脚本（geminihelper/chatgpthelper 使用 stop_server.sh，其他使用 stop_scheduler.sh）
+    if [ "$SERVICE" = "geminihelper" ] || [ "$SERVICE" = "chatgpthelper" ]; then
         STOP_SCRIPT="$SERVICE_DIR/stop_server.sh"
     else
         STOP_SCRIPT="$SERVICE_DIR/stop_scheduler.sh"
