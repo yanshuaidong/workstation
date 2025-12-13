@@ -82,8 +82,8 @@ async function handleStartScheduler() {
     // 清除已有的定时器
     await chrome.alarms.clear(ALARM_NAME);
     
-    // 定义执行时间点：4点、8点、12点、16点、20点、24点
-    const executionHours = [4, 8, 12, 16, 20, 24];
+    // 定义执行时间点：2点、6点、10点、14点、18点、22点（与Gemini错开2小时）
+    const executionHours = [2, 6, 10, 14, 18, 22];
     
     // 找到下一个执行时间
     const now = new Date();
@@ -115,7 +115,7 @@ async function handleStartScheduler() {
     
     return {
       success: true,
-      message: '定时器已启动（每天6次：4点、8点、12点、16点、20点、24点）',
+      message: '定时器已启动（每天6次：2点、6点、10点、14点、18点、22点）',
       nextRunTime: nextRun.toLocaleString('zh-CN')
     };
     

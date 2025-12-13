@@ -111,8 +111,11 @@ def init_db():
         # - title: 任务标题
         # - prompt: 提示词/分析内容
         # - news_time: 新闻时间
-        # - ai_result: AI分析结果
-        # - is_analyzed: 是否已分析（0/1）
+        # - gemini_result: Gemini AI分析结果
+        # - chatgpt_result: ChatGPT AI分析结果
+        # - gemini_analyzed: Gemini是否已分析（0/1）
+        # - chatgpt_analyzed: ChatGPT是否已分析（0/1）
+        # - is_analyzed: 是否全部分析完成（两个AI都分析完后自动设为1）
         # - created_at: 创建时间
         # - updated_at: 更新时间
         cursor.execute("""
@@ -121,7 +124,10 @@ def init_db():
             title TEXT NOT NULL,
             prompt TEXT NOT NULL,
             news_time DATETIME,
-            ai_result TEXT DEFAULT '',
+            gemini_result TEXT DEFAULT '',
+            chatgpt_result TEXT DEFAULT '',
+            gemini_analyzed INTEGER DEFAULT 0,
+            chatgpt_analyzed INTEGER DEFAULT 0,
             is_analyzed INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -156,6 +162,65 @@ def init_db():
         return False
 
 
+def migrate_db():
+    """
+    数据库迁移：为现有的 analysis_task 表添加双AI支持字段
+    如果字段已存在则跳过
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # 检查表是否存在
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='analysis_task';")
+        if not cursor.fetchone():
+            print("⚠️  analysis_task 表不存在，跳过迁移")
+            conn.close()
+            return False
+        
+        # 获取现有列
+        cursor.execute("PRAGMA table_info(analysis_task);")
+        existing_columns = [row[1] for row in cursor.fetchall()]
+        
+        # 需要添加的新列
+        new_columns = [
+            ("gemini_result", "TEXT DEFAULT ''"),
+            ("chatgpt_result", "TEXT DEFAULT ''"),
+            ("gemini_analyzed", "INTEGER DEFAULT 0"),
+            ("chatgpt_analyzed", "INTEGER DEFAULT 0"),
+        ]
+        
+        added_columns = []
+        for col_name, col_type in new_columns:
+            if col_name not in existing_columns:
+                cursor.execute(f"ALTER TABLE analysis_task ADD COLUMN {col_name} {col_type};")
+                added_columns.append(col_name)
+        
+        # 如果有旧的 ai_result 字段，将其数据迁移到 gemini_result
+        if 'ai_result' in existing_columns and 'gemini_result' in added_columns:
+            cursor.execute("""
+                UPDATE analysis_task 
+                SET gemini_result = ai_result, 
+                    gemini_analyzed = is_analyzed
+                WHERE ai_result != '' AND ai_result IS NOT NULL;
+            """)
+            print("📦 已将旧的 ai_result 数据迁移到 gemini_result")
+        
+        conn.commit()
+        
+        if added_columns:
+            print(f"✅ 数据库迁移成功：添加了列 {', '.join(added_columns)}")
+        else:
+            print("ℹ️  数据库已是最新版本，无需迁移")
+        
+        conn.close()
+        return True
+        
+    except Exception as e:
+        print(f"❌ 数据库迁移失败：{e}")
+        return False
+
+
 def get_db_connection():
     """
     获取数据库连接
@@ -173,4 +238,15 @@ def get_db_connection():
 
 
 if __name__ == "__main__":
-    init_db()
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "migrate":
+        # 执行迁移
+        migrate_db()
+    else:
+        # 初始化或迁移
+        if DB_PATH.exists():
+            print("📊 数据库已存在，执行迁移...")
+            migrate_db()
+        else:
+            init_db()

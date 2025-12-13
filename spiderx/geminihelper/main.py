@@ -83,12 +83,16 @@ def get_local_db_connection():
     """获取本地 SQLite 数据库连接"""
     if not os.path.exists(LOCAL_DB_PATH):
         raise FileNotFoundError(f"本地数据库不存在: {LOCAL_DB_PATH}")
-    return sqlite3.connect(LOCAL_DB_PATH)
+    # 设置30秒超时，避免与ChatGPT服务并发写入时锁冲突
+    conn = sqlite3.connect(LOCAL_DB_PATH, timeout=30)
+    # 启用WAL模式提高并发性能
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
 def get_unanalyzed_tasks():
     """
-    从本地数据库获取未分析的任务
+    从本地数据库获取 Gemini 未分析的任务
     
     Returns:
         dict: 包含任务列表的字典
@@ -99,11 +103,11 @@ def get_unanalyzed_tasks():
         cursor = conn.cursor()
         cursor.row_factory = sqlite3.Row  # 使结果可以像字典一样访问
         
-        # 查询未分析的任务
+        # 查询 Gemini 未分析的任务（只检查 gemini_analyzed 字段）
         query_sql = """
             SELECT id, title, prompt, news_time, created_at
             FROM analysis_task
-            WHERE is_analyzed = 0
+            WHERE gemini_analyzed = 0
             ORDER BY news_time DESC, created_at DESC
         """
         cursor.execute(query_sql)
@@ -120,7 +124,7 @@ def get_unanalyzed_tasks():
                 'created_at': row[4]
             })
         
-        logger.info(f"从本地数据库获取到 {len(tasks)} 个未分析任务")
+        logger.info(f"从本地数据库获取到 {len(tasks)} 个 Gemini 待分析任务")
         
         return {
             'success': True,
@@ -144,11 +148,11 @@ def get_unanalyzed_tasks():
 
 def update_task_status(task_id, ai_result):
     """
-    更新本地数据库中任务的分析状态
+    更新本地数据库中任务的 Gemini 分析状态
     
     Args:
         task_id: 任务ID
-        ai_result: AI分析结果
+        ai_result: Gemini 分析结果
     
     Returns:
         dict: 包含成功状态和消息
@@ -158,23 +162,38 @@ def update_task_status(task_id, ai_result):
         conn = get_local_db_connection()
         cursor = conn.cursor()
         
-        # 更新任务状态
+        # 更新 Gemini 分析状态
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         update_sql = """
             UPDATE analysis_task
-            SET is_analyzed = 1,
-                ai_result = ?,
+            SET gemini_analyzed = 1,
+                gemini_result = ?,
                 updated_at = ?
             WHERE id = ?
         """
         cursor.execute(update_sql, (ai_result, current_time, task_id))
+        
+        # 检查是否两个AI都已分析完成，如果是则标记 is_analyzed = 1
+        cursor.execute("""
+            UPDATE analysis_task
+            SET is_analyzed = 1
+            WHERE id = ? AND gemini_analyzed = 1 AND chatgpt_analyzed = 1
+        """, (task_id,))
+        
         conn.commit()
         
-        logger.info(f"本地数据库任务状态已更新: task_id={task_id}")
+        # 检查是否全部完成
+        cursor.execute("SELECT gemini_analyzed, chatgpt_analyzed FROM analysis_task WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        if row:
+            gemini_done, chatgpt_done = row[0], row[1]
+            logger.info(f"任务 {task_id} 状态: Gemini={gemini_done}, ChatGPT={chatgpt_done}")
+        
+        logger.info(f"本地数据库 Gemini 分析状态已更新: task_id={task_id}")
         
         return {
             'success': True,
-            'message': '任务状态已更新'
+            'message': 'Gemini 分析状态已更新'
         }
         
     except Exception as e:

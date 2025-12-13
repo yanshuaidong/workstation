@@ -185,7 +185,7 @@
   async function waitForResponse() {
     console.log("[Content] 等待 AI 响应...");
     
-    const maxWaitTime = 180000; // 3分钟
+    const maxWaitTime = 300000; // 5分钟
     const globalStartTime = Date.now();
     
     // 记录开始时已有的复制按钮数量
@@ -197,19 +197,38 @@
       const copyButtons = document.querySelectorAll('button[data-testid="copy-turn-action-button"]');
       
       if (copyButtons.length > initialCopyButtonCount) {
+        // 检查是否还在流式传输中
+        const streamingElement = document.querySelector('.result-streaming, [aria-busy="true"]');
+        if (streamingElement) {
+          console.log('[Content] 检测到流式传输中，继续等待...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+        
         const elapsedTime = Math.floor((Date.now() - globalStartTime) / 1000);
-        console.log(`[Content] ✓ 检测到新复制按钮，AI 回复完成 (${elapsedTime}秒)`);
+        console.log(`[Content] ✓ 检测到新复制按钮且流式传输完成，AI 回复完成 (${elapsedTime}秒)`);
         
-        // 获取最后一条助手消息的内容
-        const assistantMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+        // 额外等待确保 DOM 完全渲染
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
-        console.log(`[Content] 找到 ${assistantMessages.length} 条助手消息`);
+        // 获取最后一条助手消息的内容（排除 placeholder 占位符）
+        const allAssistantMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+        // 过滤掉 placeholder 占位符元素
+        const assistantMessages = Array.from(allAssistantMessages).filter(msg => {
+          const messageId = msg.getAttribute('data-message-id') || '';
+          const isPlaceholder = messageId.includes('placeholder');
+          const isStreaming = msg.querySelector('.result-streaming') !== null;
+          return !isPlaceholder && !isStreaming;
+        });
+        
+        console.log(`[Content] 找到 ${allAssistantMessages.length} 条助手消息，过滤后 ${assistantMessages.length} 条有效消息`);
         
         if (assistantMessages.length > 0) {
           const lastMessage = assistantMessages[assistantMessages.length - 1];
           
           // 调试：打印 DOM 结构
           console.log('[Content] lastMessage DOM:');
+          console.log('[Content] - data-message-id:', lastMessage.getAttribute('data-message-id'));
           console.log('[Content] - outerHTML:', lastMessage.outerHTML.substring(0, 500));
           console.log('[Content] - innerHTML:', lastMessage.innerHTML.substring(0, 500));
           console.log('[Content] - textContent:', lastMessage.textContent.substring(0, 200));
