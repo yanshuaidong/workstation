@@ -144,44 +144,108 @@
     return text.replace(/\n{3,}/g, '\n\n').trim();
   }
   
-  function isElementVisible(element) {
-    if (!element) return false;
+  function isElementVisible(element, debug = false) {
+    if (!element) {
+      if (debug) console.log('[Visibility] 元素为null');
+      return false;
+    }
     
     const rect = element.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return false;
+    if (rect.width === 0 || rect.height === 0) {
+      if (debug) console.log('[Visibility] 元素尺寸为0', { width: rect.width, height: rect.height });
+      return false;
+    }
     
     const style = window.getComputedStyle(element);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+    if (style.display === 'none') {
+      if (debug) console.log('[Visibility] 元素 display: none');
+      return false;
+    }
+    if (style.visibility === 'hidden') {
+      if (debug) console.log('[Visibility] 元素 visibility: hidden');
+      return false;
+    }
+    if (style.opacity === '0') {
+      if (debug) console.log('[Visibility] 元素 opacity: 0');
       return false;
     }
     
     if (element.offsetParent === null && style.position !== 'fixed') {
+      if (debug) console.log('[Visibility] 元素 offsetParent 为 null 且非 fixed 定位');
       return false;
+    }
+    
+    if (debug) {
+      console.log('[Visibility] 元素判定为可见', {
+        rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        position: style.position,
+        offsetParent: element.offsetParent ? element.offsetParent.tagName : null
+      });
     }
     
     return true;
   }
   
-  function getVisibleCopyButtonCount() {
+  function getVisibleCopyButtonCount(enableDebug = false) {
     const copyButtons = document.querySelectorAll('button[data-testid="copy-turn-action-button"]');
     let visibleCount = 0;
-    copyButtons.forEach(btn => {
-      if (isElementVisible(btn)) visibleCount++;
+    
+    if (enableDebug) {
+      console.log(`[CopyButton] 找到 ${copyButtons.length} 个复制按钮`);
+    }
+    
+    copyButtons.forEach((btn, index) => {
+      const isVisible = isElementVisible(btn, enableDebug);
+      if (isVisible) visibleCount++;
+      
+      if (enableDebug) {
+        // 打印父元素链的可见性信息
+        let parentInfo = [];
+        let current = btn.parentElement;
+        let depth = 0;
+        while (current && current !== document.body && depth < 5) {
+          const pStyle = window.getComputedStyle(current);
+          parentInfo.push({
+            tag: current.tagName,
+            class: current.className?.substring?.(0, 50) || '',
+            display: pStyle.display,
+            visibility: pStyle.visibility,
+            opacity: pStyle.opacity
+          });
+          current = current.parentElement;
+          depth++;
+        }
+        
+        console.log(`[CopyButton] 按钮${index}:`, {
+          isVisible,
+          buttonHTML: btn.outerHTML.substring(0, 100),
+          parentChain: parentInfo
+        });
+      }
     });
+    
     return visibleCount;
   }
   
   async function waitForResponse() {
     const maxWaitTime = 300000; // 5分钟
     const startTime = Date.now();
-    const initialVisibleCount = getVisibleCopyButtonCount();
-    console.log(`[Content] 🔍 开始等待响应 | 初始复制按钮数量: ${initialVisibleCount}`);
+    
+    // 初始化时开启调试，打印当前状态
+    console.log(`[Content] 🔍 === 开始等待响应，打印初始状态 ===`);
+    const initialVisibleCount = getVisibleCopyButtonCount(true);
+    console.log(`[Content] 🔍 初始复制按钮数量: ${initialVisibleCount}`);
     
     while (Date.now() - startTime < maxWaitTime) {
-      const currentVisibleCount = getVisibleCopyButtonCount();
+      const currentVisibleCount = getVisibleCopyButtonCount(false);
       
       if (currentVisibleCount > initialVisibleCount) {
-        console.log(`[Content] ✅ 检测到复制按钮数量增加: ${initialVisibleCount} → ${currentVisibleCount}`);
+        console.log(`[Content] ✅ === 检测到复制按钮数量增加: ${initialVisibleCount} → ${currentVisibleCount}，打印详细信息 ===`);
+        // 数量变化时再次开启调试打印详情
+        getVisibleCopyButtonCount(true);
         
         // 额外等待确保DOM完全渲染
         console.log(`[Content] ⏳ 等待3秒确保DOM完全渲染...`);
