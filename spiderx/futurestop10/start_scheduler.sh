@@ -5,10 +5,8 @@ echo "🚀 启动期货涨跌幅TOP10调度器..."
 echo "⏰ 启动时间: $(date)"
 echo ""
 
-# 获取脚本所在目录（支持从任意位置运行）
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
-echo "📂 工作目录: $SCRIPT_DIR"
+# 切换到脚本所在目录
+cd "$(dirname "$0")" || exit 1
 
 # 检查是否已在运行
 if [ -f "scheduler.pid" ]; then
@@ -20,7 +18,7 @@ if [ -f "scheduler.pid" ]; then
         exit 1
     else
         echo "🗑️  清理过期的PID文件..."
-        rm scheduler.pid
+        rm -f scheduler.pid
     fi
 fi
 
@@ -34,38 +32,15 @@ else
     exit 1
 fi
 
-echo "🐍 使用Python: $($PYTHON_CMD --version)"
+echo "🐍 使用 Python: $($PYTHON_CMD --version)"
 
 # 检查必要文件
-if [ ! -f "scheduler.py" ]; then
-    echo "❌ 错误: 缺少 scheduler.py 文件"
+if [ ! -f "scheduler.py" ] || [ ! -f "main.py" ]; then
+    echo "❌ 错误: 缺少必要文件，请确保在正确的目录下运行"
     exit 1
 fi
 
-if [ ! -f "main.py" ]; then
-    echo "❌ 错误: 缺少 main.py 文件"
-    exit 1
-fi
-
-# 检查依赖
-if [ -f "requirements.txt" ]; then
-    echo "🔍 检查依赖..."
-    $PYTHON_CMD -c "import apscheduler, pymysql, requests" 2>/dev/null
-    if [ $? -ne 0 ]; then
-        echo "⚠️  检测到缺少依赖，正在安装..."
-        $PYTHON_CMD -m pip install -r requirements.txt
-        if [ $? -ne 0 ]; then
-            echo "❌ 依赖安装失败"
-            exit 1
-        fi
-        echo "✅ 依赖安装完成"
-    else
-        echo "✅ 依赖检查通过"
-    fi
-fi
-
-# 启动调度器
-echo ""
+# 启动调度器，保存所有相关进程的 PID
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍎 macOS系统，使用caffeinate防止休眠"
     nohup $PYTHON_CMD scheduler.py > nohup.out 2>&1 &
@@ -85,14 +60,11 @@ else
 fi
 
 # 等待进程实际启动
-sleep 2
+sleep 1
 
 # 验证进程是否成功启动
 if ps -p $PYTHON_PID > /dev/null 2>&1; then
     echo "✅ 调度器已启动 (PID: $PYTHON_PID)"
-    echo ""
-    echo "📅 执行计划: 每周一到周五 16:00"
-    echo "📝 查看日志: tail -f scheduler.log"
     echo "📝 查看输出: tail -f nohup.out"
     echo "🛑 停止程序: ./stop_scheduler.sh"
 else
@@ -101,10 +73,3 @@ else
     cat nohup.out 2>/dev/null
     exit 1
 fi
-
-echo ""
-# 输出预览
-echo "👀 日志预览："
-sleep 1
-tail -15 scheduler.log 2>/dev/null || tail -15 nohup.out 2>/dev/null || echo "日志文件尚未生成，请稍等..."
-
