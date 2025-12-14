@@ -88,10 +88,12 @@ async function refreshBloombergPage() {
   } catch (error) {
     console.error('❌ 自动刷新失败:', error);
     success = false;
+    
+    // 刷新失败时也添加一条记录
+    await addCaptureRecord(false, 0, new Date().toISOString());
   }
   
-  // 添加执行记录
-  await addTaskRecord(success);
+  // 注意：成功时的记录在收到 API_CAPTURED 消息时添加
   
   console.log('═══════════════════════════════════════════════');
 }
@@ -240,15 +242,16 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
-// 添加执行记录
-async function addTaskRecord(success) {
+// 添加捕获记录（从 content script 收到数据时调用）
+async function addCaptureRecord(serverSuccess, newsCount, captureTime) {
   const result = await chrome.storage.local.get(['taskRecords']);
   const records = result.taskRecords || [];
   
   // 添加新记录到开头（最新的在前面）
   records.unshift({
-    time: new Date().toISOString(),
-    success: success
+    time: captureTime || new Date().toISOString(),
+    success: serverSuccess,
+    newsCount: newsCount || 0
   });
   
   // 最多保留100条记录
@@ -257,7 +260,7 @@ async function addTaskRecord(success) {
   }
   
   await chrome.storage.local.set({ taskRecords: records });
-  console.log('📝 已添加执行记录:', success ? '成功' : '失败');
+  console.log('📝 已添加捕获记录:', serverSuccess ? '成功' : '失败', '数据条数:', newsCount);
 }
 
 // 创建或更新定时任务
@@ -357,20 +360,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log('🎉 ✅ 收到拦截的API数据!');
     console.log('   📍 URL:', request.data.url);
     console.log('   📦 原始数据大小:', request.data.dataSize, 'bytes');
+    console.log('   📊 数据条数:', request.data.newsCount);
     console.log('   ⏰ 拦截时间:', request.data.time);
     console.log('   🌐 发送到服务器:', request.data.sentToServer ? '✅ 成功' : '❌ 失败');
     console.log('   🔗 来源页面:', sender.tab?.url);
     console.log('═══════════════════════════════════════════════');
     
+    // 添加到 taskRecords（记录发送结果和数据条数）
+    addCaptureRecord(request.data.sentToServer, request.data.newsCount, request.data.time);
+    
     // 设置徽章通知
     console.log('🎯 正在设置徽章通知...');
-    chrome.action.setBadgeText({ text: '✓' }).then(() => {
+    const badgeText = request.data.sentToServer ? '✓' : '✗';
+    const badgeColor = request.data.sentToServer ? '#4CAF50' : '#f44336';
+    
+    chrome.action.setBadgeText({ text: badgeText }).then(() => {
       console.log('✅ 徽章文本已设置');
     }).catch(err => {
       console.error('❌ 设置徽章文本失败:', err);
     });
     
-    chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' }).then(() => {
+    chrome.action.setBadgeBackgroundColor({ color: badgeColor }).then(() => {
       console.log('✅ 徽章颜色已设置');
     }).catch(err => {
       console.error('❌ 设置徽章颜色失败:', err);

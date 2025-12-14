@@ -120,15 +120,18 @@
         
         safeLog('✅ 简要记录已保存到 storage');
         
-        // 3. 通知 background script
+        // 3. 通知 background script（包含数据条数）
+        const newsCount = filteredData.capturedData ? filteredData.capturedData.length : 0;
         safeLog('📢 正在通知 background script...');
+        safeLog(`📊 数据条数: ${newsCount}`);
         await chrome.runtime.sendMessage({
           type: 'API_CAPTURED',
           data: {
             url: capturedUrl,
             dataSize: dataSize,
             time: capturedTime,
-            sentToServer: serverSuccess
+            sentToServer: serverSuccess,
+            newsCount: newsCount  // 新增：数据条数
           }
         });
         

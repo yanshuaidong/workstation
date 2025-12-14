@@ -27,7 +27,7 @@ async function updateRecordsTable() {
   const tbody = document.getElementById('recordsTableBody');
   
   if (records.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" class="empty-records">暂无执行记录</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-records">暂无执行记录</td></tr>';
     return;
   }
   
@@ -36,6 +36,7 @@ async function updateRecordsTable() {
     <tr>
       <td>#${records.length - index}</td>
       <td>${formatTime(record.time)}</td>
+      <td>${record.newsCount !== undefined ? record.newsCount : '-'}</td>
       <td><span class="badge-${record.success ? 'success' : 'fail'}">${record.success ? '✓ 成功' : '✗ 失败'}</span></td>
     </tr>
   `).join('');
