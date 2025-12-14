@@ -125,12 +125,10 @@ def save_news_to_db(news_item):
         ))
         
         conn.commit()
-        
-        # rowcount > 0 表示插入成功，= 0 表示重复数据被忽略
         return cursor.rowcount > 0
         
     except Exception as e:
-        logger.error(f"❌ 保存新闻到数据库失败: {e}")
+        logger.error(f"保存新闻失败: {e}")
         if conn:
             conn.rollback()
         return False
@@ -173,7 +171,7 @@ def get_pending_news(start_time, end_time):
         return [dict(row) for row in rows]
         
     except Exception as e:
-        logger.error(f"❌ 获取待处理新闻失败: {e}")
+        logger.error(f"获取待处理新闻失败: {e}")
         return []
     finally:
         if conn:
@@ -204,10 +202,8 @@ def mark_news_as_processed(news_ids):
         cursor.execute(update_sql, news_ids)
         conn.commit()
         
-        logger.info(f"✅ 已标记 {len(news_ids)} 条新闻为已处理")
-        
     except Exception as e:
-        logger.error(f"❌ 标记新闻状态失败: {e}")
+        logger.error(f"标记新闻状态失败: {e}")
         if conn:
             conn.rollback()
     finally:
@@ -229,26 +225,17 @@ def delete_old_processed_news():
         one_month_ago = datetime.now() - timedelta(days=30)
         one_month_ago_str = one_month_ago.strftime('%Y-%m-%d %H:%M:%S')
         
-        # 统计要删除的数量（1个月前且已处理的新闻）
-        cursor.execute(
-            "SELECT COUNT(*) FROM bloomberg_news WHERE status = 1 AND created_at < ?",
-            (one_month_ago_str,)
-        )
-        count = cursor.fetchone()[0]
-        
-        if count == 0:
-            logger.info("ℹ️ 没有超过1个月的已处理新闻需要删除")
-            return
-        
         # 删除1个月前的已处理新闻
         delete_sql = "DELETE FROM bloomberg_news WHERE status = 1 AND created_at < ?"
         cursor.execute(delete_sql, (one_month_ago_str,))
+        deleted_count = cursor.rowcount
         conn.commit()
         
-        logger.info(f"🗑️ 已删除 {count} 条超过1个月的已处理新闻")
+        if deleted_count > 0:
+            logger.info(f"清理旧数据: {deleted_count}条")
         
     except Exception as e:
-        logger.error(f"❌ 删除旧新闻失败: {e}")
+        logger.error(f"删除旧新闻失败: {e}")
         if conn:
             conn.rollback()
     finally:
@@ -286,12 +273,10 @@ def save_analysis_task(title, prompt, news_time):
         
         task_id = cursor.lastrowid
         conn.commit()
-        
-        logger.info(f"✅ 分析任务保存成功 - 任务ID: {task_id}")
         return task_id
         
     except Exception as e:
-        logger.error(f"❌ 保存分析任务失败: {e}")
+        logger.error(f"保存分析任务失败: {e}")
         if conn:
             conn.rollback()
         return None
@@ -309,7 +294,7 @@ def get_pending_news_count():
         cursor.execute("SELECT COUNT(*) FROM bloomberg_news WHERE status = 0")
         return cursor.fetchone()[0]
     except Exception as e:
-        logger.error(f"❌ 获取待处理新闻数量失败: {e}")
+        logger.error(f"获取待处理新闻数量失败: {e}")
         return 0
     finally:
         if conn:
@@ -368,13 +353,9 @@ def save_to_mysql(title, content, news_timestamp):
             result = cursor.fetchone()
             if result:
                 news_id = result[0]
-                logger.info(f"✅ MySQL news_red_telegraph 更新成功 - ID: {news_id}")
             else:
-                logger.warning("⚠️ 无法获取 news_id")
                 conn.commit()
                 return None
-        else:
-            logger.info(f"✅ MySQL news_red_telegraph 保存成功 - ID: {news_id}")
         
         # 2. 保存到 news_process_tracking 表（使用 INSERT IGNORE 避免重复）
         insert_tracking_sql = """
@@ -387,17 +368,11 @@ def save_to_mysql(title, content, news_timestamp):
             news_timestamp           # ctime: 消息创建时间
         ))
         
-        if cursor.rowcount > 0:
-            tracking_id = cursor.lastrowid
-            logger.info(f"✅ MySQL news_process_tracking 保存成功 - ID: {tracking_id}")
-        else:
-            logger.info(f"ℹ️ MySQL news_process_tracking 已存在，跳过插入")
-        
         conn.commit()
         return news_id
         
     except Exception as e:
-        logger.error(f"❌ 保存到MySQL失败: {e}")
+        logger.error(f"MySQL保存失败: {e}")
         if conn:
             conn.rollback()
         return None
@@ -485,7 +460,6 @@ def call_ai_api(news_list, max_retries=2):
     for attempt in range(max_retries):
         try:
             timeout = timeouts[attempt] if attempt < len(timeouts) else timeouts[-1]
-            logger.info(f"🤖 调用AI接口 (第{attempt + 1}次尝试，超时{timeout}秒)...")
             
             payload = {
                 "model": "gpt-4.1-mini",
@@ -507,13 +481,11 @@ def call_ai_api(news_list, max_retries=2):
             response.raise_for_status()
             
             result = response.json()["choices"][0]["message"]["content"]
-            logger.info(f"✅ AI接口调用成功 (第{attempt + 1}次尝试)")
             return result
             
         except Exception as e:
-            logger.error(f"❌ AI接口调用失败 (第{attempt + 1}次尝试): {e}")
             if attempt == max_retries - 1:
-                logger.error("❌ AI接口调用最终失败，已用尽所有重试次数")
+                logger.error(f"AI筛选失败: {e}")
                 return None
             time.sleep(2)  # 重试前等待2秒
     
@@ -990,7 +962,6 @@ def process_news_task():
     current_minute = now.minute
     
     # 确定时间段标签（用于标题显示）
-    # 凌晨（23:30–05:30）、上午（05:30–11:30）、下午（11:30–17:30）、晚上（17:30–23:30）
     if current_hour == 5 and current_minute == 30:
         time_label = "上午"
     elif current_hour == 11 and current_minute == 30:
@@ -1000,7 +971,6 @@ def process_news_task():
     elif current_hour == 23 and current_minute == 30:
         time_label = "凌晨"
     else:
-        logger.warning(f"⚠️ 非预期的执行时间: {current_hour}点{current_minute}分")
         # 兼容手动触发的情况，根据当前时间判断
         if 5 <= current_hour < 11 or (current_hour == 5 and current_minute >= 30) or (current_hour == 11 and current_minute < 30):
             time_label = "上午"
@@ -1011,10 +981,6 @@ def process_news_task():
         else:
             time_label = "凌晨"
     
-    logger.info(f"\n{'='*60}")
-    logger.info(f"🕐 开始处理 {now.strftime('%Y年%m月%d日')} {time_label} 的新闻")
-    logger.info(f"{'='*60}")
-    
     # 计算时间范围：获取过去24小时内未处理的新闻
     end_time = now
     start_time = now - timedelta(hours=24)
@@ -1022,11 +988,8 @@ def process_news_task():
     # 从数据库获取待处理新闻
     target_news = get_pending_news(start_time, end_time)
     
-    logger.info(f"📊 找到 {len(target_news)} 条待处理新闻")
-    
     if len(target_news) == 0:
-        logger.info("ℹ️ 没有需要处理的新闻")
-        logger.info(f"{'='*60}\n")
+        logger.info(f"[{time_label}] 无待处理新闻")
         return
     
     # 获取新闻ID列表，用于后续标记
@@ -1047,14 +1010,13 @@ def process_news_task():
     ai_result = call_ai_api(news_for_ai)
     
     if ai_result is None:
-        logger.error("❌ AI筛选失败，本次任务终止")
-        logger.info(f"{'='*60}\n")
+        logger.error(f"[{time_label}] 处理失败: AI筛选失败, 待处理{len(target_news)}条")
         return
     
     # 构建标题
     date_str = now.strftime('%Y年%m月%d日')
-    mysql_title = f"彭博社{date_str}{time_label}新闻"  # 保存到MySQL的标题
-    analysis_title = f"彭博社{date_str}{time_label}分析"  # 保存到analysis_task的标题
+    mysql_title = f"彭博社{date_str}{time_label}新闻"
+    analysis_title = f"彭博社{date_str}{time_label}分析"
     
     # AI筛选结果
     ai_result_stripped = ai_result.strip()
@@ -1062,45 +1024,28 @@ def process_news_task():
     # 使用当前执行时间的时间戳（秒），确保每次执行都是唯一的
     news_timestamp = int(now.timestamp())
     
-    logger.info(f"📝 MySQL标题: {mysql_title}")
-    logger.info(f"📝 分析任务标题: {analysis_title}")
-    logger.info(f"📄 AI筛选结果预览: {ai_result_stripped[:200]}...")
-    
-    # ========== 保存到MySQL（即使"无重要相关新闻"也要保存） ==========
+    # 保存到MySQL
     mysql_news_id = save_to_mysql(mysql_title, ai_result_stripped, news_timestamp)
-    if mysql_news_id:
-        logger.info(f"✅ MySQL保存成功 - news_id: {mysql_news_id}")
-    else:
-        logger.warning("⚠️ MySQL保存失败，继续执行后续流程")
     
     # 检查是否无重要新闻
     if "无重要相关新闻" in ai_result_stripped:
-        logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过analysis_task入库")
-        # 仍然标记新闻为已处理并删除
         mark_news_as_processed(news_ids)
         delete_old_processed_news()
-        logger.info("✅ 新闻已标记处理完成（无需创建分析任务），旧数据已清理")
-        logger.info(f"{'='*60}\n")
+        logger.info(f"[{time_label}] 完成: {len(news_ids)}条->无重要新闻, MySQL:{mysql_news_id or '失败'}")
         return
     
     # 构建完整的分析提示词
     prompt = build_analysis_prompt(ai_result_stripped)
     
-    # 保存到 analysis_task 表（使用分析标题）
+    # 保存到 analysis_task 表
     task_id = save_analysis_task(analysis_title, prompt, start_time)
     
     if task_id:
-        # 标记新闻为已处理
         mark_news_as_processed(news_ids)
-        
-        # 删除已处理的新闻
         delete_old_processed_news()
-        
-        logger.info("✅ 新闻处理完成")
+        logger.info(f"[{time_label}] 完成: {len(news_ids)}条->任务{task_id}, MySQL:{mysql_news_id or '失败'}")
     else:
-        logger.error("❌ 分析任务保存失败，不删除新闻数据")
-    
-    logger.info(f"{'='*60}\n")
+        logger.error(f"[{time_label}] 失败: 分析任务保存失败, 待处理{len(news_ids)}条")
 
 
 # ==================== Flask路由 ====================
@@ -1124,10 +1069,6 @@ def capture_data():
         # 获取新闻列表
         captured_data = data.get('capturedData', [])
         
-        # 调试：打印第一条数据查看结构
-        if captured_data:
-            logger.info(f"🔍 调试 - 第一条原始数据: {captured_data[0]}")
-        
         if not captured_data:
             return jsonify({
                 'success': False,
@@ -1142,7 +1083,7 @@ def capture_data():
                 'publishedAt': item.get('publishedAt'),
                 'headline': item.get('headline'),
                 'brand': brand,
-                'url': item.get('url') or ''  # 使用 or 处理 None 值
+                'url': item.get('url') or ''
             }
             
             if save_news_to_db(news_item):
@@ -1151,7 +1092,8 @@ def capture_data():
         # 获取当前待处理总数
         total_count = get_pending_news_count()
         
-        logger.info(f'✅ 新闻接收成功 - 新增: {added_count} 条 | 待处理总计: {total_count} 条')
+        if added_count > 0:
+            logger.info(f'接收: +{added_count}, 总计: {total_count}')
         
         return jsonify({
             'success': True,
@@ -1161,7 +1103,7 @@ def capture_data():
         }), 200
         
     except Exception as e:
-        logger.error(f'❌ 数据接收失败: {e}')
+        logger.error(f'接收失败: {e}')
         return jsonify({
             'success': False,
             'message': f'保存失败: {str(e)}'
@@ -1250,10 +1192,6 @@ def process_all_pending_news_for_test():
     """
     now = datetime.now()
     
-    logger.info(f"\n{'='*60}")
-    logger.info(f"🧪 [测试模式] 开始处理所有待处理新闻")
-    logger.info(f"{'='*60}")
-    
     # 获取所有待处理的新闻（不限时间范围）
     conn = None
     try:
@@ -1271,17 +1209,13 @@ def process_all_pending_news_for_test():
         target_news = [dict(row) for row in rows]
         
     except Exception as e:
-        logger.error(f"❌ 获取待处理新闻失败: {e}")
+        logger.error(f"[测试] 获取新闻失败: {e}")
         return {'success': False, 'message': f'获取新闻失败: {str(e)}', 'processed': 0}
     finally:
         if conn:
             conn.close()
     
-    logger.info(f"📊 找到 {len(target_news)} 条待处理新闻")
-    
     if len(target_news) == 0:
-        logger.info("ℹ️ 没有需要处理的新闻")
-        logger.info(f"{'='*60}\n")
         return {'success': True, 'message': '没有需要处理的新闻', 'processed': 0}
     
     # 获取新闻ID列表
@@ -1302,8 +1236,7 @@ def process_all_pending_news_for_test():
     ai_result = call_ai_api(news_for_ai)
     
     if ai_result is None:
-        logger.error("❌ AI筛选失败，本次任务终止")
-        logger.info(f"{'='*60}\n")
+        logger.error(f"[测试] 失败: AI筛选失败, 待处理{len(target_news)}条")
         return {'success': False, 'message': 'AI筛选失败', 'processed': 0}
     
     # 构建标题（测试模式）
@@ -1330,25 +1263,14 @@ def process_all_pending_news_for_test():
     # 计算新闻时间戳（测试模式使用当前时间）
     news_timestamp = int(now.timestamp())
     
-    logger.info(f"📝 MySQL标题: {mysql_title}")
-    logger.info(f"📝 分析任务标题: {analysis_title}")
-    logger.info(f"📄 AI筛选结果预览: {ai_result_stripped[:200]}...")
-    
-    # ========== 保存到MySQL（即使"无重要相关新闻"也要保存） ==========
+    # 保存到MySQL
     mysql_news_id = save_to_mysql(mysql_title, ai_result_stripped, news_timestamp)
-    if mysql_news_id:
-        logger.info(f"✅ MySQL保存成功 - news_id: {mysql_news_id}")
-    else:
-        logger.warning("⚠️ MySQL保存失败，继续执行后续流程")
     
     # 检查是否无重要新闻
     if "无重要相关新闻" in ai_result_stripped:
-        logger.info("ℹ️ AI筛选结果：无重要相关新闻，跳过analysis_task入库")
-        # 仍然标记新闻为已处理并删除
         mark_news_as_processed(news_ids)
         delete_old_processed_news()
-        logger.info("✅ 测试处理完成（无重要新闻，未创建分析任务）")
-        logger.info(f"{'='*60}\n")
+        logger.info(f"[测试] 完成: {len(news_ids)}条->无重要新闻, MySQL:{mysql_news_id or '失败'}")
         return {
             'success': True, 
             'message': '无重要相关新闻，已清理原始数据', 
@@ -1360,18 +1282,13 @@ def process_all_pending_news_for_test():
     # 构建完整的分析提示词
     prompt = build_analysis_prompt(ai_result_stripped)
     
-    # 保存到 analysis_task 表（使用分析标题）
+    # 保存到 analysis_task 表
     task_id = save_analysis_task(analysis_title, prompt, now)
     
     if task_id:
-        # 标记新闻为已处理
         mark_news_as_processed(news_ids)
-        
-        # 删除已处理的新闻
         delete_old_processed_news()
-        
-        logger.info("✅ 测试处理完成")
-        logger.info(f"{'='*60}\n")
+        logger.info(f"[测试] 完成: {len(news_ids)}条->任务{task_id}, MySQL:{mysql_news_id or '失败'}")
         return {
             'success': True, 
             'message': f'处理完成，已创建分析任务 ID: {task_id}', 
@@ -1380,8 +1297,7 @@ def process_all_pending_news_for_test():
             'mysql_news_id': mysql_news_id
         }
     else:
-        logger.error("❌ 分析任务保存失败")
-        logger.info(f"{'='*60}\n")
+        logger.error(f"[测试] 失败: 分析任务保存失败, 待处理{len(news_ids)}条")
         return {'success': False, 'message': '分析任务保存失败', 'processed': 0}
 
 
@@ -1395,7 +1311,7 @@ def process_test():
         result = process_all_pending_news_for_test()
         return jsonify(result), 200 if result['success'] else 500
     except Exception as e:
-        logger.error(f"❌ 测试处理失败: {e}")
+        logger.error(f"[测试] 异常: {e}")
         return jsonify({
             'success': False,
             'message': str(e),
@@ -1414,55 +1330,35 @@ def signal_handler(signum, frame):
     """信号处理器，用于优雅退出"""
     global shutdown_flag
     signal_name = signal.Signals(signum).name
-    logger.info(f"收到信号 {signal_name}，准备优雅退出...")
-    print(f"\n🛑 收到停止信号 {signal_name}，正在安全停止服务...")
     
     shutdown_flag = True
     
     # 停止调度器
     if scheduler:
-        logger.info("正在停止定时任务调度器...")
         scheduler.shutdown(wait=False)
-        logger.info("定时任务调度器已停止")
     
-    logger.info("服务已安全停止")
+    logger.info(f"服务停止 (信号: {signal_name})")
     sys.exit(0)
 
 
 if __name__ == '__main__':
-    logger.info('='*60)
-    logger.info('🚀 Bloomberg新闻处理服务启动')
-    logger.info(f'📍 监听端口: {SERVICE_PORT}')
-    logger.info(f'💾 数据库路径: {DB_PATH.absolute()}')
-    logger.info(f'🔗 接收接口: http://localhost:{SERVICE_PORT}/api/capture')
-    logger.info(f'💚 健康检查: http://localhost:{SERVICE_PORT}/api/health')
-    logger.info(f'📊 统计信息: http://localhost:{SERVICE_PORT}/api/stats')
-    logger.info('='*60)
-    
     # 注册信号处理器
     signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)  # kill命令
-    logger.info("✅ 信号处理器已注册")
     
     # 启动定时任务调度器
     scheduler = BackgroundScheduler()
-    
-    # 添加定时任务：每天的 5:30、11:30、17:30、23:30 执行
     scheduler.add_job(process_news_task, 'cron', hour='5,11,17,23', minute=30)
-    
     scheduler.start()
-    logger.info('⏰ 定时任务已启动 (每天5:30、11:30、17:30、23:30执行)')
     
-    # 打印下次执行时间
+    # 打印启动信息
     jobs = scheduler.get_jobs()
-    if jobs:
-        next_run_time = jobs[0].next_run_time
-        logger.info(f'📅 下次执行时间: {next_run_time.strftime("%Y-%m-%d %H:%M:%S")}')
+    next_run = jobs[0].next_run_time.strftime("%Y-%m-%d %H:%M:%S") if jobs else "未知"
+    logger.info(f'Bloomberg服务启动 | 端口:{SERVICE_PORT} | 下次执行:{next_run}')
     
     try:
-        # 启动Flask服务
         app.run(host='0.0.0.0', port=SERVICE_PORT, debug=False, use_reloader=False)
     except (KeyboardInterrupt, SystemExit):
         if scheduler:
             scheduler.shutdown()
-        logger.info('👋 服务已停止')
+        logger.info('服务停止')

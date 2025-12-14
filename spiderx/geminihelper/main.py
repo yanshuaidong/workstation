@@ -13,7 +13,6 @@ from flask_cors import CORS
 import pymysql
 import sqlite3
 import os
-import json
 import time
 import logging
 from logging.handlers import RotatingFileHandler
@@ -26,22 +25,22 @@ LOG_FILE = os.path.join(os.path.dirname(__file__), 'gemini_helper.log')
 
 # 创建日志记录器
 logger = logging.getLogger('gemini_helper')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
-# 日志格式
+# 简洁日志格式
 log_formatter = logging.Formatter(
-    '%(asctime)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s',
+    '%(asctime)s | %(levelname)s | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# 文件处理器（带日志轮转，最大10MB，保留5个备份）
+# 文件处理器（带日志轮转，最大5MB，保留3个备份）
 file_handler = RotatingFileHandler(
     LOG_FILE,
-    maxBytes=10*1024*1024,
-    backupCount=5,
+    maxBytes=5*1024*1024,
+    backupCount=3,
     encoding='utf-8'
 )
-file_handler.setLevel(logging.DEBUG)
+file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(log_formatter)
 
 # 控制台处理器
@@ -124,7 +123,7 @@ def get_unanalyzed_tasks():
                 'created_at': row[4]
             })
         
-        logger.info(f"从本地数据库获取到 {len(tasks)} 个 Gemini 待分析任务")
+        logger.info(f"[获取任务] 待分析: {len(tasks)} 个")
         
         return {
             'success': True,
@@ -133,7 +132,7 @@ def get_unanalyzed_tasks():
         }
         
     except Exception as e:
-        logger.error(f"查询本地数据库失败: {e}")
+        logger.error(f"[获取任务] 失败: {e}")
         return {
             'success': False,
             'message': f'查询本地数据库失败: {str(e)}',
@@ -182,15 +181,6 @@ def update_task_status(task_id, ai_result):
         
         conn.commit()
         
-        # 检查是否全部完成
-        cursor.execute("SELECT gemini_analyzed, chatgpt_analyzed FROM analysis_task WHERE id = ?", (task_id,))
-        row = cursor.fetchone()
-        if row:
-            gemini_done, chatgpt_done = row[0], row[1]
-            logger.info(f"任务 {task_id} 状态: Gemini={gemini_done}, ChatGPT={chatgpt_done}")
-        
-        logger.info(f"本地数据库 Gemini 分析状态已更新: task_id={task_id}")
-        
         return {
             'success': True,
             'message': 'Gemini 分析状态已更新'
@@ -199,7 +189,7 @@ def update_task_status(task_id, ai_result):
     except Exception as e:
         if conn:
             conn.rollback()
-        logger.error(f"更新任务状态失败: {e}")
+        logger.error(f"[更新状态] 任务{task_id}失败: {e}")
         return {
             'success': False,
             'message': f'更新任务状态失败: {str(e)}'
@@ -259,13 +249,13 @@ def save_to_database(title, content, task_id=None):
         
         conn.commit()
         
-        logger.info(f"阿里云数据库成功保存: news_id={news_id}, title={title}")
-        
         # 如果有本地任务ID，更新本地数据库状态
         if task_id:
             update_result = update_task_status(task_id, content)
             if not update_result['success']:
-                logger.warning(f"本地数据库更新失败: {update_result['message']}")
+                logger.error(f"[保存结果] 本地状态更新失败: {update_result['message']}")
+        
+        logger.info(f"[保存结果] 成功 news_id={news_id}")
         
         return {
             'success': True,
@@ -276,7 +266,7 @@ def save_to_database(title, content, task_id=None):
     except Exception as e:
         if conn:
             conn.rollback()
-        logger.error(f"数据库保存失败: {e}")
+        logger.error(f"[保存结果] 失败: {e}")
         return {
             'success': False,
             'message': f'数据库保存失败: {str(e)}'
@@ -311,14 +301,10 @@ def get_tasks():
     """
     try:
         result = get_unanalyzed_tasks()
-        
-        if result['success']:
-            logger.info(f"成功返回 {result['count']} 个待分析任务")
-        
         return jsonify(result), 200
         
     except Exception as e:
-        logger.error(f"获取任务列表失败: {e}")
+        logger.error(f"[获取任务] API异常: {e}")
         return jsonify({
             'success': False,
             'message': str(e),
@@ -351,8 +337,6 @@ def save_result():
         content = data['content']
         task_id = data.get('task_id')  # 可选参数
         
-        logger.info(f"收到保存请求 - 标题: {title}, 内容长度: {len(content)}, 任务ID: {task_id}")
-        
         # 保存到阿里云数据库（同时会更新本地数据库状态）
         db_result = save_to_database(title, content, task_id)
         
@@ -366,7 +350,7 @@ def save_result():
         }), 200
         
     except Exception as e:
-        logger.error(f"保存结果时出错: {str(e)}")
+        logger.error(f"[保存结果] API异常: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
@@ -396,26 +380,15 @@ def test_db_connection():
 # ==================== 启动服务 ====================
 
 if __name__ == '__main__':
-    logger.info("=" * 60)
-    logger.info("Gemini Helper 后端服务启动中...")
-    logger.info(f"日志文件: {LOG_FILE}")
-    logger.info(f"本地数据库: {LOCAL_DB_PATH}")
-    logger.info(f"阿里云数据库: {DB_CONFIG['host']}/{DB_CONFIG['database']}")
-    logger.info("服务地址: http://localhost:1124")
-    logger.info("=" * 60)
+    # 启动检查
+    db_ok = test_db_connection()
+    local_ok = os.path.exists(LOCAL_DB_PATH)
     
-    # 测试阿里云数据库连接
-    if test_db_connection():
-        logger.info("✅ 阿里云数据库连接成功")
-    else:
-        logger.warning("⚠️  阿里云数据库连接失败，请检查配置")
+    logger.info(f"[启动] Gemini Helper | 端口:1124 | 云DB:{'✓' if db_ok else '✗'} | 本地DB:{'✓' if local_ok else '✗'}")
     
-    # 测试本地数据库
-    if os.path.exists(LOCAL_DB_PATH):
-        logger.info("✅ 本地数据库文件存在")
-    else:
-        logger.warning("⚠️  本地数据库文件不存在")
-    
-    logger.info("=" * 60)
+    if not db_ok:
+        logger.error("[启动] 阿里云数据库连接失败")
+    if not local_ok:
+        logger.error("[启动] 本地数据库不存在")
     
     app.run(host='0.0.0.0', port=1124, debug=True)
