@@ -175,13 +175,18 @@
     const maxWaitTime = 300000; // 5分钟
     const startTime = Date.now();
     const initialVisibleCount = getVisibleCopyButtonCount();
+    console.log(`[Content] 🔍 开始等待响应 | 初始复制按钮数量: ${initialVisibleCount}`);
     
     while (Date.now() - startTime < maxWaitTime) {
       const currentVisibleCount = getVisibleCopyButtonCount();
       
       if (currentVisibleCount > initialVisibleCount) {
+        console.log(`[Content] ✅ 检测到复制按钮数量增加: ${initialVisibleCount} → ${currentVisibleCount}`);
+        
         // 额外等待确保DOM完全渲染
+        console.log(`[Content] ⏳ 等待3秒确保DOM完全渲染...`);
         await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log(`[Content] ⏳ 3秒等待完成，开始提取内容`);
         
         // 获取最后一条助手消息
         const allMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
@@ -190,23 +195,43 @@
           return !messageId.includes('placeholder');
         });
         
+        console.log(`[Content] 📊 消息统计 | 全部助手消息: ${allMessages.length} | 有效消息: ${validMessages.length}`);
+        
         if (validMessages.length > 0) {
           const lastMessage = validMessages[validMessages.length - 1];
+          const messageId = lastMessage.getAttribute('data-message-id') || '无';
+          console.log(`[Content] 📝 最后一条消息 | message-id: ${messageId}`);
+          
           const contentElement = lastMessage.querySelector('[class*="markdown"]');
+          console.log(`[Content] 📝 markdown元素: ${contentElement ? '找到' : '未找到'}`);
+          
           const content = contentElement ? extractTextContent(contentElement) : extractTextContent(lastMessage);
+          console.log(`[Content] 📝 提取内容长度: ${content ? content.length : 0} | 前100字符: ${content ? content.substring(0, 100) : '空'}`);
           
           if (content && content.length > 0) {
             return content;
           }
         }
         
-        throw new Error("未找到助手消息内容");
+        // 更详细的错误信息
+        const errorDetails = {
+          allMessagesCount: allMessages.length,
+          validMessagesCount: validMessages.length,
+          copyButtonCount: currentVisibleCount
+        };
+        throw new Error(`未找到助手消息内容 | 详情: ${JSON.stringify(errorDetails)}`);
+      }
+      
+      // 每10秒打印一次等待状态
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      if (elapsed % 10 === 0 && elapsed > 0) {
+        console.log(`[Content] ⏳ 等待中... | 已等待: ${elapsed}秒 | 当前复制按钮: ${currentVisibleCount} | 初始: ${initialVisibleCount}`);
       }
       
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    throw new Error("等待响应超时");
+    throw new Error(`等待响应超时 | 已等待: ${Math.round(maxWaitTime/1000)}秒 | 最终复制按钮数量: ${getVisibleCopyButtonCount()} | 初始: ${initialVisibleCount}`);
   }
 
 })();
