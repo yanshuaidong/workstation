@@ -156,6 +156,7 @@
       return false;
     }
     
+    // 检查元素自身
     const style = window.getComputedStyle(element);
     if (style.display === 'none') {
       if (debug) console.log('[Visibility] 元素 display: none');
@@ -168,6 +169,27 @@
     if (style.opacity === '0') {
       if (debug) console.log('[Visibility] 元素 opacity: 0');
       return false;
+    }
+    
+    // 检查父元素链的 opacity (关键修复：父元素 opacity 为 0 会导致子元素不可见)
+    let current = element.parentElement;
+    let depth = 0;
+    while (current && current !== document.body && depth < 10) {
+      const parentStyle = window.getComputedStyle(current);
+      if (parentStyle.opacity === '0') {
+        if (debug) console.log(`[Visibility] 父元素 opacity: 0`, { tag: current.tagName, depth });
+        return false;
+      }
+      if (parentStyle.display === 'none') {
+        if (debug) console.log(`[Visibility] 父元素 display: none`, { tag: current.tagName, depth });
+        return false;
+      }
+      if (parentStyle.visibility === 'hidden') {
+        if (debug) console.log(`[Visibility] 父元素 visibility: hidden`, { tag: current.tagName, depth });
+        return false;
+      }
+      current = current.parentElement;
+      depth++;
     }
     
     if (element.offsetParent === null && style.position !== 'fixed') {
@@ -230,21 +252,47 @@
     return visibleCount;
   }
   
+  // 检查是否存在停止按钮（流式传输中）
+  function isStreamingInProgress() {
+    const stopButton = document.querySelector('button[data-testid="stop-button"]');
+    return stopButton !== null;
+  }
+
   async function waitForResponse() {
     const maxWaitTime = 300000; // 5分钟
     const startTime = Date.now();
     
-    // 初始化时开启调试，打印当前状态
-    console.log(`[Content] 🔍 === 开始等待响应，打印初始状态 ===`);
+    // 初始化时打印当前状态
+    console.log(`[Content] 🔍 === 开始等待响应 ===`);
     const initialVisibleCount = getVisibleCopyButtonCount(true);
     console.log(`[Content] 🔍 初始复制按钮数量: ${initialVisibleCount}`);
+    console.log(`[Content] 🔍 当前是否在流式传输中: ${isStreamingInProgress()}`);
     
+    // 等待流式传输开始（停止按钮出现）
+    let streamingStarted = false;
     while (Date.now() - startTime < maxWaitTime) {
+      if (isStreamingInProgress()) {
+        console.log(`[Content] 🚀 检测到流式传输开始（停止按钮出现）`);
+        streamingStarted = true;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    if (!streamingStarted) {
+      console.log(`[Content] ⚠️ 等待流式传输开始超时，继续检查复制按钮...`);
+    }
+    
+    // 等待流式传输结束（停止按钮消失）+ 复制按钮数量增加
+    while (Date.now() - startTime < maxWaitTime) {
+      const isStreaming = isStreamingInProgress();
       const currentVisibleCount = getVisibleCopyButtonCount(false);
       
-      if (currentVisibleCount > initialVisibleCount) {
-        console.log(`[Content] ✅ === 检测到复制按钮数量增加: ${initialVisibleCount} → ${currentVisibleCount}，打印详细信息 ===`);
-        // 数量变化时再次开启调试打印详情
+      // 流式传输结束（停止按钮消失）且复制按钮数量增加
+      if (!isStreaming && currentVisibleCount > initialVisibleCount) {
+        console.log(`[Content] ✅ === 流式传输完成 ===`);
+        console.log(`[Content] ✅ 停止按钮已消失，复制按钮数量: ${initialVisibleCount} → ${currentVisibleCount}`);
+        // 打印详细信息
         getVisibleCopyButtonCount(true);
         
         // 额外等待确保DOM完全渲染
@@ -289,7 +337,7 @@
       // 每10秒打印一次等待状态
       const elapsed = Math.round((Date.now() - startTime) / 1000);
       if (elapsed % 10 === 0 && elapsed > 0) {
-        console.log(`[Content] ⏳ 等待中... | 已等待: ${elapsed}秒 | 当前复制按钮: ${currentVisibleCount} | 初始: ${initialVisibleCount}`);
+        console.log(`[Content] ⏳ 等待中... | 已等待: ${elapsed}秒 | 流式传输中: ${isStreaming} | 复制按钮: ${currentVisibleCount}(初始${initialVisibleCount})`);
       }
       
       await new Promise(resolve => setTimeout(resolve, 1000));
