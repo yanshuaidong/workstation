@@ -19,7 +19,30 @@ function formatTime(isoString) {
   });
 }
 
-// 更新执行记录表格
+// 格式化短时间（只显示时分秒）
+function formatShortTime(isoString) {
+  if (!isoString) return '-';
+  const date = new Date(isoString);
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}
+
+// 生成状态徽章HTML
+function getBadgeHtml(isSuccess, successText = '✓', failText = '✗') {
+  if (isSuccess === undefined || isSuccess === null) {
+    return '<span class="badge badge-warning">-</span>';
+  }
+  return isSuccess 
+    ? `<span class="badge badge-success">${successText}</span>`
+    : `<span class="badge badge-fail">${failText}</span>`;
+}
+
+// 更新执行记录表格（详细版）
 async function updateRecordsTable() {
   const result = await chrome.storage.local.get(['taskRecords']);
   const records = result.taskRecords || [];
@@ -27,38 +50,73 @@ async function updateRecordsTable() {
   const tbody = document.getElementById('recordsTableBody');
   
   if (records.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" class="empty-records">暂无执行记录</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-records">暂无执行记录</td></tr>';
     return;
   }
   
-  // 最新的记录在上面
-  tbody.innerHTML = records.map((record, index) => `
-    <tr>
-      <td>#${records.length - index}</td>
-      <td>${formatTime(record.time)}</td>
-      <td><span class="badge-${record.success ? 'success' : 'fail'}">${record.success ? '✓ 成功' : '✗ 失败'}</span></td>
-    </tr>
-  `).join('');
+  // 最新的记录在上面，显示详细信息
+  tbody.innerHTML = records.map((record, index) => {
+    // 兼容旧格式的记录
+    const websiteReachable = record.websiteReachable !== undefined ? record.websiteReachable : true;
+    const pageLoaded = record.pageLoaded !== undefined ? record.pageLoaded : true;
+    const dataSent = record.dataSent !== undefined ? record.dataSent : record.success;
+    const dataCount = record.dataCount !== undefined ? record.dataCount : '-';
+    const error = record.error || record.websiteError || '';
+    
+    return `
+      <tr>
+        <td>${records.length - index}</td>
+        <td>${formatShortTime(record.time)}</td>
+        <td>${getBadgeHtml(websiteReachable, '可达', '不可达')}</td>
+        <td>${getBadgeHtml(pageLoaded, '✓', '✗')}</td>
+        <td>${getBadgeHtml(dataSent, '✓', '✗')}</td>
+        <td class="data-count">${dataCount}</td>
+        <td>${getBadgeHtml(record.success, '成功', '失败')}</td>
+        <td class="error-cell" title="${error}">${error || '-'}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
-// 添加执行记录
-async function addTaskRecord(success) {
-  const result = await chrome.storage.local.get(['taskRecords']);
-  const records = result.taskRecords || [];
+// 更新健康状态显示
+async function updateHealthStatus() {
+  console.log('🏥 更新健康状态显示...');
   
-  // 添加新记录到开头（最新的在前面）
-  records.unshift({
-    time: new Date().toISOString(),
-    success: success
-  });
-  
-  // 最多保留100条记录
-  if (records.length > 100) {
-    records.pop();
+  try {
+    const result = await chrome.storage.local.get([
+      'lastTaskSuccess', 
+      'lastDataCount',
+      'lastCaptureSuccess',
+      'lastCaptureDataCount',
+      'lastCaptureError'
+    ]);
+    
+    const lastTaskResultText = document.getElementById('lastTaskResultText');
+    const lastDataCountText = document.getElementById('lastDataCountText');
+    
+    // 上次任务结果
+    if (result.lastTaskSuccess !== undefined) {
+      if (result.lastTaskSuccess) {
+        lastTaskResultText.textContent = '✅ 成功';
+        lastTaskResultText.className = 'status-value active';
+      } else {
+        lastTaskResultText.textContent = '❌ 失败';
+        lastTaskResultText.className = 'status-value error';
+      }
+    }
+    
+    // 上次发送数据条数
+    if (result.lastDataCount !== undefined) {
+      lastDataCountText.textContent = `${result.lastDataCount} 条`;
+      lastDataCountText.className = result.lastDataCount > 0 ? 'status-value active' : 'status-value warning';
+    } else if (result.lastCaptureDataCount !== undefined) {
+      lastDataCountText.textContent = `${result.lastCaptureDataCount} 条`;
+      lastDataCountText.className = result.lastCaptureDataCount > 0 ? 'status-value active' : 'status-value warning';
+    }
+    
+  } catch (error) {
+    console.error('❌ 更新健康状态失败:', error);
   }
-  
-  await chrome.storage.local.set({ taskRecords: records });
-  await updateRecordsTable();
 }
 
 // 更新定时任务状态显示
@@ -100,12 +158,106 @@ async function updateSchedulerStatus() {
       lastRefreshText.textContent = formatTime(status.lastRefreshTime);
       nextRefreshText.textContent = formatTime(status.nextRefreshTime);
       
+      // 更新健康状态显示（使用status中的信息）
+      const lastTaskResultText = document.getElementById('lastTaskResultText');
+      const lastDataCountText = document.getElementById('lastDataCountText');
+      
+      if (status.lastTaskSuccess !== undefined) {
+        if (status.lastTaskSuccess) {
+          lastTaskResultText.textContent = '✅ 成功';
+          lastTaskResultText.className = 'status-value active';
+        } else {
+          lastTaskResultText.textContent = '❌ 失败';
+          lastTaskResultText.className = 'status-value error';
+        }
+      }
+      
+      if (status.lastDataCount !== undefined) {
+        lastDataCountText.textContent = `${status.lastDataCount} 条`;
+        lastDataCountText.className = status.lastDataCount > 0 ? 'status-value active' : 'status-value warning';
+      }
+      
       console.log('✅ 状态显示已更新');
     }
   } catch (error) {
     console.error('❌ 更新状态失败:', error);
   }
 }
+
+// ==================== 健康检查功能 ====================
+
+// 检查网站健康状态
+document.getElementById('checkHealthBtn').addEventListener('click', async () => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('🏥 检查网站健康状态');
+  
+  const btn = document.getElementById('checkHealthBtn');
+  const websiteHealthText = document.getElementById('websiteHealthText');
+  
+  btn.disabled = true;
+  btn.textContent = '⏳ 检测中...';
+  websiteHealthText.textContent = '检测中...';
+  websiteHealthText.className = 'status-value';
+  
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'CHECK_WEBSITE_HEALTH' });
+    
+    if (response.reachable) {
+      websiteHealthText.textContent = '✅ 可达';
+      websiteHealthText.className = 'status-value active';
+      console.log('✅ 网站可达');
+    } else {
+      websiteHealthText.textContent = `❌ 不可达: ${response.error || '未知错误'}`;
+      websiteHealthText.className = 'status-value error';
+      console.log('❌ 网站不可达:', response.error);
+    }
+  } catch (error) {
+    websiteHealthText.textContent = `❌ 检测失败: ${error.message}`;
+    websiteHealthText.className = 'status-value error';
+    console.error('❌ 检测失败:', error);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 检查网站状态';
+  }
+  
+  console.log('═══════════════════════════════════════════════');
+});
+
+// 手动刷新一次
+document.getElementById('manualRefreshBtn').addEventListener('click', async () => {
+  console.log('═══════════════════════════════════════════════');
+  console.log('🔄 手动刷新一次');
+  
+  const btn = document.getElementById('manualRefreshBtn');
+  
+  btn.disabled = true;
+  btn.textContent = '⏳ 刷新中...';
+  
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'MANUAL_REFRESH' });
+    
+    if (response.success) {
+      console.log('✅ 手动刷新已触发');
+      // 等待一下再更新状态，让background有时间处理
+      setTimeout(async () => {
+        await updateSchedulerStatus();
+        await updateRecordsTable();
+        await updateHealthStatus();
+      }, 2000);
+    } else {
+      console.error('❌ 手动刷新失败:', response.error);
+      alert('刷新失败: ' + response.error);
+    }
+  } catch (error) {
+    console.error('❌ 手动刷新出错:', error);
+    alert('刷新失败: ' + error.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 手动刷新一次';
+  }
+  
+  console.log('═══════════════════════════════════════════════');
+});
 
 // 启动定时任务
 document.getElementById('startSchedulerBtn').addEventListener('click', async () => {
@@ -239,8 +391,10 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
       console.log('🔔 检测到新的执行记录');
       updateRecordsTable();
     }
-    if (changes.capturedData || changes.schedulerEnabled || changes.lastAutoRefreshTime) {
+    if (changes.capturedData || changes.schedulerEnabled || changes.lastAutoRefreshTime || 
+        changes.lastTaskSuccess || changes.lastDataCount) {
       updateSchedulerStatus();
+      updateHealthStatus();
     }
   }
 });
@@ -249,9 +403,32 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 console.log('🔄 初始化界面...');
 updateSchedulerStatus();
 updateRecordsTable();
+updateHealthStatus();
+
+// 启动时自动检查一次网站健康状态
+setTimeout(async () => {
+  console.log('🏥 启动时自动检查网站健康状态...');
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'CHECK_WEBSITE_HEALTH' });
+    const websiteHealthText = document.getElementById('websiteHealthText');
+    
+    if (response.reachable) {
+      websiteHealthText.textContent = '✅ 可达';
+      websiteHealthText.className = 'status-value active';
+    } else {
+      websiteHealthText.textContent = `❌ 不可达: ${response.error || '未知错误'}`;
+      websiteHealthText.className = 'status-value error';
+    }
+  } catch (error) {
+    console.error('❌ 自动健康检查失败:', error);
+  }
+}, 500);
 
 // 每5秒自动更新一次状态
-setInterval(updateSchedulerStatus, 5000);
+setInterval(() => {
+  updateSchedulerStatus();
+  updateHealthStatus();
+}, 5000);
 
 console.log('✅ Popup 初始化完成');
 console.log('═══════════════════════════════════════════════');

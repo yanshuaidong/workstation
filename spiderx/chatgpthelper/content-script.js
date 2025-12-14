@@ -259,7 +259,7 @@
   }
 
   async function waitForResponse() {
-    const maxWaitTime = 300000; // 5分钟
+    const maxWaitTime = 600000; // 10分钟
     const startTime = Date.now();
     
     // 初始化时打印当前状态

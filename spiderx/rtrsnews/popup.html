@@ -6,7 +6,7 @@
   <title>Reuters API拦截器</title>
   <style>
     body {
-      width: 700px;
+      width: 780px;
       min-height: 500px;
       padding: 20px;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -101,6 +101,12 @@
       flex: 1;
       background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
     }
+    .btn-refresh {
+      background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+    }
+    .btn-health {
+      background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+    }
     .scheduler-status {
       background-color: white;
       border: 1px solid #e0e0e0;
@@ -132,10 +138,18 @@
     .status-value.inactive {
       color: #999;
     }
+    .status-value.error {
+      color: #e74c3c;
+      font-weight: bold;
+    }
+    .status-value.warning {
+      color: #f39c12;
+      font-weight: bold;
+    }
     .records-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 13px;
+      font-size: 12px;
       background: white;
       border-radius: 6px;
       overflow: hidden;
@@ -145,13 +159,15 @@
       color: white;
     }
     .records-table th {
-      padding: 10px;
+      padding: 8px 6px;
       text-align: left;
       font-weight: 600;
+      white-space: nowrap;
     }
     .records-table td {
-      padding: 8px 10px;
+      padding: 6px;
       border-bottom: 1px solid #f0f0f0;
+      vertical-align: middle;
     }
     .records-table tbody tr:hover {
       background-color: #f8f9fa;
@@ -159,23 +175,29 @@
     .records-table tbody tr:last-child td {
       border-bottom: none;
     }
-    .badge-success {
+    .badge {
       display: inline-block;
-      padding: 3px 8px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-success {
       background-color: #d4edda;
       color: #155724;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 600;
     }
     .badge-fail {
-      display: inline-block;
-      padding: 3px 8px;
       background-color: #f8d7da;
       color: #721c24;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 600;
+    }
+    .badge-warning {
+      background-color: #fff3cd;
+      color: #856404;
+    }
+    .badge-info {
+      background-color: #d1ecf1;
+      color: #0c5460;
     }
     .empty-records {
       text-align: center;
@@ -241,11 +263,77 @@
       color: #856404;
       border: 1px solid #ffeeba;
     }
+    .health-section {
+      background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+      border: none;
+    }
+    .health-section .section-title {
+      color: white;
+    }
+    .health-info {
+      background: white;
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+    .health-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .health-row:last-child {
+      border-bottom: none;
+    }
+    .error-cell {
+      max-width: 200px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: help;
+    }
+    .data-count {
+      font-weight: bold;
+      color: #2980b9;
+    }
+    .quick-actions {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .quick-actions button {
+      flex: 1;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>📰 Reuters News API 拦截器</h1>
+    
+    <!-- 网站健康状态面板 -->
+    <div class="section health-section">
+      <div class="section-title">🏥 网站健康状态</div>
+      <div class="quick-actions">
+        <button id="checkHealthBtn" class="btn-health">🔍 检查网站状态</button>
+        <button id="manualRefreshBtn" class="btn-refresh">🔄 手动刷新一次</button>
+      </div>
+      <div class="health-info">
+        <div class="health-row">
+          <span class="status-label">Reuters网站:</span>
+          <span id="websiteHealthText" class="status-value">未检测</span>
+        </div>
+        <div class="health-row">
+          <span class="status-label">上次任务结果:</span>
+          <span id="lastTaskResultText" class="status-value">-</span>
+        </div>
+        <div class="health-row">
+          <span class="status-label">上次发送数据:</span>
+          <span id="lastDataCountText" class="status-value">-</span>
+        </div>
+      </div>
+    </div>
     
     <!-- 测试功能面板 -->
     <div class="section test-section">
@@ -289,21 +377,26 @@
     <!-- 定时任务记录表格 -->
     <div class="section">
       <div class="records-header">
-        <div class="section-title">📊 执行记录</div>
+        <div class="section-title">📊 执行记录（详细）</div>
         <button id="clearRecordsBtn" class="clear-records-btn">清空记录</button>
       </div>
-      <div style="max-height: 300px; overflow-y: auto;">
+      <div style="max-height: 350px; overflow-y: auto;">
         <table class="records-table">
           <thead>
             <tr>
-              <th>次数</th>
+              <th>#</th>
               <th>执行时间</th>
-              <th>状态</th>
+              <th>网站</th>
+              <th>页面</th>
+              <th>发送</th>
+              <th>数据条数</th>
+              <th>结果</th>
+              <th>错误信息</th>
             </tr>
           </thead>
           <tbody id="recordsTableBody">
             <tr>
-              <td colspan="3" class="empty-records">暂无执行记录</td>
+              <td colspan="8" class="empty-records">暂无执行记录</td>
             </tr>
           </tbody>
         </table>
