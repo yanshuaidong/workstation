@@ -74,14 +74,14 @@
       if (response.ok) {
         const result = await response.json();
         safeLog('✅ 数据已发送到本地服务器:', result);
-        return true;
+        return { success: true, filteredData };
       } else {
         console.error('❌ 服务器响应错误:', response.status, response.statusText);
-        return false;
+        return { success: false, filteredData };
       }
     } catch (err) {
       console.error('❌ 发送到本地服务器失败:', err.message);
-      return false;
+      return { success: false, filteredData: { capturedData: [] } };
     }
   };
   
@@ -108,7 +108,9 @@
       
       try {
         // 1. 发送到本地服务器（发送过滤后的数据）
-        const serverSuccess = await sendToLocalServer(capturedData);
+        const serverResult = await sendToLocalServer(capturedData);
+        const serverSuccess = serverResult.success;
+        const filteredData = serverResult.filteredData;
         
         // 2. 浏览器只保存简要信息（时间和状态）
         safeLog('💾 正在保存简要记录到 chrome.storage...');
