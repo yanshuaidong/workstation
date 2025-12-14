@@ -23,6 +23,7 @@ SERVICES=(
     "chatgpthelper"
     "clsnewscraper"
     "eastfutuscraper"
+    "futurestop10"
     "geminihelper"
     "gthtposiscraper"
     "rtrsnews"
