@@ -1,0 +1,10 @@
+# 期货单边行情识别与机器学习策略 - 依赖包
+# 安装命令: pip install -r requirements.txt
+
+pandas>=1.5.0
+numpy>=1.21.0
+scikit-learn>=1.0.0
+lightgbm>=3.3.0
+matplotlib>=3.5.0
+joblib>=1.1.0
+
