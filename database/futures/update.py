@@ -34,8 +34,8 @@ import pandas as pd
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # 数据库路径
 DB_PATH = os.path.join(SCRIPT_DIR, 'futures.db')
-# 映射文件路径（在 tools 目录下）
-MAPPING_PATH = os.path.join(SCRIPT_DIR, '..', '..', 'tools', '获取期货数据', 'futures_mapping.json')
+# 映射文件路径（在同一目录下）
+MAPPING_PATH = os.path.join(SCRIPT_DIR, 'futures_mapping.json')
 # 日志文件路径
 LOG_PATH = os.path.join(SCRIPT_DIR, 'update.log')
 

@@ -56,9 +56,9 @@ class ScannerConfig:
     long_model_path: str = ""
     short_model_path: str = ""
     
-    # 信号阈值（概率）
-    long_threshold: float = 0.63    # 根据回测结果设置
-    short_threshold: float = 0.57   # 根据回测结果设置
+    # 信号阈值（概率）- 基于回测 top 5% 阈值
+    long_threshold: float = 0.5342  # 多头阈值（测试集 top 5%）
+    short_threshold: float = 0.5245 # 空头阈值（测试集 top 5%）
     
     # 风控参数
     stop_loss_pct: float = 0.02     # 2% 止损
@@ -747,8 +747,8 @@ def main():
         long_model_path=str(script_dir / 'models' / 'long_model_lgbm.pkl'),
         short_model_path=str(script_dir / 'models' / 'short_model_lgbm.pkl'),
         portfolio_path=str(script_dir / 'portfolio' / 'positions.json'),
-        long_threshold=0.63,   # 来自回测结果
-        short_threshold=0.57   # 来自回测结果
+        long_threshold=0.5342,  # 来自回测结果（测试集 top 5%）
+        short_threshold=0.5245  # 来自回测结果（测试集 top 5%）
     )
     
     print("=" * 70)
