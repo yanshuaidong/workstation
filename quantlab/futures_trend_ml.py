@@ -517,6 +517,12 @@ def compute_trend_features(close: pd.Series, window: int = 10) -> Tuple[pd.Serie
             y = close.iloc[i-window+1:i+1].values
             x = np.arange(window).reshape(-1, 1)
             
+            # 检查是否包含 NaN 值
+            if np.any(np.isnan(y)):
+                slopes.append(np.nan)
+                r2s.append(np.nan)
+                continue
+            
             # 标准化
             y_mean = y.mean()
             y_std = y.std()
@@ -776,14 +782,29 @@ def train_long_model(
     
     # 评估模型
     y_pred_proba = model.predict_proba(X_valid)[:, 1]
-    y_pred = (y_pred_proba > 0.5).astype(int)
+    
+    # 打印概率分布，帮助选择合适的阈值
+    print(f"\n[模型训练] 验证集概率分布:")
+    print(f"  - Min:  {y_pred_proba.min():.4f}")
+    print(f"  - 25%:  {np.percentile(y_pred_proba, 25):.4f}")
+    print(f"  - 50%:  {np.percentile(y_pred_proba, 50):.4f}")
+    print(f"  - 75%:  {np.percentile(y_pred_proba, 75):.4f}")
+    print(f"  - 90%:  {np.percentile(y_pred_proba, 90):.4f}")
+    print(f"  - 95%:  {np.percentile(y_pred_proba, 95):.4f}")
+    print(f"  - Max:  {y_pred_proba.max():.4f}")
+    
+    # 使用动态阈值：取正样本比例作为阈值参考
+    pos_ratio = y_valid.mean()
+    dynamic_threshold = np.percentile(y_pred_proba, (1 - pos_ratio) * 100)
+    
+    y_pred = (y_pred_proba > dynamic_threshold).astype(int)
     
     auc = roc_auc_score(y_valid, y_pred_proba) if y_valid.sum() > 0 else 0
     acc = accuracy_score(y_valid, y_pred)
     precision = precision_score(y_valid, y_pred, zero_division=0)
     recall = recall_score(y_valid, y_pred, zero_division=0)
     
-    print(f"\n[模型训练] 验证集评估:")
+    print(f"\n[模型训练] 验证集评估 (阈值={dynamic_threshold:.4f}):")
     print(f"  - AUC:       {auc:.4f}")
     print(f"  - Accuracy:  {acc:.4f}")
     print(f"  - Precision: {precision:.4f}")
@@ -867,14 +888,29 @@ def train_short_model(
     
     # 评估模型
     y_pred_proba = model.predict_proba(X_valid)[:, 1]
-    y_pred = (y_pred_proba > 0.5).astype(int)
+    
+    # 打印概率分布
+    print(f"\n[模型训练] 验证集概率分布:")
+    print(f"  - Min:  {y_pred_proba.min():.4f}")
+    print(f"  - 25%:  {np.percentile(y_pred_proba, 25):.4f}")
+    print(f"  - 50%:  {np.percentile(y_pred_proba, 50):.4f}")
+    print(f"  - 75%:  {np.percentile(y_pred_proba, 75):.4f}")
+    print(f"  - 90%:  {np.percentile(y_pred_proba, 90):.4f}")
+    print(f"  - 95%:  {np.percentile(y_pred_proba, 95):.4f}")
+    print(f"  - Max:  {y_pred_proba.max():.4f}")
+    
+    # 使用动态阈值
+    pos_ratio = y_valid.mean()
+    dynamic_threshold = np.percentile(y_pred_proba, (1 - pos_ratio) * 100)
+    
+    y_pred = (y_pred_proba > dynamic_threshold).astype(int)
     
     auc = roc_auc_score(y_valid, y_pred_proba) if y_valid.sum() > 0 else 0
     acc = accuracy_score(y_valid, y_pred)
     precision = precision_score(y_valid, y_pred, zero_division=0)
     recall = recall_score(y_valid, y_pred, zero_division=0)
     
-    print(f"\n[模型训练] 验证集评估:")
+    print(f"\n[模型训练] 验证集评估 (阈值={dynamic_threshold:.4f}):")
     print(f"  - AUC:       {auc:.4f}")
     print(f"  - Accuracy:  {acc:.4f}")
     print(f"  - Precision: {precision:.4f}")
@@ -1208,11 +1244,26 @@ def main():
     auc_test = roc_auc_score(y_test_long, p_long) if y_test_long.sum() > 0 else 0
     print(f"\n[测试集] 多头模型 AUC: {auc_test:.4f}")
     
+    # 打印测试集概率分布
+    print(f"\n[测试集] 多头概率分布:")
+    print(f"  - Min:  {p_long.min():.4f}")
+    print(f"  - 25%:  {np.percentile(p_long, 25):.4f}")
+    print(f"  - 50%:  {np.percentile(p_long, 50):.4f}")
+    print(f"  - 75%:  {np.percentile(p_long, 75):.4f}")
+    print(f"  - 90%:  {np.percentile(p_long, 90):.4f}")
+    print(f"  - 95%:  {np.percentile(p_long, 95):.4f}")
+    print(f"  - Max:  {p_long.max():.4f}")
+    
+    # 动态计算阈值：取 top 20% 的概率作为阈值（约等于正样本比例）
+    pos_ratio = y_test_long.mean()
+    dynamic_threshold = np.percentile(p_long, (1 - pos_ratio) * 100)
+    print(f"\n[回测] 动态阈值 (top {pos_ratio*100:.1f}%): {dynamic_threshold:.4f}")
+    
     # 简单回测
     trades, equity = simple_backtest(
         df_test,
         p_long,
-        threshold_long=0.6,
+        threshold_long=dynamic_threshold,
         max_holding_days=10,
         stop_loss_atr_mult=2.0
     )
