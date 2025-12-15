@@ -66,3 +66,17 @@
    - `contracts_main` 使用 `symbol` 作为主键
    - `hist_*` 表使用 `trade_date` 作为主键
 5. **SQLite优化**: 数据库启用 WAL 模式和 NORMAL 同步级别以提高性能
+
+
+使用方法：
+# 查看所有品种的数据状态
+python update.py --status
+
+# 预览模式（不实际更新）
+python update.py --dry-run
+
+# 更新所有品种
+python update.py
+
+# 只更新指定品种
+python update.py --symbol aum,cum,rbm
