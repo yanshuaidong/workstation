@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>期货持仓数据可视化</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f0f23;
+            --bg-secondary: #1a1a2e;
+            --bg-card: #16213e;
+            --accent-cyan: #00d9ff;
+            --accent-magenta: #ff006e;
+            --accent-gold: #ffd60a;
+            --accent-up: #ff4757;
+            --accent-down: #00ff88;
+            --text-primary: #e8e8e8;
+            --text-secondary: #a0a0b0;
+            --border-color: #2a2a4a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--bg-primary);
+            min-height: 100vh;
+            color: var(--text-primary);
+            background-image: 
+                radial-gradient(ellipse at 20% 20%, rgba(0, 217, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(255, 0, 110, 0.08) 0%, transparent 50%),
+                linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-magenta));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            font-weight: 300;
+        }
+
+        .input-section {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .input-label {
+            display: block;
+            margin-bottom: 12px;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        textarea {
+            width: 100%;
+            height: 180px;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            resize: vertical;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.2);
+        }
+
+        textarea::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 14px 32px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-cyan), #0099cc);
+            color: var(--bg-primary);
+            box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(0, 217, 255, 0.5);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 2px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent-magenta);
+            background: rgba(255, 0, 110, 0.1);
+        }
+
+        .result-section {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 30px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+
+        .result-section.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .result-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .date-badge {
+            background: linear-gradient(135deg, var(--accent-magenta), #cc0055);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            padding: 16px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--bg-secondary);
+            color: var(--accent-cyan);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        th:first-child {
+            border-radius: 8px 0 0 8px;
+        }
+
+        th:last-child {
+            border-radius: 0 8px 8px 0;
+        }
+
+        tr:hover td {
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        td {
+            font-size: 0.95rem;
+        }
+
+        .name-cell {
+            font-weight: 600;
+            color: var(--accent-gold);
+        }
+
+        .family-cell {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .positive {
+            color: var(--accent-up);
+            font-weight: 600;
+        }
+
+        .negative {
+            color: var(--accent-down);
+            font-weight: 600;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-long {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--accent-up);
+            border: 1px solid var(--accent-up);
+        }
+
+        .badge-short {
+            background: rgba(0, 255, 136, 0.15);
+            color: var(--accent-down);
+            border: 1px solid var(--accent-down);
+        }
+
+        .badge-up {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--accent-up);
+        }
+
+        .badge-down {
+            background: rgba(0, 255, 136, 0.15);
+            color: var(--accent-down);
+        }
+
+        .error-msg {
+            background: rgba(255, 71, 87, 0.1);
+            border: 1px solid #ff4757;
+            border-radius: 10px;
+            padding: 16px 20px;
+            color: #ff4757;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error-msg.active {
+            display: block;
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-5px); }
+            40%, 80% { transform: translateX(5px); }
+        }
+
+        .number-cell {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9rem;
+        }
+
+        .table-wrapper {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .btn-remove {
+            background: transparent;
+            border: 1px solid var(--accent-magenta);
+            color: var(--accent-magenta);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-remove:hover {
+            background: var(--accent-magenta);
+            color: var(--bg-primary);
+        }
+
+        .data-count {
+            background: var(--bg-secondary);
+            padding: 6px 14px;
+            border-radius: 15px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .container { padding: 20px 15px; }
+            .input-section, .result-section { padding: 20px; }
+            .btn-group { flex-direction: column; }
+            .btn { width: 100%; }
+            th, td { padding: 12px 8px; font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>期货持仓数据可视化</h1>
+            <p class="subtitle">粘贴JSON数据，一键生成可视化表格</p>
+        </header>
+
+        <div class="input-section">
+            <label class="input-label">📋 粘贴JSON数据</label>
+            <textarea id="jsonInput" placeholder='单条格式: {"date": "2025-12-15", "top3": [...]}
+
+批量格式:
+1、{"date": "2025-12-16", "top3": [...]}
+2、{"date": "2025-12-15", "top3": [...]}
+3、{"date": "2025-12-12", "top3": [...]}'></textarea>
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="visualize()">🚀 可视化</button>
+                <button class="btn btn-primary" onclick="batchImport()" style="background: linear-gradient(135deg, var(--accent-magenta), #cc0055);">📦 批量导入</button>
+                <button class="btn btn-secondary" onclick="clearAll()">🗑️ 清空</button>
+                <button class="btn btn-secondary" onclick="loadSample()">📝 单条示例</button>
+                <button class="btn btn-secondary" onclick="loadBatchSample()">📋 批量示例</button>
+            </div>
+            <div id="errorMsg" class="error-msg"></div>
+        </div>
+
+        <div id="resultSection" class="result-section">
+            <div class="result-header">
+                <span class="result-title">📊 持仓排行榜</span>
+                <span class="data-count" id="dataCount"></span>
+            </div>
+            <div id="tablesContainer">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 存储所有已添加的数据，按日期为key
+        let allDataMap = {};
+
+        function visualize() {
+            const input = document.getElementById('jsonInput').value.trim();
+            const errorMsg = document.getElementById('errorMsg');
+
+            errorMsg.classList.remove('active');
+
+            if (!input) {
+                showError('请输入JSON数据');
+                return;
+            }
+
+            try {
+                const data = JSON.parse(input);
+                
+                if (!data.date || !data.top3 || !Array.isArray(data.top3)) {
+                    showError('JSON格式不正确，需要包含 date 和 top3 数组');
+                    return;
+                }
+
+                // 将数据添加到map中（相同日期会覆盖）
+                allDataMap[data.date] = data;
+                
+                // 清空输入框
+                document.getElementById('jsonInput').value = '';
+                
+                renderAllTables();
+            } catch (e) {
+                showError('JSON解析失败: ' + e.message);
+            }
+        }
+
+        function showError(msg) {
+            const errorMsg = document.getElementById('errorMsg');
+            errorMsg.textContent = '❌ ' + msg;
+            errorMsg.classList.add('active');
+        }
+
+        function renderAllTables() {
+            const resultSection = document.getElementById('resultSection');
+            const tablesContainer = document.getElementById('tablesContainer');
+            const dataCount = document.getElementById('dataCount');
+            
+            // 获取所有日期并按降序排序（最新日期在前）
+            const dates = Object.keys(allDataMap).sort((a, b) => new Date(b) - new Date(a));
+            
+            if (dates.length === 0) {
+                resultSection.classList.remove('active');
+                return;
+            }
+            
+            dataCount.textContent = `共 ${dates.length} 组数据`;
+            tablesContainer.innerHTML = '';
+            
+            dates.forEach((date, index) => {
+                const data = allDataMap[date];
+                const tableWrapper = document.createElement('div');
+                tableWrapper.className = 'table-wrapper';
+                if (index > 0) tableWrapper.style.marginTop = '30px';
+                
+                tableWrapper.innerHTML = `
+                    <div class="table-header">
+                        <span class="date-badge">📅 ${data.date}</span>
+                        <button class="btn-remove" onclick="removeData('${data.date}')">✕ 移除</button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>品种</th>
+                                    <th>板块</th>
+                                    <th>多头持仓</th>
+                                    <th>空头持仓</th>
+                                    <th>净持仓</th>
+                                    <th>净变化</th>
+                                    <th>变化率</th>
+                                    <th>方向</th>
+                                    <th>趋势</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${renderTableRows(data.top3)}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+                tablesContainer.appendChild(tableWrapper);
+            });
+
+            resultSection.classList.add('active');
+        }
+        
+        function renderTableRows(items) {
+            return items.map(item => {
+                const netPosClass = item.net_position >= 0 ? 'positive' : 'negative';
+                const netChangeClass = item.net_change >= 0 ? 'positive' : 'negative';
+                const directionBadge = item.is_net_long 
+                    ? '<span class="badge badge-long">多</span>' 
+                    : '<span class="badge badge-short">空</span>';
+                const trendBadge = item.is_increasing 
+                    ? '<span class="badge badge-up">↑ 增仓</span>' 
+                    : '<span class="badge badge-down">↓ 减仓</span>';
+
+                return `
+                    <tr>
+                        <td class="name-cell">${item.name}</td>
+                        <td class="family-cell">${item.family}</td>
+                        <td class="number-cell">${formatNumber(item.total_buy)}</td>
+                        <td class="number-cell">${formatNumber(item.total_ss)}</td>
+                        <td class="number-cell ${netPosClass}">${formatNumber(item.net_position)}</td>
+                        <td class="number-cell ${netChangeClass}">${item.net_change >= 0 ? '+' : ''}${formatNumber(item.net_change)}</td>
+                        <td class="number-cell">${item.change_ratio.toFixed(2)}%</td>
+                        <td>${directionBadge}</td>
+                        <td>${trendBadge}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function removeData(date) {
+            delete allDataMap[date];
+            renderAllTables();
+        }
+
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+        function clearAll() {
+            document.getElementById('jsonInput').value = '';
+            document.getElementById('errorMsg').classList.remove('active');
+            allDataMap = {};
+            document.getElementById('resultSection').classList.remove('active');
+        }
+
+        function batchImport() {
+            const input = document.getElementById('jsonInput').value.trim();
+            const errorMsg = document.getElementById('errorMsg');
+
+            errorMsg.classList.remove('active');
+
+            if (!input) {
+                showError('请输入数据');
+                return;
+            }
+
+            try {
+                let successCount = 0;
+                let errorList = [];
+                
+                // 方法1：按序号分割 (支持 "1、" "1." "1．" 等格式)
+                const parts = input.split(/\n\s*\n*\s*\d+[、.．:：]\s*/);
+                
+                parts.forEach((part, idx) => {
+                    const trimmed = part.trim();
+                    if (!trimmed || !trimmed.startsWith('{')) return;
+                    
+                    try {
+                        // 提取完整的JSON对象（处理嵌套花括号）
+                        const jsonStr = extractJson(trimmed);
+                        if (jsonStr) {
+                            const data = JSON.parse(jsonStr);
+                            if (data.date && data.top3 && Array.isArray(data.top3)) {
+                                allDataMap[data.date] = data;
+                                successCount++;
+                            }
+                        }
+                    } catch (e) {
+                        errorList.push(idx);
+                    }
+                });
+                
+                if (successCount > 0) {
+                    document.getElementById('jsonInput').value = '';
+                    renderAllTables();
+                    if (errorList.length > 0) {
+                        console.log(`部分数据解析失败: ${errorList.join(', ')}`);
+                    }
+                } else {
+                    showError('未能成功解析任何数据，请检查格式是否正确');
+                }
+                
+            } catch (e) {
+                showError('批量导入失败: ' + e.message);
+            }
+        }
+        
+        // 从字符串中提取完整的JSON对象（处理嵌套花括号）
+        function extractJson(str) {
+            let depth = 0;
+            let start = str.indexOf('{');
+            if (start === -1) return null;
+            
+            for (let i = start; i < str.length; i++) {
+                if (str[i] === '{') depth++;
+                else if (str[i] === '}') depth--;
+                
+                if (depth === 0) {
+                    return str.substring(start, i + 1);
+                }
+            }
+            return null;
+        }
+
+        function loadSample() {
+            const sample = {
+                "date": "2025-12-15",
+                "top3": [
+                    {
+                        "date": "2025-12-15",
+                        "name": "菜油",
+                        "family": "油脂油料",
+                        "total_buy": 11634,
+                        "total_ss": 16223,
+                        "net_position": -4589,
+                        "net_change": -5693,
+                        "change_ratio": 35.09,
+                        "is_net_long": false,
+                        "is_increasing": false
+                    },
+                    {
+                        "date": "2025-12-15",
+                        "name": "烧碱",
+                        "family": "化工",
+                        "total_buy": 24830,
+                        "total_ss": 35952,
+                        "net_position": -11122,
+                        "net_change": -7663,
+                        "change_ratio": 21.31,
+                        "is_net_long": false,
+                        "is_increasing": false
+                    },
+                    {
+                        "date": "2025-12-15",
+                        "name": "三十债",
+                        "family": "国债",
+                        "total_buy": 17762,
+                        "total_ss": 11403,
+                        "net_position": 6359,
+                        "net_change": 2316,
+                        "change_ratio": 13.04,
+                        "is_net_long": true,
+                        "is_increasing": true
+                    }
+                ]
+            };
+            document.getElementById('jsonInput').value = JSON.stringify(sample, null, 2);
+        }
+
+        function loadBatchSample() {
+            const batchSample = `1、{"date": "2025-12-16", "top3": [{"date": "2025-12-16", "name": "苹果", "family": "农副", "total_buy": 13407, "total_ss": 10406, "net_position": 3001, "net_change": 2232, "change_ratio": 16.65, "is_net_long": true, "is_increasing": true}, {"date": "2025-12-16", "name": "红枣", "family": "农副", "total_buy": 9392, "total_ss": 14668, "net_position": -5276, "net_change": -2046, "change_ratio": 13.95, "is_net_long": false, "is_increasing": false}]}
+
+2、{"date": "2025-12-15", "top3": [{"date": "2025-12-15", "name": "菜油", "family": "油脂油料", "total_buy": 11634, "total_ss": 16223, "net_position": -4589, "net_change": -5693, "change_ratio": 35.09, "is_net_long": false, "is_increasing": false}, {"date": "2025-12-15", "name": "烧碱", "family": "化工", "total_buy": 24830, "total_ss": 35952, "net_position": -11122, "net_change": -7663, "change_ratio": 21.31, "is_net_long": false, "is_increasing": false}]}
+
+3、{"date": "2025-12-12", "top3": [{"date": "2025-12-12", "name": "豆二", "family": "油脂油料", "total_buy": 20054, "total_ss": 30504, "net_position": -10450, "net_change": -8895, "change_ratio": 29.16, "is_net_long": false, "is_increasing": false}]}`;
+            document.getElementById('jsonInput').value = batchSample;
+        }
+    </script>
+</body>
+</html>
