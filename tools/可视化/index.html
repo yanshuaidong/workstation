@@ -404,8 +404,12 @@
                 return;
             }
 
+            console.log('========== 单条导入开始 ==========');
+            console.log('输入内容前200字符:', input.substring(0, 200));
+
             try {
                 const data = JSON.parse(input);
+                console.log('解析成功, date:', data.date);
                 
                 if (!data.date || !data.top3 || !Array.isArray(data.top3)) {
                     showError('JSON格式不正确，需要包含 date 和 top3 数组');
@@ -413,13 +417,16 @@
                 }
 
                 // 将数据添加到map中（相同日期会覆盖）
+                console.log('添加到allDataMap, date:', data.date);
                 allDataMap[data.date] = data;
+                console.log('当前allDataMap中的日期:', Object.keys(allDataMap).sort());
                 
                 // 清空输入框
                 document.getElementById('jsonInput').value = '';
                 
                 renderAllTables();
             } catch (e) {
+                console.log('JSON解析失败:', e.message);
                 showError('JSON解析失败: ' + e.message);
             }
         }
@@ -431,12 +438,18 @@
         }
 
         function renderAllTables() {
+            console.log('========== renderAllTables 开始 ==========');
+            console.log('allDataMap中的所有日期:', Object.keys(allDataMap));
+            
             const resultSection = document.getElementById('resultSection');
             const tablesContainer = document.getElementById('tablesContainer');
             const dataCount = document.getElementById('dataCount');
             
             // 获取所有日期并按降序排序（最新日期在前）
             const dates = Object.keys(allDataMap).sort((a, b) => new Date(b) - new Date(a));
+            
+            console.log('排序后的日期列表:', dates);
+            console.log('日期数量:', dates.length);
             
             if (dates.length === 0) {
                 resultSection.classList.remove('active');
@@ -539,31 +552,60 @@
                 return;
             }
 
+            console.log('========== 批量导入开始 ==========');
+            console.log('原始输入长度:', input.length);
+            console.log('原始输入内容:\n', input);
+
             try {
                 let successCount = 0;
                 let errorList = [];
                 
-                // 方法1：按序号分割 (支持 "1、" "1." "1．" 等格式)
-                const parts = input.split(/\n\s*\n*\s*\d+[、.．:：]\s*/);
+                // 方法1：按序号分割 (支持 "1、" "1." "1．" 等格式，包括开头的序号)
+                const parts = input.split(/(?:^|\n)\s*\d+[、.．:：]\s*/);
                 
+                console.log('分割后的parts数量:', parts.length);
                 parts.forEach((part, idx) => {
-                    const trimmed = part.trim();
-                    if (!trimmed || !trimmed.startsWith('{')) return;
+                    console.log(`--- Part ${idx} ---`);
+                    console.log('Part内容前100字符:', part.substring(0, 100));
+                    
+                    // 清理可能残留的序号前缀
+                    let trimmed = part.trim();
+                    trimmed = trimmed.replace(/^\d+[、.．:：]\s*/, '');
+                    
+                    if (!trimmed || !trimmed.startsWith('{')) {
+                        console.log(`Part ${idx} 被跳过: trimmed为空或不以{开头`);
+                        return;
+                    }
                     
                     try {
                         // 提取完整的JSON对象（处理嵌套花括号）
                         const jsonStr = extractJson(trimmed);
+                        console.log(`Part ${idx} 提取的JSON:`, jsonStr ? jsonStr.substring(0, 100) + '...' : 'null');
+                        
                         if (jsonStr) {
                             const data = JSON.parse(jsonStr);
+                            console.log(`Part ${idx} 解析成功, date:`, data.date, ', top3长度:', data.top3 ? data.top3.length : 'undefined');
+                            
                             if (data.date && data.top3 && Array.isArray(data.top3)) {
                                 allDataMap[data.date] = data;
                                 successCount++;
+                                console.log(`Part ${idx} 已添加到allDataMap, date: ${data.date}`);
+                            } else {
+                                console.log(`Part ${idx} 数据格式不正确: date=${data.date}, top3=${data.top3}`);
                             }
+                        } else {
+                            console.log(`Part ${idx} extractJson返回null`);
                         }
                     } catch (e) {
+                        console.log(`Part ${idx} 解析出错:`, e.message);
                         errorList.push(idx);
                     }
                 });
+                
+                console.log('========== 批量导入结束 ==========');
+                console.log('成功导入数量:', successCount);
+                console.log('allDataMap中的日期:', Object.keys(allDataMap).sort());
+                console.log('allDataMap详情:', JSON.stringify(Object.keys(allDataMap)));
                 
                 if (successCount > 0) {
                     document.getElementById('jsonInput').value = '';
