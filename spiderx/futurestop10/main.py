@@ -2,14 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 期货市场涨跌幅TOP10合约数据获取
+数据来源：从MySQL数据库的 hist_* 表中查询计算
 """
 
-import requests
 import json
 from datetime import datetime
 import os
 import sys
-import re
 import pymysql
 import sqlite3
 import logging
@@ -35,82 +34,114 @@ MYSQL_CONFIG = {
 # 本地SQLite数据库路径（analysis_task）
 SQLITE_DB_PATH = Path(__file__).parent.parent / "db" / "crawler.db"
 
+# contracts_main.json 路径（品种名称映射，当前文件夹下）
+CONTRACTS_JSON_PATH = Path(__file__).parent / "contracts_main.json"
+
+
+def load_symbol_name_mapping():
+    """
+    加载 contracts_main.json，建立 symbol -> name 的映射
+    
+    Returns:
+        dict: {symbol_lower: name} 的映射字典
+    """
+    try:
+        if not CONTRACTS_JSON_PATH.exists():
+            logger.warning(f"contracts_main.json 不存在: {CONTRACTS_JSON_PATH}")
+            return {}
+        
+        with open(CONTRACTS_JSON_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        mapping = {}
+        for contract in data.get("contracts_main", []):
+            symbol = contract.get("symbol", "").lower()
+            name = contract.get("name", "")
+            if symbol and name:
+                mapping[symbol] = name
+        
+        logger.debug(f"已加载 {len(mapping)} 个品种名称映射")
+        return mapping
+    except Exception as e:
+        logger.error(f"加载 contracts_main.json 失败: {e}")
+        return {}
+
 
 def fetch_futures_top10():
     """
-    获取期货市场涨跌幅TOP10合约数据
+    从数据库获取期货市场今日涨跌幅数据
+    查询所有 hist_* 表，获取今日的涨跌幅数据
+    
+    Returns:
+        list: 数据列表，格式为 [[合约代码, 价格, 涨跌幅, 品种名称], ...]
     """
-    url = "https://www.jiaoyikecha.com/api/internal_price_new.php?v=b011affc"
-    
-    headers = {
-        "accept": "text/event-stream",
-        "accept-language": "zh-CN,zh;q=0.9",
-        "cache-control": "no-cache",
-        "pragma": "no-cache",
-        "priority": "u=1, i",
-        "referer": "https://www.jiaoyikecha.com/",
-        "sec-ch-ua": '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-    }
-    
-    cookies = {
-        "Hm_lvt_82e02aae42734877305ee2d72ac6e6ad": "1763472674",
-        "HMACCOUNT": "B81D602E852D6233",
-        "UM_distinctid": "19a97298c8cf56-0fdfb05772fe2c-26061b51-384000-19a97298c8d1828",
-        "cna": "0b1b225b0b0c49e9a5264d8591185147",
-        "PHPSESSID": "cd9f5257a7277a72aafd2add423ef350",
-        "remember": "55e535ee8f86c6589906d9f18f6acad3",
-        "Hm_lpvt_82e02aae42734877305ee2d72ac6e6ad": "1765705651",
-        "CNZZDATA1281432570": "566636820-1763472674-%7C1765705651"
-    }
+    conn = None
+    cursor = None
     
     try:
-        logger.info("正在请求期货数据...")
-        response = requests.get(url, headers=headers, cookies=cookies, timeout=30, stream=True)
-        response.raise_for_status()
+        # 加载品种名称映射
+        symbol_name_mapping = load_symbol_name_mapping()
         
-        # 处理 Server-Sent Events (SSE) 格式的数据
-        data_list = []
-        content = ""
+        logger.info("正在连接数据库...")
+        conn = get_mysql_connection()
+        cursor = conn.cursor()
         
-        # 读取流式数据
-        for line in response.iter_lines(decode_unicode=True):
-            if line:
-                content += line + "\n"
-                # SSE 格式通常是 "data: {...}" 
-                if line.startswith("data:"):
-                    json_str = line[5:].strip()  # 去掉 "data:" 前缀
-                    if json_str and json_str != "[DONE]":
-                        try:
-                            json_data = json.loads(json_str)
-                            data_list.append(json_data)
-                        except json.JSONDecodeError:
-                            logger.warning(f"JSON解析失败: {json_str[:100]}")
+        # 获取今天的日期
+        today = datetime.now().strftime('%Y-%m-%d')
+        logger.info(f"查询日期: {today}")
         
-        # 如果没有解析到SSE格式的数据，尝试直接解析整个响应
-        if not data_list:
+        # 1. 获取所有 hist_ 开头的表
+        cursor.execute("""
+            SELECT TABLE_NAME 
+            FROM information_schema.TABLES 
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME LIKE 'hist_%%'
+        """, (MYSQL_CONFIG['database'],))
+        
+        tables = [row[0] for row in cursor.fetchall()]
+        logger.info(f"找到 {len(tables)} 个期货数据表")
+        
+        if not tables:
+            logger.warning("数据库中没有找到期货数据表")
+            return None
+        
+        # 2. 从每个表查询今日数据
+        all_data = []
+        for table_name in tables:
+            # 从表名提取品种代码（去掉 hist_ 前缀）
+            symbol_lower = table_name.replace('hist_', '')
+            symbol = symbol_lower.upper()
+            
+            # 获取品种中文名称
+            name = symbol_name_mapping.get(symbol_lower, symbol)
+            
             try:
-                # 尝试直接解析为JSON
-                full_data = json.loads(response.text)
-                data_list = [full_data] if isinstance(full_data, dict) else full_data
-            except json.JSONDecodeError:
-                # 如果不是标准JSON，保存原始内容
-                logger.warning("返回的不是标准JSON格式，保存原始内容...")
-                data_list = {"raw_content": response.text}
+                cursor.execute(f"""
+                    SELECT close_price, change_pct 
+                    FROM {table_name} 
+                    WHERE trade_date = %s
+                """, (today,))
+                
+                row = cursor.fetchone()
+                if row:
+                    close_price = row[0] if row[0] is not None else 0
+                    change_pct = float(row[1]) if row[1] is not None else 0
+                    all_data.append([symbol, str(close_price), change_pct, name])
+            except Exception as e:
+                logger.debug(f"查询表 {table_name} 失败: {e}")
+                continue
         
-        return data_list
+        logger.info(f"获取到 {len(all_data)} 个品种的今日数据")
         
-    except requests.exceptions.RequestException as e:
-        logger.error(f"请求失败: {e}")
-        return None
+        return all_data
+        
     except Exception as e:
-        logger.error(f"处理数据时出错: {e}")
+        logger.error(f"数据库查询失败: {e}")
         return None
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 def filter_top10(data):
@@ -121,7 +152,7 @@ def filter_top10(data):
     2. 跌幅必须大于-1%（<-1）
     3. 取涨幅最大的5个和跌幅最大的5个
     
-    数据格式: [["合约代码", "价格", "涨跌幅"], ...]
+    数据格式: [["合约代码", "价格", "涨跌幅", "品种名称"], ...]
     """
     if not data or not isinstance(data, list):
         return None
@@ -134,10 +165,12 @@ def filter_top10(data):
                 contract = item[0]  # 合约代码
                 price = item[1]     # 价格
                 change_pct = float(item[2])  # 涨跌幅
+                name = item[3] if len(item) >= 4 else contract  # 品种名称
                 valid_data.append({
                     "contract": contract,
                     "price": price,
-                    "change_pct": change_pct
+                    "change_pct": change_pct,
+                    "name": name
                 })
             except (ValueError, IndexError):
                 continue
@@ -207,20 +240,22 @@ def format_content(filtered_data):
     lines.append("")
     
     # 涨幅TOP5
-    lines.append("=" * 50)
+    lines.append("=" * 60)
     lines.append("【涨幅TOP5】（涨幅>1%）")
-    lines.append("=" * 50)
+    lines.append("=" * 60)
     for i, item in enumerate(filtered_data['top_gainers'], 1):
-        lines.append(f"{i}. {item['contract']:12s} | 价格: {item['price']:>12s} | 涨幅: +{item['change_pct']:.2f}%")
+        name = item.get('name', item['contract'])
+        lines.append(f"{i}. {name}({item['contract']}) | 价格: {item['price']} | 涨幅: +{item['change_pct']:.2f}%")
     
     lines.append("")
     
     # 跌幅TOP5
-    lines.append("=" * 50)
+    lines.append("=" * 60)
     lines.append("【跌幅TOP5】（跌幅<-1%）")
-    lines.append("=" * 50)
+    lines.append("=" * 60)
     for i, item in enumerate(filtered_data['top_losers'], 1):
-        lines.append(f"{i}. {item['contract']:12s} | 价格: {item['price']:>12s} | 跌幅: {item['change_pct']:.2f}%")
+        name = item.get('name', item['contract'])
+        lines.append(f"{i}. {name}({item['contract']}) | 价格: {item['price']} | 跌幅: {item['change_pct']:.2f}%")
     
     return "\n".join(lines)
 
@@ -470,18 +505,20 @@ def main():
             logger.info(f"跌幅<-1%的合约: {filtered_data['summary']['losers_count']} 个（取前5）")
             
             # 显示涨幅TOP5
-            logger.info("\n" + "=" * 50)
+            logger.info("\n" + "=" * 60)
             logger.info("【涨幅TOP5】")
-            logger.info("-" * 50)
+            logger.info("-" * 60)
             for i, item in enumerate(filtered_data['top_gainers'], 1):
-                logger.info(f"{i}. {item['contract']:12s} | 价格: {item['price']:>12s} | 涨幅: +{item['change_pct']:.2f}%")
+                name = item.get('name', item['contract'])
+                logger.info(f"{i}. {name}({item['contract']}) | 价格: {item['price']} | 涨幅: +{item['change_pct']:.2f}%")
             
             # 显示跌幅TOP5
-            logger.info("\n" + "=" * 50)
+            logger.info("\n" + "=" * 60)
             logger.info("【跌幅TOP5】")
-            logger.info("-" * 50)
+            logger.info("-" * 60)
             for i, item in enumerate(filtered_data['top_losers'], 1):
-                logger.info(f"{i}. {item['contract']:12s} | 价格: {item['price']:>12s} | 跌幅: {item['change_pct']:.2f}%")
+                name = item.get('name', item['contract'])
+                logger.info(f"{i}. {name}({item['contract']}) | 价格: {item['price']} | 跌幅: {item['change_pct']:.2f}%")
             
             # 入库到MySQL数据库
             logger.info("\n" + "=" * 50)
