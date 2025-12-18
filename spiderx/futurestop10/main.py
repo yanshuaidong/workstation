@@ -3,10 +3,15 @@
 """
 期货市场涨跌幅TOP10合约数据获取
 数据来源：从MySQL数据库的 hist_* 表中查询计算
+
+指标说明：
+- 量比：当日成交量 / 过去5日平均成交量，反映当日成交活跃程度
+- 持仓日变化：(今日持仓 - 昨日持仓) / 昨日持仓 * 100%
+- 持仓5日变化：(今日持仓 - 5日前持仓) / 5日前持仓 * 100%
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import sys
 import pymysql
@@ -67,13 +72,178 @@ def load_symbol_name_mapping():
         return {}
 
 
+def calculate_volume_ratio(today_volume, hist_volumes):
+    """
+    计算量比（Volume Ratio）
+    量比 = 当日成交量 / 过去N日平均成交量
+    
+    Args:
+        today_volume: 当日成交量
+        hist_volumes: 历史成交量列表（最近5日，不包含今日）
+    
+    Returns:
+        float: 量比值，如果无法计算返回 None
+    """
+    if not hist_volumes or today_volume is None:
+        return None
+    
+    # 过滤掉无效值
+    valid_volumes = [v for v in hist_volumes if v and v > 0]
+    if not valid_volumes:
+        return None
+    
+    avg_volume = sum(valid_volumes) / len(valid_volumes)
+    if avg_volume == 0:
+        return None
+    
+    return round(today_volume / avg_volume, 2)
+
+
+def calculate_oi_change_rate(today_oi, yesterday_oi):
+    """
+    计算持仓量日变化率
+    持仓日变化率 = (今日持仓 - 昨日持仓) / 昨日持仓 * 100%
+    
+    Args:
+        today_oi: 今日持仓量
+        yesterday_oi: 昨日持仓量
+    
+    Returns:
+        float: 持仓量日变化率（百分比），如果无法计算返回 None
+    """
+    if today_oi is None or yesterday_oi is None or yesterday_oi == 0:
+        return None
+    
+    return round((today_oi - yesterday_oi) / yesterday_oi * 100, 2)
+
+
+def calculate_oi_5day_change_rate(today_oi, oi_5day_ago):
+    """
+    计算持仓量5日变化率
+    持仓5日变化率 = (今日持仓 - 5日前持仓) / 5日前持仓 * 100%
+    
+    Args:
+        today_oi: 今日持仓量
+        oi_5day_ago: 5日前持仓量
+    
+    Returns:
+        float: 持仓量5日变化率（百分比），如果无法计算返回 None
+    """
+    if today_oi is None or oi_5day_ago is None or oi_5day_ago == 0:
+        return None
+    
+    return round((today_oi - oi_5day_ago) / oi_5day_ago * 100, 2)
+
+
+def interpret_volume_ratio(volume_ratio):
+    """
+    解读量比指标
+    
+    Args:
+        volume_ratio: 量比值
+    
+    Returns:
+        tuple: (强弱等级, 描述文本)
+        强弱等级: 2=显著放量, 1=放量, 0=正常, -1=缩量, -2=显著缩量
+    """
+    if volume_ratio is None:
+        return (0, "数据不足")
+    
+    # 量比 = 当日成交量 / 5日均量，用百分比形式更直观
+    pct = volume_ratio * 100
+    
+    if volume_ratio >= 3.0:
+        return (2, f"显著放量(为5日均量的{pct:.0f}%)")
+    elif volume_ratio >= 2.0:
+        return (2, f"放量明显(为5日均量的{pct:.0f}%)")
+    elif volume_ratio >= 1.5:
+        return (1, f"温和放量(为5日均量的{pct:.0f}%)")
+    elif volume_ratio >= 0.8:
+        return (0, f"成交正常(为5日均量的{pct:.0f}%)")
+    elif volume_ratio >= 0.5:
+        return (-1, f"温和缩量(为5日均量的{pct:.0f}%)")
+    else:
+        return (-2, f"显著缩量(为5日均量的{pct:.0f}%)")
+
+
+def interpret_oi_change(oi_day_change, oi_5day_change):
+    """
+    解读持仓量变化
+    
+    Args:
+        oi_day_change: 持仓量日变化率（%）
+        oi_5day_change: 持仓量5日变化率（%）
+    
+    Returns:
+        tuple: (强弱等级, 描述文本)
+        强弱等级: 2=大幅增仓, 1=增仓, 0=平稳, -1=减仓, -2=大幅减仓
+    """
+    # 优先使用日变化率判断
+    change = oi_day_change if oi_day_change is not None else oi_5day_change
+    
+    if change is None:
+        return (0, "数据不足")
+    
+    # 构建描述文本
+    day_text = f"日变{oi_day_change:+.1f}%" if oi_day_change is not None else ""
+    five_day_text = f"5日变{oi_5day_change:+.1f}%" if oi_5day_change is not None else ""
+    
+    if day_text and five_day_text:
+        detail = f"{day_text}, {five_day_text}"
+    else:
+        detail = day_text or five_day_text
+    
+    # 日变化判断
+    if oi_day_change is not None:
+        if oi_day_change >= 5:
+            return (2, f"大幅增仓({detail})")
+        elif oi_day_change >= 2:
+            return (1, f"增仓({detail})")
+        elif oi_day_change <= -5:
+            return (-2, f"大幅减仓({detail})")
+        elif oi_day_change <= -2:
+            return (-1, f"减仓({detail})")
+        else:
+            return (0, f"持仓平稳({detail})")
+    
+    # 如果日变化无数据，使用5日变化
+    if oi_5day_change is not None:
+        if oi_5day_change >= 10:
+            return (2, f"5日大幅增仓({detail})")
+        elif oi_5day_change >= 5:
+            return (1, f"5日增仓({detail})")
+        elif oi_5day_change <= -10:
+            return (-2, f"5日大幅减仓({detail})")
+        elif oi_5day_change <= -5:
+            return (-1, f"5日减仓({detail})")
+        else:
+            return (0, f"5日持仓平稳({detail})")
+    
+    return (0, "数据不足")
+
+
 def fetch_futures_top10():
     """
     从数据库获取期货市场今日涨跌幅数据
-    查询所有 hist_* 表，获取今日的涨跌幅数据
+    查询所有 hist_* 表，获取今日的涨跌幅数据，并计算量价仓指标
     
     Returns:
-        list: 数据列表，格式为 [[合约代码, 价格, 涨跌幅, 品种名称], ...]
+        list: 数据列表，格式为 [
+            {
+                "symbol": "合约代码",
+                "name": "品种名称",
+                "price": "价格",
+                "change_pct": 涨跌幅,
+                "volume": 成交量,
+                "open_interest": 持仓量,
+                "volume_ratio": 量比,
+                "oi_day_change": 持仓日变化率,
+                "oi_5day_change": 持仓5日变化率,
+                "volume_desc": 成交量描述,
+                "oi_desc": 持仓量描述
+            },
+            ...
+        ]
     """
     conn = None
     cursor = None
@@ -88,7 +258,9 @@ def fetch_futures_top10():
         
         # 获取今天的日期
         today = datetime.now().strftime('%Y-%m-%d')
-        logger.info(f"查询日期: {today}")
+        # 计算历史日期范围（获取最近10个交易日用于计算指标）
+        date_start = (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d')
+        logger.info(f"查询日期: {today}，历史数据起始: {date_start}")
         
         # 1. 获取所有 hist_ 开头的表
         cursor.execute("""
@@ -104,7 +276,7 @@ def fetch_futures_top10():
             logger.warning("数据库中没有找到期货数据表")
             return None
         
-        # 2. 从每个表查询今日数据
+        # 2. 从每个表查询今日数据及历史数据
         all_data = []
         for table_name in tables:
             # 从表名提取品种代码（去掉 hist_ 前缀）
@@ -115,17 +287,68 @@ def fetch_futures_top10():
             name = symbol_name_mapping.get(symbol_lower, symbol)
             
             try:
+                # 查询最近10个交易日的数据，按日期降序排列
                 cursor.execute(f"""
-                    SELECT close_price, change_pct 
+                    SELECT trade_date, close_price, change_pct, volume, open_interest 
                     FROM {table_name} 
-                    WHERE trade_date = %s
-                """, (today,))
+                    WHERE trade_date >= %s
+                    ORDER BY trade_date DESC
+                    LIMIT 10
+                """, (date_start,))
                 
-                row = cursor.fetchone()
-                if row:
-                    close_price = row[0] if row[0] is not None else 0
-                    change_pct = float(row[1]) if row[1] is not None else 0
-                    all_data.append([symbol, str(close_price), change_pct, name])
+                rows = cursor.fetchall()
+                if not rows:
+                    continue
+                
+                # 检查第一条是否是今日数据
+                latest_row = rows[0]
+                if str(latest_row[0]) != today:
+                    logger.debug(f"{symbol} 今日无数据，最新日期: {latest_row[0]}")
+                    continue
+                
+                # 今日数据
+                close_price = latest_row[1] if latest_row[1] is not None else 0
+                change_pct = float(latest_row[2]) if latest_row[2] is not None else 0
+                today_volume = latest_row[3] if latest_row[3] is not None else 0
+                today_oi = latest_row[4] if latest_row[4] is not None else 0
+                
+                # 历史数据（不包含今日）
+                hist_rows = rows[1:]  # 昨日及之前的数据
+                
+                # 计算量比（使用5日平均）
+                hist_volumes = [r[3] for r in hist_rows[:5] if r[3] is not None]
+                volume_ratio = calculate_volume_ratio(today_volume, hist_volumes)
+                
+                # 计算持仓量日变化率（与昨日对比）
+                yesterday_oi = hist_rows[0][4] if hist_rows and hist_rows[0][4] is not None else None
+                oi_day_change = calculate_oi_change_rate(today_oi, yesterday_oi)
+                
+                # 计算持仓量5日变化率（与5日前对比）
+                oi_5day_ago = hist_rows[4][4] if len(hist_rows) >= 5 and hist_rows[4][4] is not None else None
+                oi_5day_change = calculate_oi_5day_change_rate(today_oi, oi_5day_ago)
+                
+                # 生成描述文本
+                volume_level, volume_desc = interpret_volume_ratio(volume_ratio)
+                oi_level, oi_desc = interpret_oi_change(oi_day_change, oi_5day_change)
+                
+                # 构建数据字典
+                data_item = {
+                    "symbol": symbol,
+                    "name": name,
+                    "price": str(close_price),
+                    "change_pct": change_pct,
+                    "volume": today_volume,
+                    "open_interest": today_oi,
+                    "volume_ratio": volume_ratio,
+                    "oi_day_change": oi_day_change,
+                    "oi_5day_change": oi_5day_change,
+                    "volume_level": volume_level,
+                    "oi_level": oi_level,
+                    "volume_desc": volume_desc,
+                    "oi_desc": oi_desc
+                }
+                all_data.append(data_item)
+                
             except Exception as e:
                 logger.debug(f"查询表 {table_name} 失败: {e}")
                 continue
@@ -152,27 +375,48 @@ def filter_top10(data):
     2. 跌幅必须大于-1%（<-1）
     3. 取涨幅最大的5个和跌幅最大的5个
     
-    数据格式: [["合约代码", "价格", "涨跌幅", "品种名称"], ...]
+    数据格式: [
+        {
+            "symbol": "合约代码",
+            "name": "品种名称",
+            "price": "价格",
+            "change_pct": 涨跌幅,
+            "volume": 成交量,
+            "open_interest": 持仓量,
+            "volume_ratio": 量比,
+            "oi_day_change": 持仓日变化率,
+            "oi_5day_change": 持仓5日变化率,
+            "volume_desc": 成交量描述,
+            "oi_desc": 持仓量描述
+        },
+        ...
+    ]
     """
     if not data or not isinstance(data, list):
         return None
     
-    # 过滤有效数据并转换涨跌幅为浮点数
+    # 过滤有效数据
     valid_data = []
     for item in data:
-        if len(item) >= 3:
+        if isinstance(item, dict) and "change_pct" in item:
             try:
-                contract = item[0]  # 合约代码
-                price = item[1]     # 价格
-                change_pct = float(item[2])  # 涨跌幅
-                name = item[3] if len(item) >= 4 else contract  # 品种名称
+                change_pct = float(item["change_pct"])
                 valid_data.append({
-                    "contract": contract,
-                    "price": price,
+                    "contract": item.get("symbol", ""),
+                    "name": item.get("name", item.get("symbol", "")),
+                    "price": item.get("price", "0"),
                     "change_pct": change_pct,
-                    "name": name
+                    "volume": item.get("volume", 0),
+                    "open_interest": item.get("open_interest", 0),
+                    "volume_ratio": item.get("volume_ratio"),
+                    "oi_day_change": item.get("oi_day_change"),
+                    "oi_5day_change": item.get("oi_5day_change"),
+                    "volume_level": item.get("volume_level", 0),
+                    "oi_level": item.get("oi_level", 0),
+                    "volume_desc": item.get("volume_desc", "数据不足"),
+                    "oi_desc": item.get("oi_desc", "数据不足")
                 })
-            except (ValueError, IndexError):
+            except (ValueError, KeyError):
                 continue
     
     # 分离涨幅和跌幅数据
@@ -229,9 +473,20 @@ def get_sqlite_connection():
     return conn
 
 
+def format_volume_number(volume):
+    """
+    格式化成交量数字，使其更易读
+    """
+    if volume is None:
+        return "N/A"
+    if volume >= 10000:
+        return f"{volume/10000:.1f}万手"
+    return f"{volume}手"
+
+
 def format_content(filtered_data):
     """
-    格式化涨跌幅数据为内容文本
+    格式化涨跌幅数据为内容文本（包含量价仓分析）
     """
     lines = []
     lines.append(f"【期货涨跌幅TOP10统计】")
@@ -239,23 +494,39 @@ def format_content(filtered_data):
     lines.append(f"总合约数: {filtered_data['summary']['total_contracts']}")
     lines.append("")
     
-    # 涨幅TOP5
-    lines.append("=" * 60)
-    lines.append("【涨幅TOP5】（涨幅>1%）")
-    lines.append("=" * 60)
-    for i, item in enumerate(filtered_data['top_gainers'], 1):
-        name = item.get('name', item['contract'])
-        lines.append(f"{i}. {name}({item['contract']}) | 价格: {item['price']} | 涨幅: +{item['change_pct']:.2f}%")
-    
+    # 指标说明
+    lines.append("【指标说明】")
+    lines.append("• 量比：当日成交量/5日均量，>1.5放量，<0.8缩量")
+    lines.append("• 持仓变化：正值增仓（多空博弈加剧），负值减仓（趋势可能减弱）")
     lines.append("")
     
+    # 涨幅TOP5
+    lines.append("=" * 70)
+    lines.append("【涨幅TOP5】（涨幅>1%）")
+    lines.append("=" * 70)
+    for i, item in enumerate(filtered_data['top_gainers'], 1):
+        name = item.get('name', item['contract'])
+        volume_desc = item.get('volume_desc', '')
+        oi_desc = item.get('oi_desc', '')
+        
+        lines.append(f"{i}. {name}({item['contract']})")
+        lines.append(f"   价格: {item['price']} | 涨幅: +{item['change_pct']:.2f}%")
+        lines.append(f"   成交: {volume_desc} | 持仓: {oi_desc}")
+        lines.append("")
+    
     # 跌幅TOP5
-    lines.append("=" * 60)
+    lines.append("=" * 70)
     lines.append("【跌幅TOP5】（跌幅<-1%）")
-    lines.append("=" * 60)
+    lines.append("=" * 70)
     for i, item in enumerate(filtered_data['top_losers'], 1):
         name = item.get('name', item['contract'])
-        lines.append(f"{i}. {name}({item['contract']}) | 价格: {item['price']} | 跌幅: {item['change_pct']:.2f}%")
+        volume_desc = item.get('volume_desc', '')
+        oi_desc = item.get('oi_desc', '')
+        
+        lines.append(f"{i}. {name}({item['contract']})")
+        lines.append(f"   价格: {item['price']} | 跌幅: {item['change_pct']:.2f}%")
+        lines.append(f"   成交: {volume_desc} | 持仓: {oi_desc}")
+        lines.append("")
     
     return "\n".join(lines)
 
@@ -344,6 +615,18 @@ def save_to_database(filtered_data):
 === 今日数据 ===
 {content}
 
+=== 量价仓指标说明 ===
+• 量比：当日成交量 / 5日平均成交量
+  - >2.0: 显著放量（市场关注度高）
+  - 1.5-2.0: 放量（资金活跃度提升）
+  - 0.8-1.5: 正常（市场平稳运行）
+  - 0.5-0.8: 缩量（观望情绪浓）
+  - <0.5: 显著缩量（市场参与度低）
+
+• 持仓变化率：
+  - 正值（增仓）：新资金入场，多空博弈加剧
+  - 负值（减仓）：资金离场，趋势动能可能减弱
+
 === 分析任务要求 ===
 
 【第一部分：新闻驱动分析】（必须使用浏览器搜索工具）
@@ -363,19 +646,28 @@ def save_to_database(filtered_data):
    - 跌幅品种：归纳共性压制因素（如：政策利空、供应过剩、需求下滑、技术面压力等）
    - 行业关联性：是否存在某个产业链或板块的集体异动
 
-【第二部分：短线交易评分】
-针对每个涨跌TOP5品种，给出3-10天短线交易推荐评分（1-10分）：
+【第二部分：技术面+消息面综合评分】
+针对每个涨跌TOP5品种，结合上述量价仓指标和新闻驱动，给出3-10天短线交易推荐评分（1-10分）：
 
 评分标准（综合考虑）：
-- 新闻驱动强度：有明确重大利好/利空 → 高分；仅市场情绪炒作 → 低分
-- 价格波动幅度：涨跌幅越大，短线机会越明显 → 相对高分
-- 持续性判断：基本面支撑强 → 高分；纯技术性或情绪性 → 低分
-- 风险评估：消息真实可靠、趋势明确 → 高分；传闻多、不确定性大 → 低分
+1. 量价仓配合度（占比40%）：
+   - 放量+增仓+趋势同向 → 加分
+   - 缩量+减仓 → 减分
+   - 量价背离（如价涨缩量）→ 需谨慎
+
+2. 新闻驱动强度（占比30%）：
+   - 有明确重大利好/利空 → 高分
+   - 仅市场情绪炒作 → 低分
+
+3. 趋势持续性（占比30%）：
+   - 增仓+放量配合 → 趋势可能延续，高分
+   - 减仓+缩量 → 趋势可能衰竭，低分
 
 对每个品种给出：
 - 推荐评分：X/10分
 - 交易方向：做多/做空
-- 推荐理由：简要说明评分依据（50字以内）
+- 量价仓点评：基于数据的技术面判断（30字以内）
+- 消息面点评：基于新闻搜索的判断（30字以内）
 - 风险提示：主要风险点（30字以内）
 
 【输出格式】
@@ -390,13 +682,19 @@ def save_to_database(filtered_data):
 
 二、短线交易推荐（3-10天）
 涨幅品种：
-1. [品种] | 评分：X/10分 | 方向：做多 | 理由：... | 风险：...
+1. [品种] | 评分：X/10分 | 方向：做多
+   量价仓：[技术面判断]
+   消息面：[新闻驱动判断]
+   风险：[风险提示]
 
 跌幅品种：
-1. [品种] | 评分：X/10分 | 方向：做空 | 理由：... | 风险：...
+1. [品种] | 评分：X/10分 | 方向：做空
+   量价仓：[技术面判断]
+   消息面：[新闻驱动判断]
+   风险：[风险提示]
 
 三、整体市场研判
-[基于新闻搜索结果，总结今日市场整体情绪和短线机会]
+[基于量价仓数据和新闻搜索结果，总结今日市场整体情绪和短线机会]
 
 ⚠️ 再次强调：必须使用浏览器搜索工具查询新闻，严禁凭空想象！如果确实查不到相关新闻，请明确说明。"""
         
@@ -505,20 +803,26 @@ def main():
             logger.info(f"跌幅<-1%的合约: {filtered_data['summary']['losers_count']} 个（取前5）")
             
             # 显示涨幅TOP5
-            logger.info("\n" + "=" * 60)
+            logger.info("\n" + "=" * 70)
             logger.info("【涨幅TOP5】")
-            logger.info("-" * 60)
+            logger.info("-" * 70)
             for i, item in enumerate(filtered_data['top_gainers'], 1):
                 name = item.get('name', item['contract'])
+                volume_desc = item.get('volume_desc', '')
+                oi_desc = item.get('oi_desc', '')
                 logger.info(f"{i}. {name}({item['contract']}) | 价格: {item['price']} | 涨幅: +{item['change_pct']:.2f}%")
+                logger.info(f"   成交: {volume_desc} | 持仓: {oi_desc}")
             
             # 显示跌幅TOP5
-            logger.info("\n" + "=" * 60)
+            logger.info("\n" + "=" * 70)
             logger.info("【跌幅TOP5】")
-            logger.info("-" * 60)
+            logger.info("-" * 70)
             for i, item in enumerate(filtered_data['top_losers'], 1):
                 name = item.get('name', item['contract'])
+                volume_desc = item.get('volume_desc', '')
+                oi_desc = item.get('oi_desc', '')
                 logger.info(f"{i}. {name}({item['contract']}) | 价格: {item['price']} | 跌幅: {item['change_pct']:.2f}%")
+                logger.info(f"   成交: {volume_desc} | 持仓: {oi_desc}")
             
             # 入库到MySQL数据库
             logger.info("\n" + "=" * 50)
