@@ -1,5 +1,8 @@
 .DS_Store
 
+# Database files
+database/stock/stock.db
+
 # Node.js 相关
 node_modules/
 npm-debug.log*
