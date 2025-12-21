@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm config set registry https://registry.npmmirror.com \
  && npm config set fund false \
  && npm config set audit false \
- && npm ci --prefer-offline --no-audit --no-fund --silent
+ && npm ci --prefer-offline --no-audit --no-fund --loglevel=warn
 
 # 拷贝源码并构建
 COPY . .
