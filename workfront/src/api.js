@@ -28,15 +28,8 @@ export const getFuturesHistoryApi = `${BASE_URL_API_A}/futures/history`;
 export const getFuturesPeriodsApi = `${BASE_URL_API_A}/futures/periods`;
 export const refreshFuturesContractsApi = `${BASE_URL_API_A}/futures/refresh-contracts`;
 
-// 期货数据更新系统接口 (现在使用7001端口，通过 /api-a/ 代理)
-export const getSettingsApi = `${BASE_URL_API_A}/settings`;
-export const updateSettingsApi = `${BASE_URL_API_A}/settings`;
-export const updateContractsListApi = `${BASE_URL_API_A}/contracts/update-list`;
+// 合约和历史数据接口
 export const getContractsListApi = `${BASE_URL_API_A}/contracts/list`;
-export const getListUpdateLogApi = `${BASE_URL_API_A}/contracts/list-update-log`;
-export const updateAllHistoryApi = `${BASE_URL_API_A}/history/update-all`;
-export const retrySingleHistoryApi = `${BASE_URL_API_A}/history/retry-single`;
-export const getHistoryLogsApi = `${BASE_URL_API_A}/history/logs`;
 export const getHistoryDataApi = `${BASE_URL_API_A}/history/data`;
 
 // 分时行情数据接口
@@ -74,6 +67,13 @@ export const updatePositionApi = `${BASE_URL_API_A}/positions/update`;     // �
 export const deletePositionApi = `${BASE_URL_API_A}/positions/delete`;     // 需要在调用时添加 /{id}
 export const getPositionsStatsApi = `${BASE_URL_API_A}/positions/stats`;
 export const togglePositionStatusApi = `${BASE_URL_API_A}/positions/toggle-status`;  // 需要在调用时添加 /{id}
+
+// 期货事件管理接口
+export const getEventsListApi = `${BASE_URL_API_A}/events/list`;
+export const createEventApi = `${BASE_URL_API_A}/events/create`;
+export const getEventDetailApi = `${BASE_URL_API_A}/events/detail`;  // 需要在调用时添加 /{id}
+export const updateEventApi = `${BASE_URL_API_A}/events/update`;     // 需要在调用时添加 /{id}
+export const deleteEventApi = `${BASE_URL_API_A}/events/delete`;     // 需要在调用时添加 /{id}
 
 // 导出端口配置，方便组件使用
 export const API_PORTS = {

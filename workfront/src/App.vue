@@ -35,10 +35,6 @@
               <el-icon class="menu-icon"><TrendCharts /></el-icon>
               <span class="menu-text">消息跟踪</span>
             </el-menu-item>
-            <el-menu-item index="/futures-update" class="mobile-menu-item">
-              <el-icon class="menu-icon"><Refresh /></el-icon>
-              <span class="menu-text">期货数据更新</span>
-            </el-menu-item>
             <el-menu-item index="/positions" class="mobile-menu-item">
               <el-icon class="menu-icon"><Wallet /></el-icon>
               <span class="menu-text">我的持仓</span>
@@ -73,10 +69,6 @@
             <el-menu-item index="/news-tracking" class="menu-item">
               <el-icon class="menu-icon"><TrendCharts /></el-icon>
               <span class="menu-text">消息跟踪</span>
-            </el-menu-item>
-            <el-menu-item index="/futures-update" class="menu-item">
-              <el-icon class="menu-icon"><Refresh /></el-icon>
-              <span class="menu-text">期货数据更新</span>
             </el-menu-item>
             <el-menu-item index="/positions" class="menu-item">
               <el-icon class="menu-icon"><Wallet /></el-icon>

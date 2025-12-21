@@ -1,9 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-// import ApiDataFetcher from '@/components/ApiDataFetcher.vue'
-// import TechnicalAnalysis from '@/components/TechnicalAnalysis.vue'
-import FuturesUpdate from '@/components/FuturesUpdate.vue'
 import AdaptiveNewsAnalysis from '@/components/AdaptiveNewsAnalysis.vue'
-// workfront/src/components/NewsTracking.vue
 import NewsTracking from '@/components/NewsTracking.vue'
 import FuturesPositions from '@/components/FuturesPositions.vue'
 import FuturesChart from '@/components/FuturesChart.vue'
@@ -11,7 +7,7 @@ import FuturesChart from '@/components/FuturesChart.vue'
 const routes = [
   {
     path: '/',
-    redirect: '/futures-update'
+    redirect: '/news-analysis'
   },
   {
     path: '/news-analysis',
@@ -27,14 +23,6 @@ const routes = [
     component: NewsTracking,
     meta: {
       title: '消息跟踪'
-    }
-  },
-  {
-    path: '/futures-update',
-    name: 'FuturesUpdate',  
-    component: FuturesUpdate,
-    meta: {
-      title: '期货数据更新'
     }
   },
   {
