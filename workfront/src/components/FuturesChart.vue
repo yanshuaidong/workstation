@@ -193,59 +193,81 @@
       </div>
     </el-drawer>
 
-    <!-- 数据表格 -->
-    <el-card class="table-card" v-if="historyData.length > 0">
+    <!-- 事件详情表格 -->
+    <el-card class="events-table-card" v-if="showEvents && eventsData.length > 0">
       <template #header>
         <div class="card-header">
-          <span>数据明细</span>
-          <el-switch
-            v-model="showTable"
-            active-text="显示表格"
-            inactive-text="隐藏表格"
-          />
+          <div class="header-left">
+            <span>事件详情</span>
+            <span class="data-count">（共 {{ eventsData.length }} 条事件）</span>
+          </div>
+          <el-button 
+            type="primary" 
+            size="small" 
+            icon="Plus"
+            @click="openEventDialog()"
+          >
+            添加事件
+          </el-button>
         </div>
       </template>
 
-      <el-collapse-transition>
-        <div v-show="showTable">
-          <el-table
-            :data="historyData"
-            stripe
-            border
-            style="width: 100%"
-            max-height="400"
-          >
-            <el-table-column type="index" label="序号" width="60" :index="(index) => index + 1" />
-            <el-table-column prop="raw.trade_date" label="日期" width="110" />
-            <el-table-column prop="raw.open_price" label="开盘" width="90" />
-            <el-table-column prop="raw.high_price" label="最高" width="90" />
-            <el-table-column prop="raw.low_price" label="最低" width="90" />
-            <el-table-column prop="raw.close_price" label="收盘" width="90" />
-            <el-table-column label="涨跌幅" width="100">
-              <template #default="scope">
-                <span :class="getChangeClass(scope.row.raw.change_pct)">
-                  {{ scope.row.raw.change_pct ? scope.row.raw.change_pct.toFixed(2) + '%' : '-' }}
-                </span>
+      <el-table
+        :data="eventsData"
+        stripe
+        border
+        style="width: 100%"
+        max-height="500"
+        row-key="id"
+      >
+        <el-table-column prop="event_date" label="日期" width="110" sortable />
+        <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
+        <el-table-column label="方向" width="90" align="center">
+          <template #default="scope">
+            <el-tag 
+              :type="getOutlookTagType(scope.row.outlook)"
+              size="small"
+              effect="dark"
+            >
+              {{ getOutlookLabel(scope.row.outlook) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="强度" width="80" align="center">
+          <template #default="scope">
+            <span class="strength-value">{{ scope.row.strength || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="content" label="内容" min-width="300">
+          <template #default="scope">
+            <div class="event-content-cell">
+              {{ scope.row.content || '-' }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" fixed="right" align="center">
+          <template #default="scope">
+            <el-button 
+              type="primary" 
+              size="small" 
+              text
+              @click="openEventDialog(scope.row)"
+            >
+              编辑
+            </el-button>
+            <el-popconfirm
+              title="确定要删除这条事件吗？"
+              confirm-button-text="确定"
+              cancel-button-text="取消"
+              @confirm="deleteEvent(scope.row.id)"
+            >
+              <template #reference>
+                <el-button type="danger" size="small" text>删除</el-button>
               </template>
-            </el-table-column>
-            <el-table-column prop="raw.volume" label="成交量" width="120">
-              <template #default="scope">
-                {{ formatVolume(scope.row.raw.volume) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="raw.open_interest" label="持仓量" width="120">
-              <template #default="scope">
-                {{ formatVolume(scope.row.raw.open_interest) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="成交额(万)" width="120">
-              <template #default="scope">
-                {{ (scope.row.raw.turnover / 10000).toFixed(2) }}
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </el-collapse-transition>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-card>
 
     <!-- 事件编辑弹窗 -->
@@ -299,14 +321,14 @@
             <el-form-item label="方向判断" prop="outlook">
               <el-select v-model="eventForm.outlook" placeholder="选择方向" clearable style="width: 100%">
                 <el-option label="看多 (Bullish)" value="bullish">
-                  <span style="color: #26a69a; display: flex; align-items: center; gap: 8px;">
-                    <span style="display: inline-block; width: 8px; height: 8px; background: #26a69a; border-radius: 2px;"></span>
+                  <span style="color: #ef5350; display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 8px; height: 8px; background: #ef5350; border-radius: 2px;"></span>
                     看多 (Bullish)
                   </span>
                 </el-option>
                 <el-option label="看空 (Bearish)" value="bearish">
-                  <span style="color: #ef5350; display: flex; align-items: center; gap: 8px;">
-                    <span style="display: inline-block; width: 8px; height: 8px; background: #ef5350; border-radius: 2px;"></span>
+                  <span style="color: #26a69a; display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 8px; height: 8px; background: #26a69a; border-radius: 2px;"></span>
                     看空 (Bearish)
                   </span>
                 </el-option>
@@ -377,7 +399,6 @@ export default {
       dateRange: [],
       historyData: [],
       loading: false,
-      showTable: false,
       chart: null,
       
       // 事件相关
@@ -872,7 +893,7 @@ export default {
                     return `
                     <div style="
                       margin-top: 6px; 
-                      padding: 8px 10px; 
+                      padding: 6px 10px; 
                       background: linear-gradient(135deg, ${this.getOutlookColorLight(e.outlook)}, transparent);
                       border-left: 3px solid ${color};
                       border-radius: 0 4px 4px 0;
@@ -882,17 +903,16 @@ export default {
                           display: inline-flex;
                           align-items: center;
                           justify-content: center;
-                          width: 18px;
-                          height: 18px;
+                          width: 16px;
+                          height: 16px;
                           background: ${color};
                           color: white;
                           border-radius: 50%;
-                          font-size: 10px;
+                          font-size: 9px;
                           font-weight: bold;
                         ">${this.getOutlookIcon(e.outlook)}</span>
                         <span style="font-weight: 600; color: #e0e0e0; font-size: 12px;">${e.title}</span>
                       </div>
-                      ${e.content ? `<div style="font-size: 11px; color: #9e9e9e; margin-top: 4px; padding-left: 24px; line-height: 1.4;">${e.content.substring(0, 60)}${e.content.length > 60 ? '...' : ''}</div>` : ''}
                     </div>
                   `}).join('')}
                 </div>
@@ -1226,11 +1246,6 @@ export default {
       return value
     },
 
-    // 获取涨跌幅样式类
-    getChangeClass(changePct) {
-      if (!changePct) return ''
-      return changePct >= 0 ? 'price-up' : 'price-down'
-    }
   }
 }
 </script>
@@ -1241,8 +1256,7 @@ export default {
 }
 
 .control-card,
-.chart-card,
-.table-card {
+.chart-card {
   margin-bottom: 20px;
 }
 
@@ -1274,17 +1288,6 @@ export default {
   height: 600px;
 }
 
-/* 亚洲风格：红涨绿跌 */
-.price-up {
-  color: #ef5350;
-  font-weight: bold;
-}
-
-.price-down {
-  color: #26a69a;
-  font-weight: bold;
-}
-
 .strength-value {
   font-weight: bold;
   color: #409eff;
@@ -1302,6 +1305,17 @@ export default {
   display: flex;
   justify-content: space-between;
   margin-bottom: 16px;
+}
+
+.events-table-card {
+  margin-bottom: 20px;
+}
+
+.event-content-cell {
+  line-height: 1.6;
+  color: #606266;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* 响应式设计 */
