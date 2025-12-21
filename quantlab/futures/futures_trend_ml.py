@@ -329,7 +329,7 @@ def compute_trend_features(close: pd.Series, window: int = 10) -> Tuple[pd.Serie
     return pd.Series(slopes, index=close.index), pd.Series(r2s, index=close.index)
 
 
-def make_features_v2(df: pd.DataFrame, warmup_period: int = 60) -> pd.DataFrame:
+def make_features_v2(df: pd.DataFrame, warmup_period: int = 60, for_prediction: bool = False) -> pd.DataFrame:
     """
     生成机器学习特征（增强版）
     
@@ -338,6 +338,11 @@ def make_features_v2(df: pd.DataFrame, warmup_period: int = 60) -> pd.DataFrame:
     - 多周期突破信号
     - 资金流向指标
     - 价格形态特征
+    
+    参数：
+        df: 输入数据
+        warmup_period: 预热期天数
+        for_prediction: 是否用于预测（True时不检查标签列）
     """
     print(f"\n[特征工程] 开始生成特征，预热期: {warmup_period} 天")
     
@@ -523,8 +528,11 @@ def make_features_v2(df: pd.DataFrame, warmup_period: int = 60) -> pd.DataFrame:
     if inf_count > 0:
         print(f"[特征工程] 处理了 {inf_count:,} 个无穷值")
     
-    # 删除包含 NaN 的行（标签和特征）
-    required_cols = feature_cols + ['label_long', 'label_short']
+    # 删除包含 NaN 的行（预测模式只检查特征，训练模式还要检查标签）
+    if for_prediction:
+        required_cols = feature_cols
+    else:
+        required_cols = feature_cols + ['label_long', 'label_short']
     initial_len = len(df_feat)
     df_feat = df_feat.dropna(subset=required_cols)
     
@@ -1146,7 +1154,7 @@ def main():
     
     # 数据库路径
     script_dir = Path(__file__).parent
-    db_path = script_dir.parent / 'database' / 'futures' / 'futures.db'
+    db_path = script_dir.parent.parent / 'database' / 'futures' / 'futures.db'
     
     # 模型保存路径
     model_dir = script_dir / 'models'

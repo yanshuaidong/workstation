@@ -29,6 +29,11 @@ from futures_trend_ml import (
     get_feature_columns,
     train_model,
     save_model,
+    predict_proba,
+    backtest_v2,
+    analyze_backtest_results,
+    print_backtest_results,
+    plot_equity_curve,
 )
 
 warnings.filterwarnings('ignore')
@@ -91,9 +96,10 @@ def train_strategy(
     df_all: pd.DataFrame,
     strategy_key: str,
     strategy_info: Dict,
-    model_dir: Path
+    model_dir: Path,
+    output_dir: Path
 ) -> Dict[str, Any]:
-    """训练单个策略"""
+    """训练单个策略并进行回测"""
     print(f"\n{'='*70}")
     print(f"训练策略: {strategy_info['name']}")
     print(f"描述: {strategy_info['description']}")
@@ -156,7 +162,6 @@ def train_strategy(
     )
     
     # 计算测试集阈值
-    from futures_trend_ml import predict_proba
     p_long_test = predict_proba(df_test, long_model, feature_cols)
     p_short_test = predict_proba(df_test, short_model, feature_cols)
     
@@ -165,6 +170,26 @@ def train_strategy(
     
     print(f"\n[阈值] 测试集多头阈值 (top {100-config.signal_percentile:.1f}%): {test_long_threshold:.4f}")
     print(f"[阈值] 测试集空头阈值 (top {100-config.signal_percentile:.1f}%): {test_short_threshold:.4f}")
+    
+    # ===== 回测 =====
+    print(f"\n{'='*70}")
+    print(f"回测策略: {strategy_info['name']}")
+    print(f"{'='*70}")
+    
+    trades, equity = backtest_v2(
+        df_test, p_long_test, p_short_test, config,
+        long_threshold=test_long_threshold,
+        short_threshold=test_short_threshold
+    )
+    
+    # 分析回测结果
+    backtest_results = analyze_backtest_results(trades, equity)
+    print_backtest_results(backtest_results)
+    
+    # 绘制净值曲线（使用策略名称命名）
+    if len(equity) > 0:
+        equity_curve_path = output_dir / f'equity_curve_{strategy_key}.png'
+        plot_equity_curve(equity, str(equity_curve_path))
     
     # 保存模型
     strategy_model_dir = model_dir / strategy_key
@@ -182,8 +207,16 @@ def train_strategy(
             'long': float(test_long_threshold),
             'short': float(test_short_threshold)
         },
-        'feature_cols': feature_cols
+        'feature_cols': feature_cols,
+        'backtest_results': {
+            k: v for k, v in backtest_results.items() 
+            if k != '退出原因分布'  # 退出原因分布包含复杂结构，单独处理
+        }
     }
+    
+    # 添加退出原因分布
+    if '退出原因分布' in backtest_results:
+        strategy_meta['exit_reasons'] = backtest_results['退出原因分布']
     
     with open(strategy_model_dir / 'meta.json', 'w', encoding='utf-8') as f:
         json.dump(strategy_meta, f, ensure_ascii=False, indent=2)
@@ -204,9 +237,13 @@ def main():
     
     # 路径配置
     script_dir = Path(__file__).parent
-    db_path = script_dir.parent / 'database' / 'futures' / 'futures.db'
+    db_path = script_dir.parent.parent / 'database' / 'futures' / 'futures.db'
     model_dir = script_dir / 'models' / 'multi_strategy'
     model_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 输出目录（保存净值曲线图片）
+    output_dir = script_dir / 'output' / 'multi_strategy'
+    output_dir.mkdir(parents=True, exist_ok=True)
     
     # 加载数据（只加载一次）
     print("\n" + "=" * 70)
@@ -217,7 +254,7 @@ def main():
     # 训练每个策略
     all_meta = {}
     for strategy_key, strategy_info in STRATEGY_CONFIGS.items():
-        meta = train_strategy(df_all.copy(), strategy_key, strategy_info, model_dir)
+        meta = train_strategy(df_all.copy(), strategy_key, strategy_info, model_dir, output_dir)
         all_meta[strategy_key] = meta
     
     # 保存总配置
@@ -228,11 +265,19 @@ def main():
     print("训练完成！")
     print("=" * 70)
     print(f"\n模型保存目录: {model_dir}")
-    print("\n各策略阈值汇总:")
+    print(f"净值曲线目录: {output_dir}")
+    print("\n各策略回测结果汇总:")
     for key, meta in all_meta.items():
         print(f"\n  {meta['name']}:")
         print(f"    - 多头阈值: {meta['thresholds']['long']:.4f}")
         print(f"    - 空头阈值: {meta['thresholds']['short']:.4f}")
+        if 'backtest_results' in meta:
+            results = meta['backtest_results']
+            print(f"    - 总交易次数: {results.get('总交易次数', 'N/A')}")
+            print(f"    - 胜率: {results.get('胜率', 0)*100:.2f}%")
+            print(f"    - 累计收益: {results.get('累计收益', 0)*100:.2f}%")
+            print(f"    - 最大回撤: {results.get('最大回撤', 0)*100:.2f}%")
+            print(f"    - 夏普比率: {results.get('夏普比率', 0):.2f}")
     
     print("\n接下来运行 daily_signal_scanner_multi.py 进行每日信号扫描")
 

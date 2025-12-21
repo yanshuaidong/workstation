@@ -6,6 +6,7 @@ import AdaptiveNewsAnalysis from '@/components/AdaptiveNewsAnalysis.vue'
 // workfront/src/components/NewsTracking.vue
 import NewsTracking from '@/components/NewsTracking.vue'
 import FuturesPositions from '@/components/FuturesPositions.vue'
+import FuturesChart from '@/components/FuturesChart.vue'
 
 const routes = [
   {
@@ -42,6 +43,14 @@ const routes = [
     component: FuturesPositions,
     meta: {
       title: '我的持仓'
+    }
+  },
+  {
+    path: '/futures-chart',
+    name: 'FuturesChart',
+    component: FuturesChart,
+    meta: {
+      title: '期货K线图'
     }
   },
 ]

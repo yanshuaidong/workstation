@@ -1,0 +1,56 @@
+{
+  "date": "2025-12-19",
+  "generated_at": "2025-12-21 15:32:41",
+  "strategies": {
+    "strict": {
+      "name": "超严格型",
+      "description": "胜率46.6%最高，夏普2.78最高，信号最精准",
+      "thresholds": {
+        "long": 0.13603120441147976,
+        "short": 0.1465538965494569
+      },
+      "long_signals": [],
+      "short_signals": [
+        {
+          "symbol": "lcm",
+          "probability": 0.1465538965494569,
+          "close_price": 111400.0,
+          "strength": 0.0
+        }
+      ]
+    },
+    "high_threshold": {
+      "name": "高阈值型",
+      "description": "回撤4.6%最低，盈亏比2.47，风险控制最佳",
+      "thresholds": {
+        "long": 0.1510859712715165,
+        "short": 0.15294197959035774
+      },
+      "long_signals": [],
+      "short_signals": []
+    },
+    "big_trend": {
+      "name": "大行情型",
+      "description": "交易间隔2.9天，盈亏比2.57最高，适合捕捉大趋势",
+      "thresholds": {
+        "long": 0.15346618655929287,
+        "short": 0.14822227356279935
+      },
+      "long_signals": [],
+      "short_signals": [
+        {
+          "symbol": "agm",
+          "probability": 0.14822227356279935,
+          "close_price": 15376.0,
+          "strength": 0.0
+        },
+        {
+          "symbol": "lcm",
+          "probability": 0.14822227356279935,
+          "close_price": 111400.0,
+          "strength": 0.0
+        }
+      ]
+    }
+  }
+}
