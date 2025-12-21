@@ -19,6 +19,7 @@
 
 import json
 import sqlite3
+import time
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -27,9 +28,145 @@ from typing import Dict, List, Tuple
 import joblib
 import numpy as np
 import pandas as pd
+import pymysql
 from sklearn.linear_model import LinearRegression
 
 warnings.filterwarnings('ignore')
+
+
+# ==================================================
+# MySQL数据库配置
+# ==================================================
+
+MYSQL_CONFIG = {
+    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
+    'port': 3306,
+    'user': 'ysd',
+    'password': 'Yan1234567',
+    'database': 'futures',
+    'charset': 'utf8mb4'
+}
+
+
+def get_mysql_connection():
+    """获取MySQL数据库连接"""
+    return pymysql.connect(**MYSQL_CONFIG)
+
+
+def build_markdown_content(signals: List[Dict], prediction_date: str) -> str:
+    """构建Markdown格式的预测内容"""
+    lines = []
+    
+    lines.append(f"## 机构持仓预测信号")
+    lines.append(f"**预测日期**: {prediction_date}")
+    lines.append(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("")
+    
+    if not signals:
+        lines.append("*今日无推荐信号*")
+        return '\n'.join(lines)
+    
+    # 分离多头和空头信号
+    long_signals = [s for s in signals if s['direction'] == '做多']
+    short_signals = [s for s in signals if s['direction'] == '做空']
+    
+    # 多头信号表格
+    if long_signals:
+        lines.append(f"### 📈 做多信号 ({len(long_signals)}个)")
+        lines.append("")
+        lines.append("| 品种 | 概率 | 收盘价 | 国泰进攻 | 连续天数 | 均线多排 |")
+        lines.append("|------|------|--------|----------|----------|----------|")
+        for sig in long_signals:
+            attack = "✓" if sig.get('gtja_long_attack', 0) else ""
+            streak = sig.get('gtja_long_streak', 0) or ""
+            ma_align = "✓" if sig.get('ma_align_bull', 0) else ""
+            lines.append(f"| {sig['symbol']} | {sig['probability']*100:.1f}% | {sig['close']:.2f} | {attack} | {streak} | {ma_align} |")
+        lines.append("")
+    
+    # 空头信号表格
+    if short_signals:
+        lines.append(f"### 📉 做空信号 ({len(short_signals)}个)")
+        lines.append("")
+        lines.append("| 品种 | 概率 | 收盘价 | 国泰进攻 | 连续天数 | 均线空排 |")
+        lines.append("|------|------|--------|----------|----------|----------|")
+        for sig in short_signals:
+            attack = "✓" if sig.get('gtja_short_attack', 0) else ""
+            streak = sig.get('gtja_short_streak', 0) or ""
+            ma_align = "✓" if sig.get('ma_align_bear', 0) else ""
+            lines.append(f"| {sig['symbol']} | {sig['probability']*100:.1f}% | {sig['close']:.2f} | {attack} | {streak} | {ma_align} |")
+        lines.append("")
+    
+    # 统计摘要
+    lines.append("---")
+    lines.append(f"**信号统计**: 做多 {len(long_signals)} 个, 做空 {len(short_signals)} 个")
+    
+    return '\n'.join(lines)
+
+
+def save_prediction_to_db(signals: List[Dict], prediction_date: str) -> None:
+    """
+    将预测结果保存到数据库
+    
+    参数:
+        signals: 预测信号列表
+        prediction_date: 预测日期（格式：YYYY-MM-DD）
+    """
+    conn = get_mysql_connection()
+    cursor = conn.cursor()
+    
+    try:
+        ctime = int(time.time() * 1000)  # 毫秒级时间戳
+        title = f"机构持仓预测信号 - {prediction_date}"
+        message_type = "institution_position_prediction"
+        
+        # 构建Markdown格式内容
+        prediction_content = build_markdown_content(signals, prediction_date)
+        
+        # 插入 news_red_telegraph 表
+        insert_news_sql = """
+            INSERT INTO news_red_telegraph 
+            (ctime, title, content, ai_analysis, message_score, message_label, message_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_news_sql, (
+            ctime,
+            title,
+            prediction_content,
+            None,  # ai_analysis
+            7,     # message_score
+            'hard',  # message_label
+            message_type
+        ))
+        
+        # 获取刚插入的记录ID
+        news_id = cursor.lastrowid
+        
+        # 插入 news_process_tracking 表
+        insert_tracking_sql = """
+            INSERT INTO news_process_tracking 
+            (news_id, ctime, is_reviewed, track_day3_done, track_day7_done, track_day14_done, track_day28_done)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_tracking_sql, (
+            news_id,
+            ctime,
+            0,  # is_reviewed
+            0,  # track_day3_done
+            0,  # track_day7_done
+            0,  # track_day14_done
+            0   # track_day28_done
+        ))
+        
+        conn.commit()
+        print(f"[数据库] 预测结果已保存，news_id: {news_id}")
+        
+    except Exception as e:
+        conn.rollback()
+        print(f"[数据库] 保存失败: {e}")
+        raise
+    finally:
+        cursor.close()
+        conn.close()
 
 # ==================================================
 # 路径配置
@@ -566,6 +703,14 @@ def main():
         else:
             print_signals(signals)
             print(f"\n✅ 预测完成，共 {len(signals)} 个信号")
+        
+        # 保存预测结果到数据库
+        if signals:
+            prediction_date = signals[0].get('date', datetime.now().strftime('%Y-%m-%d'))
+            print("\n[步骤] 保存预测结果到数据库...")
+            save_prediction_to_db(signals, prediction_date)
+        else:
+            print("\n⚠️ 无信号，跳过数据库保存")
     
     except FileNotFoundError as e:
         print(f"❌ 错误: {e}")

@@ -12,6 +12,7 @@
 """
 
 import json
+import time
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import Dict, Any, List, Optional
 import joblib
 import numpy as np
 import pandas as pd
+import pymysql
 
 from futures_trend_ml import (
     load_history_from_db,
@@ -28,6 +30,176 @@ from futures_trend_ml import (
 )
 
 warnings.filterwarnings('ignore')
+
+
+# ==================================================
+# 数据库配置
+# ==================================================
+
+DB_CONFIG = {
+    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
+    'port': 3306,
+    'user': 'ysd',
+    'password': 'Yan1234567',
+    'database': 'futures',
+    'charset': 'utf8mb4'
+}
+
+
+def get_db_connection():
+    """获取数据库连接"""
+    return pymysql.connect(**DB_CONFIG)
+
+
+def build_markdown_content(
+    all_signals: Dict[str, pd.DataFrame],
+    strategies: Dict[str, Dict[str, Any]],
+    latest_date: pd.Timestamp,
+    df_consensus: pd.DataFrame
+) -> str:
+    """构建Markdown格式的预测内容"""
+    lines = []
+    
+    lines.append(f"## 期货多策略预测信号")
+    lines.append(f"**预测日期**: {latest_date.strftime('%Y-%m-%d')}")
+    lines.append(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("")
+    
+    # 统计信号
+    total_long = 0
+    total_short = 0
+    
+    for strategy_key in STRATEGY_ORDER:
+        if strategy_key not in all_signals:
+            continue
+        
+        df_signals = all_signals[strategy_key]
+        meta = strategies[strategy_key]['meta']
+        df_today = df_signals[df_signals['date'] == latest_date]
+        
+        long_count = df_today['long_signal'].sum()
+        short_count = df_today['short_signal'].sum()
+        total_long += long_count
+        total_short += short_count
+        
+        lines.append(f"### {meta['name']} {SIGNAL_STRENGTH[strategy_key]}")
+        lines.append(f"> {meta['description']}")
+        lines.append(f"> 阈值: 多头>{meta['thresholds']['long']:.4f}, 空头>{meta['thresholds']['short']:.4f}")
+        lines.append("")
+        
+        if len(df_today) == 0:
+            lines.append("*无信号*")
+            lines.append("")
+            continue
+        
+        # 多头信号表格
+        df_long = df_today[df_today['long_signal']].sort_values('p_long', ascending=False)
+        if len(df_long) > 0:
+            lines.append(f"**📈 多头信号 ({len(df_long)}个)**")
+            lines.append("")
+            lines.append("| 品种 | 概率 | 收盘价 | 强度 |")
+            lines.append("|------|------|--------|------|")
+            for _, row in df_long.iterrows():
+                strength_bar = '█' * min(int(row['long_strength'] * 5) + 1, 5)
+                lines.append(f"| {row['symbol']} | {row['p_long']:.4f} | {row['close']:.2f} | {strength_bar} |")
+            lines.append("")
+        
+        # 空头信号表格
+        df_short = df_today[df_today['short_signal']].sort_values('p_short', ascending=False)
+        if len(df_short) > 0:
+            lines.append(f"**📉 空头信号 ({len(df_short)}个)**")
+            lines.append("")
+            lines.append("| 品种 | 概率 | 收盘价 | 强度 |")
+            lines.append("|------|------|--------|------|")
+            for _, row in df_short.iterrows():
+                strength_bar = '█' * min(int(row['short_strength'] * 5) + 1, 5)
+                lines.append(f"| {row['symbol']} | {row['p_short']:.4f} | {row['close']:.2f} | {strength_bar} |")
+            lines.append("")
+    
+    # 共识信号
+    if len(df_consensus) > 0:
+        lines.append("### 🎯 多策略共识信号")
+        lines.append("> 2个以上策略同时发出的信号")
+        lines.append("")
+        lines.append("| 品种 | 方向 | 共识数 | 策略 |")
+        lines.append("|------|------|--------|------|")
+        for _, row in df_consensus.iterrows():
+            lines.append(f"| {row['symbol']} | {row['direction']} | {row['num_strategies']} | {row['strategies']} |")
+        lines.append("")
+    
+    # 统计摘要
+    lines.append("---")
+    lines.append(f"**信号统计**: 多头 {total_long} 个, 空头 {total_short} 个")
+    
+    return '\n'.join(lines)
+
+
+def save_prediction_to_db(
+    all_signals: Dict[str, pd.DataFrame],
+    strategies: Dict[str, Dict[str, Any]],
+    latest_date: pd.Timestamp,
+    df_consensus: pd.DataFrame
+) -> None:
+    """
+    将预测结果保存到数据库
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        ctime = int(time.time() * 1000)  # 毫秒级时间戳
+        prediction_date = latest_date.strftime('%Y-%m-%d')
+        title = f"期货多策略预测信号 - {prediction_date}"
+        message_type = "futures_multi_strategy_prediction"
+        
+        # 构建Markdown格式内容
+        prediction_content = build_markdown_content(all_signals, strategies, latest_date, df_consensus)
+        
+        # 插入 news_red_telegraph 表
+        insert_news_sql = """
+            INSERT INTO news_red_telegraph 
+            (ctime, title, content, ai_analysis, message_score, message_label, message_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_news_sql, (
+            ctime,
+            title,
+            prediction_content,
+            None,  # ai_analysis
+            7,     # message_score
+            'hard',  # message_label
+            message_type
+        ))
+        
+        # 获取刚插入的记录ID
+        news_id = cursor.lastrowid
+        
+        # 插入 news_process_tracking 表
+        insert_tracking_sql = """
+            INSERT INTO news_process_tracking 
+            (news_id, ctime, is_reviewed, track_day3_done, track_day7_done, track_day14_done, track_day28_done)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_tracking_sql, (
+            news_id,
+            ctime,
+            0,  # is_reviewed
+            0,  # track_day3_done
+            0,  # track_day7_done
+            0,  # track_day14_done
+            0   # track_day28_done
+        ))
+        
+        conn.commit()
+        print(f"[数据库] 预测结果已保存，news_id: {news_id}")
+        
+    except Exception as e:
+        conn.rollback()
+        print(f"[数据库] 保存失败: {e}")
+        raise
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # ==================================================
@@ -323,59 +495,6 @@ def get_consensus_signals(
     return df_consensus
 
 
-def save_signals_to_json(
-    all_signals: Dict[str, pd.DataFrame],
-    strategies: Dict[str, Dict[str, Any]],
-    latest_date: pd.Timestamp,
-    output_path: Path
-) -> None:
-    """保存信号到JSON文件"""
-    output = {
-        'date': latest_date.strftime('%Y-%m-%d'),
-        'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'strategies': {}
-    }
-    
-    for strategy_key in STRATEGY_ORDER:
-        if strategy_key not in all_signals:
-            continue
-        
-        df_signals = all_signals[strategy_key]
-        meta = strategies[strategy_key]['meta']
-        df_today = df_signals[df_signals['date'] == latest_date]
-        
-        strategy_output = {
-            'name': meta['name'],
-            'description': meta['description'],
-            'thresholds': meta['thresholds'],
-            'long_signals': [],
-            'short_signals': []
-        }
-        
-        for _, row in df_today[df_today['long_signal']].iterrows():
-            strategy_output['long_signals'].append({
-                'symbol': row['symbol'],
-                'probability': float(row['p_long']),
-                'close_price': float(row['close']),
-                'strength': float(row['long_strength'])
-            })
-        
-        for _, row in df_today[df_today['short_signal']].iterrows():
-            strategy_output['short_signals'].append({
-                'symbol': row['symbol'],
-                'probability': float(row['p_short']),
-                'close_price': float(row['close']),
-                'strength': float(row['short_strength'])
-            })
-        
-        output['strategies'][strategy_key] = strategy_output
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(output, f, ensure_ascii=False, indent=2)
-    
-    print(f"[保存] 信号已保存至: {output_path}")
-
-
 # ==================================================
 # 主程序
 # ==================================================
@@ -460,9 +579,9 @@ def main():
     else:
         print("\n暂无多策略共识信号")
     
-    # 7. 保存信号
-    signals_json_path = output_dir / 'latest_signals.json'
-    save_signals_to_json(all_signals, strategies, latest_date, signals_json_path)
+    # 7. 保存预测结果到数据库
+    print("\n[步骤6] 保存预测结果到数据库...")
+    save_prediction_to_db(all_signals, strategies, latest_date, df_consensus)
     
     print("\n" + "=" * 70)
     print("预测完成！")
