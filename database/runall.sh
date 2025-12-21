@@ -1,87 +1,76 @@
 #!/bin/bash
-# 启动所有数据库更新调度器
+# 一键启动所有数据库更新调度器
 
-echo "========================================"
-echo "🚀 启动所有数据库更新调度器"
+echo "╔═══════════════════════════════════════════════╗"
+echo "║        🚀 启动所有数据库调度器                ║"
+echo "╚═══════════════════════════════════════════════╝"
 echo "⏰ 启动时间: $(date)"
-echo "========================================"
 echo ""
 
-# 获取脚本所在目录（支持从任意位置运行）
+# 获取脚本所在目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
-echo "📂 工作目录: $SCRIPT_DIR"
-echo ""
 
 # 统计
 SUCCESS_COUNT=0
 FAIL_COUNT=0
-ALREADY_RUNNING=0
+SKIP_COUNT=0
 
 # 定义要启动的调度器目录
 SCHEDULERS=("futures" "institution" "stock")
-NAMES=("期货数据" "机构持仓" "股票数据")
 
-# 逐个启动
-for i in "${!SCHEDULERS[@]}"; do
-    DIR="${SCHEDULERS[$i]}"
-    NAME="${NAMES[$i]}"
+echo "📋 待启动服务: ${#SCHEDULERS[@]} 个"
+echo "───────────────────────────────────────────────"
+echo ""
+
+for DIR in "${SCHEDULERS[@]}"; do
+    SERVICE_DIR="$SCRIPT_DIR/$DIR"
     
-    echo "----------------------------------------"
-    echo "📊 启动 ${NAME} 调度器 (${DIR})"
-    echo "----------------------------------------"
-    
-    if [ ! -d "$DIR" ]; then
-        echo "❌ 目录不存在: $DIR"
-        ((FAIL_COUNT++))
+    if [ ! -d "$SERVICE_DIR" ]; then
+        echo "⚠️  [$DIR] 目录不存在，跳过"
+        ((SKIP_COUNT++))
         echo ""
         continue
     fi
     
-    if [ ! -f "$DIR/start_scheduler.sh" ]; then
-        echo "❌ 启动脚本不存在: $DIR/start_scheduler.sh"
-        ((FAIL_COUNT++))
+    echo "▶️  启动 [$DIR]..."
+    
+    START_SCRIPT="$SERVICE_DIR/start_scheduler.sh"
+    
+    if [ ! -f "$START_SCRIPT" ]; then
+        echo "   ⚠️  未找到启动脚本，跳过"
+        ((SKIP_COUNT++))
         echo ""
         continue
     fi
     
-    # 检查是否已在运行
-    if [ -f "$DIR/scheduler.pid" ]; then
-        PYTHON_PID=$(head -1 "$DIR/scheduler.pid")
-        if ps -p $PYTHON_PID > /dev/null 2>&1; then
-            echo "⚠️  ${NAME}调度器已在运行 (PID: $PYTHON_PID)"
-            ((ALREADY_RUNNING++))
-            echo ""
-            continue
-        fi
-    fi
+    # 执行启动脚本
+    cd "$SERVICE_DIR"
+    bash "$START_SCRIPT" > /dev/null 2>&1
+    EXIT_CODE=$?
     
-    # 启动调度器
-    cd "$DIR"
-    bash start_scheduler.sh
-    
-    if [ $? -eq 0 ]; then
+    if [ $EXIT_CODE -eq 0 ]; then
+        echo "   ✅ 启动成功"
         ((SUCCESS_COUNT++))
     else
+        echo "   ⏸️  已在运行或启动失败"
         ((FAIL_COUNT++))
     fi
     
-    cd "$SCRIPT_DIR"
     echo ""
+    cd "$SCRIPT_DIR"
 done
 
-# 汇总
-echo "========================================"
-echo "📋 启动汇总"
-echo "========================================"
-echo "  ✅ 成功启动: $SUCCESS_COUNT 个"
-echo "  ⚠️  已在运行: $ALREADY_RUNNING 个"
-echo "  ❌ 启动失败: $FAIL_COUNT 个"
+echo "───────────────────────────────────────────────"
+echo "📊 启动结果汇总:"
+echo "   ✅ 成功: $SUCCESS_COUNT"
+echo "   ❌ 失败/已运行: $FAIL_COUNT"
+echo "   ⏭️  跳过: $SKIP_COUNT"
 echo ""
-echo "💡 停止所有调度器: ./stopall.sh"
-echo "💡 查看各调度器日志:"
-for DIR in "${SCHEDULERS[@]}"; do
-    echo "   tail -f $DIR/scheduler.log"
-done
-echo "========================================"
+echo "💡 提示:"
+echo "   - 查看日志: tail -f <服务目录>/scheduler.log"
+echo "   - 停止服务: ./stopall.sh"
+echo "╔═══════════════════════════════════════════════╗"
+echo "║        🎉 启动流程完成                        ║"
+echo "╚═══════════════════════════════════════════════╝"
 

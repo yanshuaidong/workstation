@@ -112,7 +112,7 @@ def main():
     # 显示调度计划
     logger.info("📅 任务列表:")
     for job in scheduler.get_jobs():
-        logger.info(f"  {job.id}: 下次执行 {job.next_run_time}")
+        logger.info(f"  {job.id}: {job.trigger}")
     
     logger.info("⏰ 调度器运行中 (周一至周五 17:00 执行更新)...")
     logger.info("")
