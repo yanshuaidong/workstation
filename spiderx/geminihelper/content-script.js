@@ -150,7 +150,7 @@
   async function waitForResponse() {
     console.log("[Content] 等待 AI 响应...");
     
-    const maxWaitTime = 180000; // 3分钟
+    const maxWaitTime = 480000; // 8分钟
     const globalStartTime = Date.now();
     
     // 阶段1: 等待响应开始
