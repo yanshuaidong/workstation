@@ -4,7 +4,7 @@
 
 功能：
 - 在交易日（周一至周五）的下午5点自动更新股票数据
-- 调用 updata.py 执行增量更新
+- 直接调用 updata.py 的 main 函数执行增量更新
 
 环境准备：
   pip install apscheduler
@@ -14,14 +14,16 @@ import logging
 import os
 import sys
 import signal
-import subprocess
+import traceback
 from apscheduler.schedulers.blocking import BlockingScheduler
+
+# 导入更新模块（注意：文件名是 updata.py）
+from updata import main as run_update
 
 # 脚本所在目录
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PID_FILE = os.path.join(SCRIPT_DIR, 'scheduler.pid')
 LOG_FILE = os.path.join(SCRIPT_DIR, 'scheduler.log')
-UPDATE_SCRIPT = os.path.join(SCRIPT_DIR, 'updata.py')  # 注意：文件名是 updata.py
 
 # 配置日志
 logging.basicConfig(
@@ -42,33 +44,13 @@ def update_stock_data():
     logger.info("🔄 开始执行股票数据更新任务...")
     
     try:
-        # 检查 Python 解释器
-        python_cmd = sys.executable
-        
-        # 调用 updata.py
-        result = subprocess.run(
-            [python_cmd, UPDATE_SCRIPT],
-            cwd=SCRIPT_DIR,
-            capture_output=True,
-            text=True,
-            timeout=7200  # 2小时超时（股票数据量大）
-        )
-        
-        if result.returncode == 0:
-            logger.info("✅ 股票数据更新完成")
-            # 记录部分输出
-            if result.stdout:
-                for line in result.stdout.strip().split('\n')[-10:]:
-                    logger.info(f"  {line}")
-        else:
-            logger.error(f"❌ 股票数据更新失败 (退出码: {result.returncode})")
-            if result.stderr:
-                logger.error(f"错误信息: {result.stderr[:500]}")
+        # 直接调用 updata.py 的 main 函数
+        run_update()
+        logger.info("✅ 股票数据更新完成")
                 
-    except subprocess.TimeoutExpired:
-        logger.error("❌ 股票数据更新超时 (>2小时)")
     except Exception as e:
         logger.error(f"❌ 股票数据更新异常: {e}")
+        logger.error(traceback.format_exc())
 
 
 # ==================== 信号处理 ====================
@@ -128,4 +110,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

@@ -8,10 +8,11 @@ import time
 import logging
 import signal
 import traceback
-import subprocess
-import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# 导入主模块功能
+from predict import main as run_predict
 
 
 class InstitutionPredictScheduler:
@@ -193,45 +194,16 @@ class InstitutionPredictScheduler:
             current_date = datetime.now().strftime('%Y-%m-%d')
             self.logger.info(f"[{current_date}] 开始执行第 {self.execution_count + 1} 次任务")
             
-            # 运行 predict.py
-            script_dir = Path(__file__).parent
-            predict_script = script_dir / "predict.py"
+            # 直接调用预测函数
+            run_predict()
             
-            if not predict_script.exists():
-                self.logger.error(f"[{current_date}] predict.py 不存在")
-                return False
-            
-            # 使用 subprocess 运行预测脚本
-            result = subprocess.run(
-                [sys.executable, str(predict_script)],
-                cwd=str(script_dir),
-                capture_output=True,
-                text=True,
-                timeout=300  # 5分钟超时
-            )
-            
-            if result.returncode == 0:
-                self.execution_count += 1
-                self.logger.info(f"[{current_date}] 预测任务完成")
-                print(f"✅ [{current_date}] 机构持仓预测完成")
-                # 打印输出的最后几行
-                if result.stdout:
-                    output_lines = result.stdout.strip().split('\n')
-                    for line in output_lines[-5:]:
-                        print(f"   {line}")
-            else:
-                self.logger.error(f"[{current_date}] 预测任务失败: {result.stderr}")
-                print(f"❌ [{current_date}] 机构持仓预测失败")
-                if result.stderr:
-                    print(f"   错误: {result.stderr[:200]}")
+            self.execution_count += 1
+            self.logger.info(f"[{current_date}] 预测任务完成")
+            print(f"✅ [{current_date}] 机构持仓预测完成")
             
             self.print_heartbeat()
             return True
             
-        except subprocess.TimeoutExpired:
-            self.logger.error(f"执行超时")
-            print(f"❌ ERROR: 执行超时")
-            return False
         except Exception as e:
             self.logger.error(f"执行异常: {e}\n{traceback.format_exc()}")
             print(f"❌ ERROR: {e}")
