@@ -74,6 +74,104 @@
       </el-row>
     </el-card>
 
+    <!-- 最近事件卡片 -->
+    <el-card class="recent-events-card">
+      <template #header>
+        <div class="card-header clickable" @click="recentEventsCollapsed = !recentEventsCollapsed">
+          <div class="header-left">
+            <el-icon class="collapse-icon" :class="{ collapsed: recentEventsCollapsed }">
+              <ArrowDown />
+            </el-icon>
+            <span>最近添加的事件</span>
+            <span class="data-count" v-if="recentEventsData.length">
+              （共 {{ recentEventsData.length }} 条）
+            </span>
+          </div>
+          <div class="header-right" @click.stop>
+            <el-button-group class="recent-days-group">
+              <el-button 
+                size="small" 
+                :type="recentEventsDays === 7 ? 'primary' : ''"
+                @click="setRecentDays(7)"
+              >7天</el-button>
+              <el-button 
+                size="small" 
+                :type="recentEventsDays === 14 ? 'primary' : ''"
+                @click="setRecentDays(14)"
+              >14天</el-button>
+              <el-button 
+                size="small" 
+                :type="recentEventsDays === 30 ? 'primary' : ''"
+                @click="setRecentDays(30)"
+              >1个月</el-button>
+            </el-button-group>
+            <el-button 
+              size="small" 
+              icon="Refresh"
+              @click="loadRecentEvents"
+              :loading="recentEventsLoading"
+              style="margin-left: 12px;"
+            >
+              刷新
+            </el-button>
+          </div>
+        </div>
+      </template>
+
+      <el-collapse-transition>
+        <div v-show="!recentEventsCollapsed" v-loading="recentEventsLoading">
+          <!-- 品种统计标签 -->
+          <div class="symbol-stats" v-if="Object.keys(recentSymbolStats).length > 0">
+            <span class="stats-label">品种分布：</span>
+            <el-tag 
+              v-for="(stat, symbol) in recentSymbolStats" 
+              :key="symbol"
+              class="symbol-tag"
+              size="small"
+              effect="plain"
+              @click="jumpToSymbol(symbol)"
+            >
+              {{ stat.name }} ({{ stat.count }})
+            </el-tag>
+          </div>
+
+          <!-- 事件列表 -->
+          <div class="recent-events-list" v-if="recentEventsData.length > 0">
+            <div 
+              class="event-item" 
+              v-for="event in recentEventsData" 
+              :key="event.id"
+              @click="jumpToEvent(event)"
+            >
+              <div class="event-left">
+                <el-tag 
+                  :type="getOutlookTagType(event.outlook)"
+                  size="small"
+                  effect="dark"
+                  class="outlook-tag"
+                >
+                  {{ getOutlookLabel(event.outlook) }}
+                </el-tag>
+                <span class="event-symbol">{{ event.symbol_name }}</span>
+                <span class="event-title">{{ event.title }}</span>
+              </div>
+              <div class="event-right">
+                <span class="event-date">{{ event.event_date }}</span>
+                <span class="event-created">{{ formatRelativeTime(event.created_at) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 空状态 -->
+          <el-empty 
+            v-if="recentEventsData.length === 0 && !recentEventsLoading"
+            description="最近30天暂无添加事件"
+            :image-size="60"
+          />
+        </div>
+      </el-collapse-transition>
+    </el-card>
+
     <!-- 图表展示区 -->
     <el-card class="chart-card" v-loading="loading">
       <template #header>
@@ -379,11 +477,13 @@
 <script>
 import { markRaw } from 'vue'
 import * as echarts from 'echarts'
+import { ArrowDown } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { 
   getContractsListApi, 
   getHistoryDataApi,
   getEventsListApi,
+  getRecentEventsApi,
   createEventApi,
   updateEventApi,
   deleteEventApi
@@ -391,6 +491,9 @@ import {
 
 export default {
   name: 'FuturesChart',
+  components: {
+    ArrowDown
+  },
   data() {
     return {
       contractsList: [],
@@ -429,7 +532,14 @@ export default {
         1: '弱',
         5: '中',
         10: '强'
-      }
+      },
+      
+      // 最近事件相关
+      recentEventsCollapsed: false,
+      recentEventsData: [],
+      recentEventsLoading: false,
+      recentSymbolStats: {},
+      recentEventsDays: 7  // 默认7天
     }
   },
 
@@ -445,6 +555,9 @@ export default {
   async mounted() {
     await this.loadContractsList()
     this.initDateRange()
+    
+    // 加载最近事件
+    this.loadRecentEvents()
     
     // 监听窗口大小变化
     window.addEventListener('resize', this.handleResize)
@@ -1246,6 +1359,105 @@ export default {
       return value
     },
 
+    // 加载最近事件
+    async loadRecentEvents() {
+      this.recentEventsLoading = true
+      try {
+        const params = new URLSearchParams({
+          days: this.recentEventsDays,
+          limit: 100
+        })
+        
+        const response = await request.get(`${getRecentEventsApi}?${params}`)
+        
+        if (response.code === 0) {
+          this.recentEventsData = response.data.events || []
+          this.recentSymbolStats = response.data.symbol_stats || {}
+        }
+      } catch (error) {
+        console.error('加载最近事件失败:', error)
+      } finally {
+        this.recentEventsLoading = false
+      }
+    },
+
+    // 设置最近事件天数并刷新
+    setRecentDays(days) {
+      this.recentEventsDays = days
+      this.loadRecentEvents()
+    },
+
+    // 点击品种标签，快速选择品种并查询
+    async jumpToSymbol(symbol) {
+      this.selectedContract = symbol
+      const contract = this.contractsList.find(c => c.symbol === symbol)
+      this.selectedContractName = contract ? contract.name : symbol
+      
+      // 设置默认日期范围为近60天
+      this.setDateRange(60)
+      
+      // 自动查询数据
+      await this.queryData()
+    },
+
+    // 点击最近事件，快速跳转到对应品种
+    async jumpToEvent(event) {
+      // 选择品种
+      this.selectedContract = event.symbol
+      this.selectedContractName = event.symbol_name || event.symbol
+      
+      // 设置日期范围：事件日期前后30天
+      const eventDate = new Date(event.event_date)
+      const startDate = new Date(eventDate)
+      const endDate = new Date(eventDate)
+      startDate.setDate(startDate.getDate() - 30)
+      endDate.setDate(endDate.getDate() + 30)
+      
+      // 确保结束日期不超过今天
+      const today = new Date()
+      if (endDate > today) {
+        endDate.setTime(today.getTime())
+      }
+      
+      this.dateRange = [
+        startDate.toISOString().split('T')[0],
+        endDate.toISOString().split('T')[0]
+      ]
+      
+      // 自动查询数据
+      await this.queryData()
+      
+      this.$message.success(`已跳转到 ${this.selectedContractName} - ${event.event_date}`)
+    },
+
+    // 获取品种名称
+    getSymbolName(symbol) {
+      const contract = this.contractsList.find(c => c.symbol === symbol)
+      return contract ? contract.name : symbol.toUpperCase()
+    },
+
+    // 格式化创建时间（相对时间）
+    formatRelativeTime(dateStr) {
+      if (!dateStr) return ''
+      const date = new Date(dateStr)
+      const now = new Date()
+      const diff = now - date
+      
+      const minutes = Math.floor(diff / 60000)
+      const hours = Math.floor(diff / 3600000)
+      const days = Math.floor(diff / 86400000)
+      
+      if (minutes < 60) {
+        return `${minutes}分钟前`
+      } else if (hours < 24) {
+        return `${hours}小时前`
+      } else if (days < 7) {
+        return `${days}天前`
+      } else {
+        return dateStr.split(' ')[0]
+      }
+    }
+
   }
 }
 </script>
@@ -1316,6 +1528,131 @@ export default {
   color: #606266;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 最近事件卡片样式 */
+.recent-events-card {
+  margin-bottom: 20px;
+}
+
+.recent-events-card .card-header.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.recent-events-card .card-header.clickable:hover {
+  opacity: 0.8;
+}
+
+.collapse-icon {
+  transition: transform 0.3s;
+  margin-right: 8px;
+}
+
+.collapse-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.recent-days-group {
+  margin-right: 0;
+}
+
+.symbol-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.stats-label {
+  color: #909399;
+  font-size: 13px;
+}
+
+.symbol-tag {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.symbol-tag:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.recent-events-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.event-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.event-item:last-child {
+  border-bottom: none;
+}
+
+.event-item:hover {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8f4ff 100%);
+  transform: translateX(4px);
+}
+
+.event-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.outlook-tag {
+  flex-shrink: 0;
+}
+
+.event-symbol {
+  font-weight: 600;
+  color: #409eff;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.event-title {
+  color: #303133;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.event-date {
+  color: #606266;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.event-created {
+  color: #909399;
+  font-size: 11px;
+  min-width: 60px;
+  text-align: right;
 }
 
 /* 响应式设计 */

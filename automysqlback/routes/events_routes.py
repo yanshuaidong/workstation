@@ -410,3 +410,95 @@ def delete_event(event_id):
         cursor.close()
         conn.close()
 
+
+@events_bp.route('/events/recent', methods=['GET'])
+def get_recent_events():
+    """
+    获取最近添加的事件（跨品种），按创建时间倒序排列
+    参数：
+    - days: 最近几天（默认30天）
+    - limit: 返回条数限制（默认100条）
+    """
+    from flask import current_app
+    get_db_connection = current_app.config['get_db_connection']
+    
+    days = request.args.get('days', 30, type=int)
+    limit = request.args.get('limit', 100, type=int)
+    
+    # 限制参数范围
+    days = min(max(days, 1), 365)
+    limit = min(max(limit, 1), 500)
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    
+    try:
+        # 查询最近N天内创建的事件，关联合约表获取中文名称
+        cursor.execute("""
+            SELECT 
+                e.id,
+                e.symbol,
+                c.name as symbol_name,
+                e.event_date,
+                e.title,
+                e.content,
+                e.outlook,
+                e.strength,
+                e.created_at,
+                e.updated_at
+            FROM futures_events e
+            LEFT JOIN contracts_main c ON e.symbol = c.symbol
+            WHERE e.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            ORDER BY e.created_at DESC
+            LIMIT %s
+        """, (days, limit))
+        
+        events = cursor.fetchall()
+        
+        # 统计各品种的事件数量，同时记录品种名称
+        symbol_stats = {}  # { symbol: { count: 数量, name: 中文名 } }
+        for event in events:
+            symbol = event['symbol']
+            if symbol not in symbol_stats:
+                symbol_stats[symbol] = {
+                    'count': 0,
+                    'name': event['symbol_name'] or symbol.upper()
+                }
+            symbol_stats[symbol]['count'] += 1
+        
+        # 格式化结果
+        formatted_events = []
+        for event in events:
+            formatted_events.append({
+                'id': event['id'],
+                'symbol': event['symbol'],
+                'symbol_name': event['symbol_name'] or event['symbol'].upper(),  # 中文名称
+                'event_date': event['event_date'].strftime('%Y-%m-%d') if event['event_date'] else None,
+                'title': event['title'],
+                'content': event['content'],
+                'outlook': event['outlook'],
+                'strength': event['strength'],
+                'created_at': event['created_at'].strftime('%Y-%m-%d %H:%M:%S') if event['created_at'] else None,
+                'updated_at': event['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if event['updated_at'] else None
+            })
+        
+        return jsonify({
+            'code': 0,
+            'message': '获取成功',
+            'data': {
+                'events': formatted_events,
+                'total': len(formatted_events),
+                'symbol_stats': symbol_stats,  # 各品种事件数量统计（含中文名）
+                'query_days': days
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取最近事件失败: {e}")
+        return jsonify({
+            'code': 1,
+            'message': f'获取失败: {str(e)}'
+        })
+    finally:
+        cursor.close()
+        conn.close()

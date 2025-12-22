@@ -70,6 +70,7 @@ export const togglePositionStatusApi = `${BASE_URL_API_A}/positions/toggle-statu
 
 // 期货事件管理接口
 export const getEventsListApi = `${BASE_URL_API_A}/events/list`;
+export const getRecentEventsApi = `${BASE_URL_API_A}/events/recent`;  // 获取最近添加的事件（跨品种）
 export const createEventApi = `${BASE_URL_API_A}/events/create`;
 export const getEventDetailApi = `${BASE_URL_API_A}/events/detail`;  // 需要在调用时添加 /{id}
 export const updateEventApi = `${BASE_URL_API_A}/events/update`;     // 需要在调用时添加 /{id}
