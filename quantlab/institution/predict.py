@@ -35,6 +35,58 @@ warnings.filterwarnings('ignore')
 
 
 # ==================================================
+# 品种名称映射
+# ==================================================
+
+def load_futures_mapping() -> Dict[str, str]:
+    """
+    加载期货品种映射表，返回 {symbol: 中文名称} 的字典
+    """
+    script_dir = Path(__file__).parent
+    mapping_path = script_dir.parent.parent / 'database' / 'futures' / 'futures_mapping.json'
+    
+    symbol_to_name = {}
+    
+    if mapping_path.exists():
+        try:
+            with open(mapping_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            for symbol, info in data.get('futures', {}).items():
+                name = info.get('name', symbol)
+                # 去掉"主连"后缀
+                if name.endswith('主连'):
+                    name = name[:-2]
+                symbol_to_name[symbol.lower()] = name
+        except Exception as e:
+            print(f"[警告] 加载品种映射文件失败: {e}")
+    
+    return symbol_to_name
+
+
+# 全局变量
+FUTURES_NAME_MAP: Dict[str, str] = {}
+
+
+def get_symbol_name(symbol: str) -> str:
+    """获取品种的中文名称"""
+    global FUTURES_NAME_MAP
+    if not FUTURES_NAME_MAP:
+        FUTURES_NAME_MAP = load_futures_mapping()
+    
+    # 尝试多种匹配方式
+    symbol_lower = symbol.lower()
+    if symbol_lower in FUTURES_NAME_MAP:
+        return FUTURES_NAME_MAP[symbol_lower]
+    
+    # 尝试添加 'm' 后缀匹配（如 rb -> rbm）
+    if symbol_lower + 'm' in FUTURES_NAME_MAP:
+        return FUTURES_NAME_MAP[symbol_lower + 'm']
+    
+    return symbol
+
+
+# ==================================================
 # MySQL数据库配置
 # ==================================================
 
@@ -53,52 +105,59 @@ def get_mysql_connection():
     return pymysql.connect(**MYSQL_CONFIG)
 
 
-def build_markdown_content(signals: List[Dict], prediction_date: str) -> str:
-    """构建Markdown格式的预测内容"""
+def build_plain_text_content(signals: List[Dict], prediction_date: str) -> str:
+    """构建纯文本格式的预测内容"""
     lines = []
     
-    lines.append(f"## 机构持仓预测信号")
-    lines.append(f"**预测日期**: {prediction_date}")
-    lines.append(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("=" * 70)
+    lines.append("机构持仓预测信号")
+    lines.append("=" * 70)
+    lines.append(f"预测日期: {prediction_date}")
+    lines.append(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("")
     
     if not signals:
-        lines.append("*今日无推荐信号*")
+        lines.append("今日无推荐信号")
         return '\n'.join(lines)
     
     # 分离多头和空头信号
     long_signals = [s for s in signals if s['direction'] == '做多']
     short_signals = [s for s in signals if s['direction'] == '做空']
     
-    # 多头信号表格
+    # 多头信号
     if long_signals:
-        lines.append(f"### 📈 做多信号 ({len(long_signals)}个)")
-        lines.append("")
-        lines.append("| 品种 | 概率 | 收盘价 | 国泰进攻 | 连续天数 | 均线多排 |")
-        lines.append("|------|------|--------|----------|----------|----------|")
+        lines.append("-" * 70)
+        lines.append(f"做多信号 ({len(long_signals)}个)")
+        lines.append("-" * 70)
+        lines.append(f"  {'品种':<14} {'概率':<10} {'收盘价':<12} {'国泰进攻':<10} {'连续天数':<10} {'均线多排':<10}")
         for sig in long_signals:
-            attack = "✓" if sig.get('gtja_long_attack', 0) else ""
-            streak = sig.get('gtja_long_streak', 0) or ""
-            ma_align = "✓" if sig.get('ma_align_bull', 0) else ""
-            lines.append(f"| {sig['symbol']} | {sig['probability']*100:.1f}% | {sig['close']:.2f} | {attack} | {streak} | {ma_align} |")
+            symbol_name = get_symbol_name(sig['symbol'])
+            attack = "是" if sig.get('gtja_long_attack', 0) else "-"
+            streak = str(sig.get('gtja_long_streak', 0)) if sig.get('gtja_long_streak', 0) else "-"
+            ma_align = "是" if sig.get('ma_align_bull', 0) else "-"
+            prob_str = f"{sig['probability']*100:.1f}%"
+            lines.append(f"  {symbol_name:<12} {prob_str:<10} {sig['close']:<12.2f} {attack:<10} {streak:<10} {ma_align:<10}")
         lines.append("")
     
-    # 空头信号表格
+    # 空头信号
     if short_signals:
-        lines.append(f"### 📉 做空信号 ({len(short_signals)}个)")
-        lines.append("")
-        lines.append("| 品种 | 概率 | 收盘价 | 国泰进攻 | 连续天数 | 均线空排 |")
-        lines.append("|------|------|--------|----------|----------|----------|")
+        lines.append("-" * 70)
+        lines.append(f"做空信号 ({len(short_signals)}个)")
+        lines.append("-" * 70)
+        lines.append(f"  {'品种':<14} {'概率':<10} {'收盘价':<12} {'国泰进攻':<10} {'连续天数':<10} {'均线空排':<10}")
         for sig in short_signals:
-            attack = "✓" if sig.get('gtja_short_attack', 0) else ""
-            streak = sig.get('gtja_short_streak', 0) or ""
-            ma_align = "✓" if sig.get('ma_align_bear', 0) else ""
-            lines.append(f"| {sig['symbol']} | {sig['probability']*100:.1f}% | {sig['close']:.2f} | {attack} | {streak} | {ma_align} |")
+            symbol_name = get_symbol_name(sig['symbol'])
+            attack = "是" if sig.get('gtja_short_attack', 0) else "-"
+            streak = str(sig.get('gtja_short_streak', 0)) if sig.get('gtja_short_streak', 0) else "-"
+            ma_align = "是" if sig.get('ma_align_bear', 0) else "-"
+            prob_str = f"{sig['probability']*100:.1f}%"
+            lines.append(f"  {symbol_name:<12} {prob_str:<10} {sig['close']:<12.2f} {attack:<10} {streak:<10} {ma_align:<10}")
         lines.append("")
     
     # 统计摘要
-    lines.append("---")
-    lines.append(f"**信号统计**: 做多 {len(long_signals)} 个, 做空 {len(short_signals)} 个")
+    lines.append("=" * 70)
+    lines.append(f"信号统计: 做多 {len(long_signals)} 个, 做空 {len(short_signals)} 个")
+    lines.append("=" * 70)
     
     return '\n'.join(lines)
 
@@ -119,8 +178,8 @@ def save_prediction_to_db(signals: List[Dict], prediction_date: str) -> None:
         title = f"机构持仓预测信号 - {prediction_date}"
         message_type = "institution_position_prediction"
         
-        # 构建Markdown格式内容
-        prediction_content = build_markdown_content(signals, prediction_date)
+        # 构建纯文本格式内容
+        prediction_content = build_plain_text_content(signals, prediction_date)
         
         # 插入 news_red_telegraph 表
         insert_news_sql = """
@@ -575,7 +634,7 @@ def predict_today(top_n: int = 10) -> List[Dict]:
     signal_percentile = config.get('signal_percentile', 95)
     
     print("=" * 60)
-    print(f"📊 每日信号预测 | {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"每日信号预测 | {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
     print(f"模型训练日期: {config.get('train_date', 'N/A')}")
     print(f"信号阈值: Top {100 - signal_percentile:.0f}%")
@@ -654,32 +713,42 @@ def predict_today(top_n: int = 10) -> List[Dict]:
 def print_signals(signals: List[Dict]) -> None:
     """打印信号列表"""
     if not signals:
-        print("\n⚠️ 今日无推荐信号")
+        print("\n今日无推荐信号")
         return
     
-    print("\n" + "=" * 60)
-    print("📈 今日推荐信号")
-    print("=" * 60)
+    # 分离多头和空头信号
+    long_signals = [s for s in signals if s['direction'] == '做多']
+    short_signals = [s for s in signals if s['direction'] == '做空']
     
-    for i, sig in enumerate(signals, 1):
-        direction_emoji = "🔴 做多" if sig['direction'] == '做多' else "🔵 做空"
-        
-        # 辅助信息
-        if sig['direction'] == '做多':
-            attack = "✓ 国泰进攻" if sig.get('gtja_long_attack', 0) else ""
-            streak = f"连续{sig.get('gtja_long_streak', 0)}天" if sig.get('gtja_long_streak', 0) > 0 else ""
-            ma_ok = "✓ 均线多排" if sig.get('ma_align_bull', 0) else ""
-        else:
-            attack = "✓ 国泰进攻" if sig.get('gtja_short_attack', 0) else ""
-            streak = f"连续{sig.get('gtja_short_streak', 0)}天" if sig.get('gtja_short_streak', 0) > 0 else ""
-            ma_ok = "✓ 均线空排" if sig.get('ma_align_bear', 0) else ""
-        
-        extras = " | ".join(filter(None, [attack, streak, ma_ok]))
-        
-        print(f"\n{i}. {sig['symbol']} {direction_emoji}")
-        print(f"   概率: {sig['probability']*100:.1f}% | 收盘价: {sig['close']:.2f}")
-        if extras:
-            print(f"   {extras}")
+    print("\n" + "=" * 70)
+    print("今日推荐信号")
+    print("=" * 70)
+    
+    if long_signals:
+        print("\n" + "-" * 70)
+        print(f"做多信号 ({len(long_signals)}个)")
+        print("-" * 70)
+        print(f"  {'序号':<6} {'品种':<12} {'概率':<10} {'收盘价':<12} {'国泰进攻':<10} {'连续天数':<10} {'均线多排':<10}")
+        for i, sig in enumerate(long_signals, 1):
+            symbol_name = get_symbol_name(sig['symbol'])
+            attack = "是" if sig.get('gtja_long_attack', 0) else "-"
+            streak = str(sig.get('gtja_long_streak', 0)) if sig.get('gtja_long_streak', 0) > 0 else "-"
+            ma_ok = "是" if sig.get('ma_align_bull', 0) else "-"
+            prob_str = f"{sig['probability']*100:.1f}%"
+            print(f"  {i:<6} {symbol_name:<10} {prob_str:<10} {sig['close']:<12.2f} {attack:<10} {streak:<10} {ma_ok:<10}")
+    
+    if short_signals:
+        print("\n" + "-" * 70)
+        print(f"做空信号 ({len(short_signals)}个)")
+        print("-" * 70)
+        print(f"  {'序号':<6} {'品种':<12} {'概率':<10} {'收盘价':<12} {'国泰进攻':<10} {'连续天数':<10} {'均线空排':<10}")
+        for i, sig in enumerate(short_signals, 1):
+            symbol_name = get_symbol_name(sig['symbol'])
+            attack = "是" if sig.get('gtja_short_attack', 0) else "-"
+            streak = str(sig.get('gtja_short_streak', 0)) if sig.get('gtja_short_streak', 0) > 0 else "-"
+            ma_ok = "是" if sig.get('ma_align_bear', 0) else "-"
+            prob_str = f"{sig['probability']*100:.1f}%"
+            print(f"  {i:<6} {symbol_name:<10} {prob_str:<10} {sig['close']:<12.2f} {attack:<10} {streak:<10} {ma_ok:<10}")
 
 
 # ==================================================
@@ -702,7 +771,7 @@ def main():
             print(json.dumps(signals, ensure_ascii=False, indent=2))
         else:
             print_signals(signals)
-            print(f"\n✅ 预测完成，共 {len(signals)} 个信号")
+            print(f"\n预测完成，共 {len(signals)} 个信号")
         
         # 保存预测结果到数据库
         if signals:
@@ -710,13 +779,13 @@ def main():
             print("\n[步骤] 保存预测结果到数据库...")
             save_prediction_to_db(signals, prediction_date)
         else:
-            print("\n⚠️ 无信号，跳过数据库保存")
+            print("\n无信号，跳过数据库保存")
     
     except FileNotFoundError as e:
-        print(f"❌ 错误: {e}")
+        print(f"[错误] {e}")
         print("请先运行 train.py 训练模型")
     except Exception as e:
-        print(f"❌ 预测失败: {e}")
+        print(f"[错误] 预测失败: {e}")
         raise
 
 

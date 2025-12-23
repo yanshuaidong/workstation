@@ -33,6 +33,57 @@ warnings.filterwarnings('ignore')
 
 
 # ==================================================
+# 品种名称映射
+# ==================================================
+
+def load_futures_mapping() -> Dict[str, str]:
+    """
+    加载期货品种映射表，返回 {symbol: 中文名称} 的字典
+    """
+    script_dir = Path(__file__).parent
+    mapping_path = script_dir.parent.parent / 'database' / 'futures' / 'futures_mapping.json'
+    
+    symbol_to_name = {}
+    
+    if mapping_path.exists():
+        try:
+            with open(mapping_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            for symbol, info in data.get('futures', {}).items():
+                # 映射文件中的 key 就是 symbol（如 rbm, cum）
+                name = info.get('name', symbol)
+                # 去掉"主连"后缀，使名称更简洁
+                if name.endswith('主连'):
+                    name = name[:-2]
+                symbol_to_name[symbol.lower()] = name
+        except Exception as e:
+            print(f"[警告] 加载品种映射文件失败: {e}")
+    
+    return symbol_to_name
+
+
+# 全局变量，存储品种映射
+FUTURES_NAME_MAP: Dict[str, str] = {}
+
+
+def get_symbol_name(symbol: str) -> str:
+    """
+    获取品种的中文名称
+    
+    参数:
+        symbol: 品种代码（如 rbm, cum）
+    返回:
+        中文名称，如果没找到则返回原代码
+    """
+    global FUTURES_NAME_MAP
+    if not FUTURES_NAME_MAP:
+        FUTURES_NAME_MAP = load_futures_mapping()
+    
+    return FUTURES_NAME_MAP.get(symbol.lower(), symbol)
+
+
+# ==================================================
 # 数据库配置
 # ==================================================
 
@@ -51,18 +102,20 @@ def get_db_connection():
     return pymysql.connect(**DB_CONFIG)
 
 
-def build_markdown_content(
+def build_plain_text_content(
     all_signals: Dict[str, pd.DataFrame],
     strategies: Dict[str, Dict[str, Any]],
     latest_date: pd.Timestamp,
     df_consensus: pd.DataFrame
 ) -> str:
-    """构建Markdown格式的预测内容"""
+    """构建纯文本格式的预测内容"""
     lines = []
     
-    lines.append(f"## 期货多策略预测信号")
-    lines.append(f"**预测日期**: {latest_date.strftime('%Y-%m-%d')}")
-    lines.append(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("=" * 70)
+    lines.append("期货多策略预测信号")
+    lines.append("=" * 70)
+    lines.append(f"预测日期: {latest_date.strftime('%Y-%m-%d')}")
+    lines.append(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("")
     
     # 统计信号
@@ -82,54 +135,55 @@ def build_markdown_content(
         total_long += long_count
         total_short += short_count
         
-        lines.append(f"### {meta['name']} {SIGNAL_STRENGTH[strategy_key]}")
-        lines.append(f"> {meta['description']}")
-        lines.append(f"> 阈值: 多头>{meta['thresholds']['long']:.4f}, 空头>{meta['thresholds']['short']:.4f}")
-        lines.append("")
+        lines.append("-" * 70)
+        lines.append(f"[{meta['name']}] {SIGNAL_STRENGTH[strategy_key]}")
+        lines.append(f"  说明: {meta['description']}")
+        lines.append(f"  阈值: 多头>{meta['thresholds']['long']:.4f}, 空头>{meta['thresholds']['short']:.4f}")
+        lines.append("-" * 70)
         
         if len(df_today) == 0:
-            lines.append("*无信号*")
+            lines.append("  无信号")
             lines.append("")
             continue
         
-        # 多头信号表格
+        # 多头信号
         df_long = df_today[df_today['long_signal']].sort_values('p_long', ascending=False)
         if len(df_long) > 0:
-            lines.append(f"**📈 多头信号 ({len(df_long)}个)**")
-            lines.append("")
-            lines.append("| 品种 | 概率 | 收盘价 | 强度 |")
-            lines.append("|------|------|--------|------|")
+            lines.append(f"  多头信号 ({len(df_long)}个):")
+            lines.append(f"  {'品种':<14} {'概率':<10} {'收盘价':<12} {'强度':<10}")
             for _, row in df_long.iterrows():
-                strength_bar = '█' * min(int(row['long_strength'] * 5) + 1, 5)
-                lines.append(f"| {row['symbol']} | {row['p_long']:.4f} | {row['close']:.2f} | {strength_bar} |")
+                strength_pct = f"{row['long_strength']*100:.1f}%"
+                symbol_name = get_symbol_name(row['symbol'])
+                lines.append(f"  {symbol_name:<12} {row['p_long']:<10.4f} {row['close']:<12.2f} {strength_pct:<10}")
             lines.append("")
         
-        # 空头信号表格
+        # 空头信号
         df_short = df_today[df_today['short_signal']].sort_values('p_short', ascending=False)
         if len(df_short) > 0:
-            lines.append(f"**📉 空头信号 ({len(df_short)}个)**")
-            lines.append("")
-            lines.append("| 品种 | 概率 | 收盘价 | 强度 |")
-            lines.append("|------|------|--------|------|")
+            lines.append(f"  空头信号 ({len(df_short)}个):")
+            lines.append(f"  {'品种':<14} {'概率':<10} {'收盘价':<12} {'强度':<10}")
             for _, row in df_short.iterrows():
-                strength_bar = '█' * min(int(row['short_strength'] * 5) + 1, 5)
-                lines.append(f"| {row['symbol']} | {row['p_short']:.4f} | {row['close']:.2f} | {strength_bar} |")
+                strength_pct = f"{row['short_strength']*100:.1f}%"
+                symbol_name = get_symbol_name(row['symbol'])
+                lines.append(f"  {symbol_name:<12} {row['p_short']:<10.4f} {row['close']:<12.2f} {strength_pct:<10}")
             lines.append("")
     
     # 共识信号
     if len(df_consensus) > 0:
-        lines.append("### 🎯 多策略共识信号")
-        lines.append("> 2个以上策略同时发出的信号")
-        lines.append("")
-        lines.append("| 品种 | 方向 | 共识数 | 策略 |")
-        lines.append("|------|------|--------|------|")
+        lines.append("=" * 70)
+        lines.append("多策略共识信号 (2个以上策略同时发出)")
+        lines.append("=" * 70)
+        lines.append(f"  {'品种':<14} {'方向':<8} {'共识数':<8} {'策略':<30}")
         for _, row in df_consensus.iterrows():
-            lines.append(f"| {row['symbol']} | {row['direction']} | {row['num_strategies']} | {row['strategies']} |")
+            symbol_name = get_symbol_name(row['symbol'])
+            strategies_cn = get_strategy_names_cn(row['strategies'])
+            lines.append(f"  {symbol_name:<12} {row['direction']:<8} {row['num_strategies']:<8} {strategies_cn}")
         lines.append("")
     
     # 统计摘要
-    lines.append("---")
-    lines.append(f"**信号统计**: 多头 {total_long} 个, 空头 {total_short} 个")
+    lines.append("=" * 70)
+    lines.append(f"信号统计: 多头 {total_long} 个, 空头 {total_short} 个")
+    lines.append("=" * 70)
     
     return '\n'.join(lines)
 
@@ -152,8 +206,8 @@ def save_prediction_to_db(
         title = f"期货多策略预测信号 - {prediction_date}"
         message_type = "futures_multi_strategy_prediction"
         
-        # 构建Markdown格式内容
-        prediction_content = build_markdown_content(all_signals, strategies, latest_date, df_consensus)
+        # 构建纯文本格式内容
+        prediction_content = build_plain_text_content(all_signals, strategies, latest_date, df_consensus)
         
         # 插入 news_red_telegraph 表
         insert_news_sql = """
@@ -211,10 +265,31 @@ STRATEGY_ORDER = ['strict', 'high_threshold', 'big_trend']
 
 # 信号强度描述
 SIGNAL_STRENGTH = {
-    'strict': '★★★ 高置信',
-    'high_threshold': '★★☆ 中置信',
-    'big_trend': '★☆☆ 趋势型'
+    'strict': '[高置信]',
+    'high_threshold': '[中置信]',
+    'big_trend': '[趋势型]'
 }
+
+# 策略中文名称映射
+STRATEGY_NAME_MAP = {
+    'strict': '超严格型',
+    'high_threshold': '高阈值型',
+    'big_trend': '大行情型'
+}
+
+
+def get_strategy_names_cn(strategies_str: str) -> str:
+    """
+    将策略英文名转换为中文名
+    
+    参数:
+        strategies_str: 逗号分隔的策略英文名，如 "strict, high_threshold"
+    返回:
+        中文名称，如 "超严格型, 高阈值型"
+    """
+    strategy_keys = [s.strip() for s in strategies_str.split(',')]
+    cn_names = [STRATEGY_NAME_MAP.get(key, key) for key in strategy_keys]
+    return ', '.join(cn_names)
 
 
 # ==================================================
@@ -410,22 +485,20 @@ def format_signal_output(
         df_short = df_today[df_today['short_signal']].sort_values('p_short', ascending=False)
         
         if len(df_long) > 0:
-            lines.append(f"\n   📈 多头信号 ({len(df_long)}个):")
+            lines.append(f"\n   多头信号 ({len(df_long)}个):")
+            lines.append(f"      {'品种':<12} {'概率':<10} {'价格':<12} {'强度':<10}")
             for _, row in df_long.iterrows():
-                strength_bar = '█' * min(int(row['long_strength'] * 10) + 1, 10)
-                lines.append(
-                    f"      {row['symbol']:<8} | 概率: {row['p_long']:.4f} | "
-                    f"价格: {row['close']:.2f} | {strength_bar}"
-                )
+                strength_pct = f"{row['long_strength']*100:.1f}%"
+                symbol_name = get_symbol_name(row['symbol'])
+                lines.append(f"      {symbol_name:<10} {row['p_long']:<10.4f} {row['close']:<12.2f} {strength_pct:<10}")
         
         if len(df_short) > 0:
-            lines.append(f"\n   📉 空头信号 ({len(df_short)}个):")
+            lines.append(f"\n   空头信号 ({len(df_short)}个):")
+            lines.append(f"      {'品种':<12} {'概率':<10} {'价格':<12} {'强度':<10}")
             for _, row in df_short.iterrows():
-                strength_bar = '█' * min(int(row['short_strength'] * 10) + 1, 10)
-                lines.append(
-                    f"      {row['symbol']:<8} | 概率: {row['p_short']:.4f} | "
-                    f"价格: {row['close']:.2f} | {strength_bar}"
-                )
+                strength_pct = f"{row['short_strength']*100:.1f}%"
+                symbol_name = get_symbol_name(row['symbol'])
+                lines.append(f"      {symbol_name:<10} {row['p_short']:<10.4f} {row['close']:<12.2f} {strength_pct:<10}")
     
     lines.append(f"\n{'=' * 70}")
     lines.append(f"信号统计: 多头 {total_long} 个, 空头 {total_short} 个")
@@ -571,11 +644,13 @@ def main():
     df_consensus = get_consensus_signals(all_signals, latest_date, min_strategies=2)
     if len(df_consensus) > 0:
         print(f"\n{'=' * 70}")
-        print("🎯 多策略共识信号（2个以上策略同时发出）")
+        print("多策略共识信号（2个以上策略同时发出）")
         print("=" * 70)
+        print(f"  {'品种':<12} {'方向':<6} {'共识数':<8} {'策略':<30}")
         for _, row in df_consensus.iterrows():
-            print(f"  {row['symbol']:<8} | {row['direction']} | "
-                  f"共识数: {row['num_strategies']} | 策略: {row['strategies']}")
+            symbol_name = get_symbol_name(row['symbol'])
+            strategies_cn = get_strategy_names_cn(row['strategies'])
+            print(f"  {symbol_name:<10} {row['direction']:<6} {row['num_strategies']:<8} {strategies_cn}")
     else:
         print("\n暂无多策略共识信号")
     
