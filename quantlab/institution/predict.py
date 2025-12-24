@@ -174,7 +174,7 @@ def save_prediction_to_db(signals: List[Dict], prediction_date: str) -> None:
     cursor = conn.cursor()
     
     try:
-        ctime = int(time.time() * 1000)  # 毫秒级时间戳
+        ctime = int(time.time())  # 秒级时间戳
         title = f"机构持仓预测信号 - {prediction_date}"
         message_type = "institution_position_prediction"
         

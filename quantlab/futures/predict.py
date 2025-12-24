@@ -201,7 +201,7 @@ def save_prediction_to_db(
     cursor = conn.cursor()
     
     try:
-        ctime = int(time.time() * 1000)  # 毫秒级时间戳
+        ctime = int(time.time())  # 秒级时间戳
         prediction_date = latest_date.strftime('%Y-%m-%d')
         title = f"期货多策略预测信号 - {prediction_date}"
         message_type = "futures_multi_strategy_prediction"
