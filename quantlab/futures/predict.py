@@ -192,68 +192,80 @@ def save_prediction_to_db(
     all_signals: Dict[str, pd.DataFrame],
     strategies: Dict[str, Dict[str, Any]],
     latest_date: pd.Timestamp,
-    df_consensus: pd.DataFrame
+    df_consensus: pd.DataFrame,
+    max_retries: int = 3
 ) -> None:
     """
     将预测结果保存到数据库
+    遇到重复键时会等待1秒后重试
     """
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    try:
-        ctime = int(time.time())  # 秒级时间戳
-        prediction_date = latest_date.strftime('%Y-%m-%d')
-        title = f"期货多策略预测信号 - {prediction_date}"
-        message_type = "futures_multi_strategy_prediction"
-        
-        # 构建纯文本格式内容
-        prediction_content = build_plain_text_content(all_signals, strategies, latest_date, df_consensus)
-        
-        # 插入 news_red_telegraph 表
-        insert_news_sql = """
-            INSERT INTO news_red_telegraph 
-            (ctime, title, content, ai_analysis, message_score, message_label, message_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(insert_news_sql, (
-            ctime,
-            title,
-            prediction_content,
-            None,  # ai_analysis
-            7,     # message_score
-            'hard',  # message_label
-            message_type
-        ))
-        
-        # 获取刚插入的记录ID
-        news_id = cursor.lastrowid
-        
-        # 插入 news_process_tracking 表
-        insert_tracking_sql = """
-            INSERT INTO news_process_tracking 
-            (news_id, ctime, is_reviewed, track_day3_done, track_day7_done, track_day14_done, track_day28_done)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(insert_tracking_sql, (
-            news_id,
-            ctime,
-            0,  # is_reviewed
-            0,  # track_day3_done
-            0,  # track_day7_done
-            0,  # track_day14_done
-            0   # track_day28_done
-        ))
-        
-        conn.commit()
-        print(f"[数据库] 预测结果已保存，news_id: {news_id}")
-        
-    except Exception as e:
-        conn.rollback()
-        print(f"[数据库] 保存失败: {e}")
-        raise
-    finally:
-        cursor.close()
-        conn.close()
+    prediction_date = latest_date.strftime('%Y-%m-%d')
+    title = f"期货多策略预测信号 - {prediction_date}"
+    message_type = "futures_multi_strategy_prediction"
+    
+    # 构建纯文本格式内容
+    prediction_content = build_plain_text_content(all_signals, strategies, latest_date, df_consensus)
+    
+    insert_news_sql = """
+        INSERT INTO news_red_telegraph 
+        (ctime, title, content, ai_analysis, message_score, message_label, message_type)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+    
+    insert_tracking_sql = """
+        INSERT INTO news_process_tracking 
+        (news_id, ctime, is_reviewed, track_day3_done, track_day7_done, track_day14_done, track_day28_done)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+    
+    for attempt in range(max_retries):
+        try:
+            ctime = int(time.time())  # 秒级时间戳
+            
+            cursor.execute(insert_news_sql, (
+                ctime,
+                title,
+                prediction_content,
+                None,  # ai_analysis
+                7,     # message_score
+                'hard',  # message_label
+                message_type
+            ))
+            
+            # 获取刚插入的记录ID
+            news_id = cursor.lastrowid
+            
+            cursor.execute(insert_tracking_sql, (
+                news_id,
+                ctime,
+                0,  # is_reviewed
+                0,  # track_day3_done
+                0,  # track_day7_done
+                0,  # track_day14_done
+                0   # track_day28_done
+            ))
+            
+            conn.commit()
+            print(f"[数据库] 预测结果已保存，news_id: {news_id}")
+            return
+            
+        except Exception as e:
+            conn.rollback()
+            # 检查是否为重复键错误 (MySQL error code 1062)
+            if hasattr(e, 'args') and len(e.args) >= 1 and e.args[0] == 1062:
+                if attempt < max_retries - 1:
+                    print(f"[数据库] 时间戳冲突，等待1秒后重试 ({attempt + 1}/{max_retries})")
+                    time.sleep(1)
+                    continue
+            # 非重复键错误或重试次数用尽
+            print(f"[数据库] 保存失败: {e}")
+            raise
+    
+    cursor.close()
+    conn.close()
 
 
 # ==================================================
