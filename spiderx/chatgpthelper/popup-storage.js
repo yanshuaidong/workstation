@@ -5,7 +5,7 @@ const STORAGE_KEYS = {
   EXECUTION_RECORDS: 'executionRecords'
 };
 
-const TOTAL_DAYS = 30;
+const TOTAL_DAYS = 120;
 
 export async function getTaskConfig() {
   return new Promise((resolve) => {

@@ -38,7 +38,7 @@ function initializeStorage() {
     startTime: null,
     lastRunTime: null,
     executedDays: 0,
-    totalDays: 30
+    totalDays: 120
   };
   
   chrome.storage.local.set({
@@ -503,7 +503,7 @@ function getTaskConfig() {
         startTime: null,
         lastRunTime: null,
         executedDays: 0,
-        totalDays: 30
+        totalDays: 120
       });
     });
   });

@@ -56,7 +56,7 @@ async function handleStart() {
     
     // 检查是否已完成
     if (config.executedDays >= config.totalDays) {
-      alert('任务已完成30天，无需再次启动');
+      alert('任务已完成120次，无需再次启动');
       return;
     }
     
@@ -79,7 +79,7 @@ async function handleStart() {
       
       if (response && response.success) {
         console.log("[Popup] 任务已启动");
-        alert('✅ 定时任务已启动！\n每天6次定时执行，共30天。\n\n下次执行时间: ' + response.nextRunTime);
+        alert('✅ 定时任务已启动！\n每天6次定时执行，共120次。\n\n下次执行时间: ' + response.nextRunTime);
         initUI(); // 刷新界面
       } else {
         alert('启动失败: ' + (response?.message || '未知错误'));
