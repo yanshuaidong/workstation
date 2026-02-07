@@ -22,6 +22,7 @@ SERVICES=(
     "bbgnews"
     "chatgpthelper"
     "clsnewscraper"
+    "doubaohelper"
     "eastfutuscraper"
     "futurestop10"
     "geminihelper"
@@ -45,8 +46,8 @@ for SERVICE in "${SERVICES[@]}"; do
     
     echo "⏹️  停止 [$SERVICE]..."
     
-    # 检查停止脚本（geminihelper/chatgpthelper 使用 stop_server.sh，其他使用 stop_scheduler.sh）
-    if [ "$SERVICE" = "geminihelper" ] || [ "$SERVICE" = "chatgpthelper" ]; then
+    # 检查停止脚本（geminihelper/chatgpthelper/doubaohelper 使用 stop_server.sh，其他使用 stop_scheduler.sh）
+    if [ "$SERVICE" = "geminihelper" ] || [ "$SERVICE" = "chatgpthelper" ] || [ "$SERVICE" = "doubaohelper" ]; then
         STOP_SCRIPT="$SERVICE_DIR/stop_server.sh"
     else
         STOP_SCRIPT="$SERVICE_DIR/stop_scheduler.sh"

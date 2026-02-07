@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ChatGPT Helper 后端服务
+豆包 Helper 后端服务
 功能：
 1. 从本地 SQLite 数据库读取待分析任务
-2. 接收插件发送的 ChatGPT 响应结果
+2. 接收插件发送的豆包响应结果
 3. 将结果写入阿里云 MySQL 数据库
 """
 
@@ -21,10 +21,10 @@ from datetime import datetime
 # ==================== 日志配置 ====================
 
 # 日志文件路径
-LOG_FILE = os.path.join(os.path.dirname(__file__), 'chatgpt_helper.log')
+LOG_FILE = os.path.join(os.path.dirname(__file__), 'doubao_helper.log')
 
 # 创建日志记录器
-logger = logging.getLogger('chatgpt_helper')
+logger = logging.getLogger('doubao_helper')
 logger.setLevel(logging.INFO)
 
 # 日志格式（简洁格式：时间 级别 消息）
@@ -82,7 +82,7 @@ def get_local_db_connection():
     """获取本地 SQLite 数据库连接"""
     if not os.path.exists(LOCAL_DB_PATH):
         raise FileNotFoundError(f"本地数据库不存在: {LOCAL_DB_PATH}")
-    # 设置30秒超时，避免与Gemini服务并发写入时锁冲突
+    # 设置30秒超时，避免与其他服务并发写入时锁冲突
     conn = sqlite3.connect(LOCAL_DB_PATH, timeout=30)
     # 启用WAL模式提高并发性能
     conn.execute("PRAGMA journal_mode=WAL")
@@ -91,7 +91,7 @@ def get_local_db_connection():
 
 def get_unanalyzed_tasks():
     """
-    从本地数据库获取 ChatGPT 未分析的任务
+    从本地数据库获取豆包未分析的任务
     
     Returns:
         dict: 包含任务列表的字典
@@ -102,11 +102,11 @@ def get_unanalyzed_tasks():
         cursor = conn.cursor()
         cursor.row_factory = sqlite3.Row  # 使结果可以像字典一样访问
         
-        # 查询 ChatGPT 未分析的任务（只检查 chatgpt_analyzed 字段）
+        # 查询豆包未分析的任务（只检查 doubao_analyzed 字段）
         query_sql = """
             SELECT id, title, prompt, news_time, created_at
             FROM analysis_task
-            WHERE chatgpt_analyzed = 0
+            WHERE doubao_analyzed = 0
             ORDER BY news_time DESC, created_at DESC
         """
         cursor.execute(query_sql)
@@ -145,11 +145,11 @@ def get_unanalyzed_tasks():
 
 def update_task_status(task_id, ai_result):
     """
-    更新本地数据库中任务的 ChatGPT 分析状态
+    更新本地数据库中任务的豆包分析状态
     
     Args:
         task_id: 任务ID
-        ai_result: ChatGPT 分析结果
+        ai_result: 豆包分析结果
     
     Returns:
         dict: 包含成功状态和消息
@@ -159,18 +159,18 @@ def update_task_status(task_id, ai_result):
         conn = get_local_db_connection()
         cursor = conn.cursor()
         
-        # 更新 ChatGPT 分析状态
+        # 更新豆包分析状态
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         update_sql = """
             UPDATE analysis_task
-            SET chatgpt_analyzed = 1,
-                chatgpt_result = ?,
+            SET doubao_analyzed = 1,
+                doubao_result = ?,
                 updated_at = ?
             WHERE id = ?
         """
         cursor.execute(update_sql, (ai_result, current_time, task_id))
         
-        # 检查是否三个AI都已分析完成，如果是则标记 is_analyzed = 1
+        # 检查是否所有AI都已分析完成，如果是则标记 is_analyzed = 1
         cursor.execute("""
             UPDATE analysis_task
             SET is_analyzed = 1
@@ -184,7 +184,7 @@ def update_task_status(task_id, ai_result):
         
         return {
             'success': True,
-            'message': 'ChatGPT 分析状态已更新'
+            'message': '豆包分析状态已更新'
         }
         
     except Exception as e:
@@ -234,7 +234,7 @@ def save_to_database(title, content, task_id=None):
             '暂无分析',
             6,
             'hard',
-            'chatgpt新闻'
+            '豆包新闻'
         ))
         
         # 获取刚插入的新闻 ID
@@ -321,7 +321,7 @@ def get_tasks():
 @app.route('/save-result', methods=['POST'])
 def save_result():
     """
-    接收并保存 ChatGPT 的响应结果
+    接收并保存豆包的响应结果
     请求格式：
     {
       "title": "2025年11月1日股票新闻",
@@ -366,8 +366,8 @@ def health_check():
     """
     return jsonify({
         'status': 'running',
-        'service': 'ChatGPT Helper Backend',
-        'port': 1126,
+        'service': '豆包 Helper Backend',
+        'port': 1127,
         'db_connected': test_db_connection()
     }), 200
 
@@ -389,7 +389,6 @@ if __name__ == '__main__':
     db_ok = test_db_connection()
     local_ok = os.path.exists(LOCAL_DB_PATH)
     
-    logger.info(f"[启动] 端口:1126 | 阿里云DB:{'OK' if db_ok else 'FAIL'} | 本地DB:{'OK' if local_ok else 'FAIL'}")
+    logger.info(f"[启动] 端口:1127 | 阿里云DB:{'OK' if db_ok else 'FAIL'} | 本地DB:{'OK' if local_ok else 'FAIL'}")
     
-    app.run(host='0.0.0.0', port=1126, debug=False)
-
+    app.run(host='0.0.0.0', port=1127, debug=False)

@@ -172,11 +172,14 @@ def update_task_status(task_id, ai_result):
         """
         cursor.execute(update_sql, (ai_result, current_time, task_id))
         
-        # 检查是否两个AI都已分析完成，如果是则标记 is_analyzed = 1
+        # 检查是否三个AI都已分析完成，如果是则标记 is_analyzed = 1
         cursor.execute("""
             UPDATE analysis_task
             SET is_analyzed = 1
-            WHERE id = ? AND gemini_analyzed = 1 AND chatgpt_analyzed = 1
+            WHERE id = ? 
+              AND gemini_analyzed = 1 
+              AND chatgpt_analyzed = 1 
+              AND doubao_analyzed = 1
         """, (task_id,))
         
         conn.commit()

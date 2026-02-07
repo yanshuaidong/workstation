@@ -22,6 +22,7 @@ SERVICES=(
     "bbgnews"
     "chatgpthelper"
     "clsnewscraper"
+    "doubaohelper"
     "eastfutuscraper"
     "futurestop10"
     "geminihelper"
@@ -45,8 +46,8 @@ for SERVICE in "${SERVICES[@]}"; do
     
     echo "▶️  启动 [$SERVICE]..."
     
-    # 检查启动脚本（geminihelper/chatgpthelper 使用 start_server.sh，其他使用 start_scheduler.sh）
-    if [ "$SERVICE" = "geminihelper" ] || [ "$SERVICE" = "chatgpthelper" ]; then
+    # 检查启动脚本（geminihelper/chatgpthelper/doubaohelper 使用 start_server.sh，其他使用 start_scheduler.sh）
+    if [ "$SERVICE" = "geminihelper" ] || [ "$SERVICE" = "chatgpthelper" ] || [ "$SERVICE" = "doubaohelper" ]; then
         START_SCRIPT="$SERVICE_DIR/start_server.sh"
     else
         START_SCRIPT="$SERVICE_DIR/start_scheduler.sh"

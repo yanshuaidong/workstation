@@ -113,9 +113,11 @@ def init_db():
         # - news_time: 新闻时间
         # - gemini_result: Gemini AI分析结果
         # - chatgpt_result: ChatGPT AI分析结果
+        # - doubao_result: 豆包 AI分析结果
         # - gemini_analyzed: Gemini是否已分析（0/1）
         # - chatgpt_analyzed: ChatGPT是否已分析（0/1）
-        # - is_analyzed: 是否全部分析完成（两个AI都分析完后自动设为1）
+        # - doubao_analyzed: 豆包是否已分析（0/1）
+        # - is_analyzed: 是否全部分析完成（三个AI都分析完后自动设为1）
         # - created_at: 创建时间
         # - updated_at: 更新时间
         cursor.execute("""
@@ -126,8 +128,10 @@ def init_db():
             news_time DATETIME,
             gemini_result TEXT DEFAULT '',
             chatgpt_result TEXT DEFAULT '',
+            doubao_result TEXT DEFAULT '',
             gemini_analyzed INTEGER DEFAULT 0,
             chatgpt_analyzed INTEGER DEFAULT 0,
+            doubao_analyzed INTEGER DEFAULT 0,
             is_analyzed INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -164,7 +168,7 @@ def init_db():
 
 def migrate_db():
     """
-    数据库迁移：为现有的 analysis_task 表添加双AI支持字段
+    数据库迁移：为现有的 analysis_task 表添加三AI支持字段
     如果字段已存在则跳过
     """
     try:
@@ -182,12 +186,14 @@ def migrate_db():
         cursor.execute("PRAGMA table_info(analysis_task);")
         existing_columns = [row[1] for row in cursor.fetchall()]
         
-        # 需要添加的新列
+        # 需要添加的新列（三个AI）
         new_columns = [
             ("gemini_result", "TEXT DEFAULT ''"),
             ("chatgpt_result", "TEXT DEFAULT ''"),
+            ("doubao_result", "TEXT DEFAULT ''"),
             ("gemini_analyzed", "INTEGER DEFAULT 0"),
             ("chatgpt_analyzed", "INTEGER DEFAULT 0"),
+            ("doubao_analyzed", "INTEGER DEFAULT 0"),
         ]
         
         added_columns = []
@@ -195,6 +201,7 @@ def migrate_db():
             if col_name not in existing_columns:
                 cursor.execute(f"ALTER TABLE analysis_task ADD COLUMN {col_name} {col_type};")
                 added_columns.append(col_name)
+                print(f"   添加字段: {col_name}")
         
         # 如果有旧的 ai_result 字段，将其数据迁移到 gemini_result
         if 'ai_result' in existing_columns and 'gemini_result' in added_columns:
@@ -209,7 +216,7 @@ def migrate_db():
         conn.commit()
         
         if added_columns:
-            print(f"✅ 数据库迁移成功：添加了列 {', '.join(added_columns)}")
+            print(f"✅ 数据库迁移成功：添加了 {len(added_columns)} 个新字段")
         else:
             print("ℹ️  数据库已是最新版本，无需迁移")
         
