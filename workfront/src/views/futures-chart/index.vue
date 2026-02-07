@@ -11,6 +11,14 @@
       @set-date-range="setDateRange"
     />
 
+    <!-- 事件日历视图 -->
+    <EventsCalendar
+      :events-data="calendarEventsData"
+      :loading="calendarLoading"
+      @refresh="loadCalendarEvents"
+      @event-click="jumpToEvent"
+    />
+
     <!-- 最近事件卡片 -->
     <RecentEventsCard
       :recent-events-data="recentEventsData"
@@ -79,6 +87,7 @@ import {
   deleteEventApi
 } from '@/api'
 import ControlPanel from './ControlPanel.vue'
+import EventsCalendar from './EventsCalendar.vue'
 import RecentEventsCard from './RecentEventsCard.vue'
 import ChartDisplay from './ChartDisplay.vue'
 import EventsTable from './EventsTable.vue'
@@ -89,6 +98,7 @@ export default {
   name: 'FuturesChart',
   components: {
     ControlPanel,
+    EventsCalendar,
     RecentEventsCard,
     ChartDisplay,
     EventsTable,
@@ -130,7 +140,11 @@ export default {
       recentEventsData: [],
       recentEventsLoading: false,
       recentSymbolStats: {},
-      recentEventsDays: 7
+      recentEventsDays: 7,
+      
+      // 日历事件相关
+      calendarEventsData: [],
+      calendarLoading: false
     }
   },
 
@@ -138,6 +152,7 @@ export default {
     await this.loadContractsList()
     this.initDateRange()
     this.loadRecentEvents()
+    this.loadCalendarEvents()
   },
 
   methods: {
@@ -414,6 +429,43 @@ export default {
       
       await this.queryData()
       this.$message.success(`已跳转到 ${this.selectedContractName} - ${event.event_date}`)
+    },
+
+    // 加载日历事件（加载指定月份的所有品种的事件）
+    async loadCalendarEvents(dateRange = null) {
+      this.calendarLoading = true
+      try {
+        let startDate, endDate
+        
+        if (dateRange) {
+          // 如果提供了日期范围，使用提供的日期
+          startDate = dateRange.startDate
+          endDate = dateRange.endDate
+        } else {
+          // 默认加载当前月份
+          const now = new Date()
+          const year = now.getFullYear()
+          const month = now.getMonth()
+          startDate = new Date(year, month, 1).toISOString().split('T')[0]
+          endDate = new Date(year, month + 1, 0).toISOString().split('T')[0]
+        }
+        
+        const params = new URLSearchParams({
+          start_date: startDate,
+          end_date: endDate,
+          limit: 1000  // 获取所有事件
+        })
+        
+        const response = await request.get(`${getRecentEventsApi}?${params}`)
+        
+        if (response.code === 0) {
+          this.calendarEventsData = response.data.events || []
+        }
+      } catch (error) {
+        console.error('加载日历事件失败:', error)
+      } finally {
+        this.calendarLoading = false
+      }
     }
   }
 }
