@@ -174,15 +174,28 @@
         if (allReceiveMessages.length > 0) {
           // 获取最后一个接收消息容器
           const lastReceiveMessage = allReceiveMessages[allReceiveMessages.length - 1];
-          // 在容器内查找实际内容
-          const contentElement = lastReceiveMessage.querySelector('div[data-testid="message_text_content"]');
+          // 在容器内查找所有 message_text_content 元素（可能有多个，第一个是思考，第二个是具体内容）
+          const contentElements = lastReceiveMessage.querySelectorAll('div[data-testid="message_text_content"]');
+          console.log(`[Content] 📊 找到 ${contentElements.length} 个 message_text_content 元素`);
           
-          if (contentElement) {
-            const content = extractTextContent(contentElement);
-            console.log(`[Content] 📝 提取内容长度: ${content ? content.length : 0} | 前100字符: ${content ? content.substring(0, 100) : '空'}`);
+          if (contentElements.length > 0) {
+            // 合并所有 message_text_content 的内容
+            let allContent = '';
+            contentElements.forEach((element, index) => {
+              const partContent = extractTextContent(element);
+              console.log(`[Content] 📝 提取第 ${index + 1} 个内容长度: ${partContent ? partContent.length : 0} | 前50字符: ${partContent ? partContent.substring(0, 50) : '空'}`);
+              if (partContent && partContent.length > 0) {
+                if (allContent.length > 0) {
+                  allContent += '\n\n'; // 用两个换行分隔不同的 message_text_content
+                }
+                allContent += partContent;
+              }
+            });
             
-            if (content && content.length > 0) {
-              return content;
+            console.log(`[Content] 📝 合并后总内容长度: ${allContent.length} | 前100字符: ${allContent.substring(0, 100)}`);
+            
+            if (allContent.length > 0) {
+              return allContent;
             }
           } else {
             console.log(`[Content] ⚠️ 在接收消息容器内未找到 message_text_content 元素`);
