@@ -1,39 +1,51 @@
 #!/bin/bash
 
-echo "========================================"
-echo "  豆包 Helper 后端服务启动"
-echo "========================================"
-echo ""
+# 豆包 Helper 后端服务启动脚本
 
-# 检查 Python 是否安装
-if ! command -v python3 &> /dev/null; then
-    echo "[错误] 未找到 Python3，请先安装 Python 3.7+"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+echo "====================================="
+echo "启动 豆包 Helper 后端服务"
+echo "====================================="
+
+# 检查 Python 环境
+if command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
+    PYTHON_CMD="python"
+else
+    echo "❌ 错误: 未找到Python解释器"
     exit 1
 fi
 
-echo "[1/3] 检查依赖..."
-if ! python3 -c "import flask" &> /dev/null; then
-    echo "[提示] 正在安装依赖..."
-    pip3 install -r requirements.txt
-    if [ $? -ne 0 ]; then
-        echo "[错误] 依赖安装失败"
+echo "🐍 使用 Python: $($PYTHON_CMD --version)"
+
+# 检查是否已经在运行
+if [ -f "server.pid" ]; then
+    OLD_PID=$(cat server.pid)
+    if ps -p $OLD_PID > /dev/null 2>&1; then
+        echo "服务已在运行 (PID: $OLD_PID)"
+        echo "如需重启，请先运行 ./stop_server.sh"
         exit 1
+    else
+        echo "🗑️  清理过期的PID文件..."
+        rm -f server.pid
     fi
 fi
 
-echo "[2/3] 检查数据库..."
-if [ ! -f "../db/crawler.db" ]; then
-    echo "[警告] 本地数据库不存在: ../db/crawler.db"
-    echo "[提示] 请确保数据库文件存在后再启动服务"
-fi
+# 启动服务
+echo "启动服务（端口 1127）..."
+nohup $PYTHON_CMD main.py > nohup.out 2>&1 &
+PID=$!
 
-echo "[3/3] 启动服务..."
-echo ""
-echo "========================================"
-echo "  服务地址: http://localhost:1127"
-echo "  健康检查: http://localhost:1127/health"
-echo "  按 Ctrl+C 停止服务"
-echo "========================================"
-echo ""
+# 保存 PID
+echo $PID > server.pid
 
-python3 main.py
+echo "====================================="
+echo "服务启动成功！"
+echo "PID: $PID"
+echo "端口: 1127"
+echo "日志文件: nohup.out"
+echo "健康检查: http://localhost:1127/health"
+echo "====================================="
