@@ -36,14 +36,13 @@
     
     // 步骤1: 点击"发起新对话"
     console.log("[Content] 步骤1: 发起新对话");
-    const allButtons = document.querySelectorAll('button');
-    const newChatButton = Array.from(allButtons).find(
-      btn => btn.getAttribute('aria-label') === '发起新对话'
-    );
+    const newChatLink = document.querySelector('a[data-test-id="expanded-button"][aria-label="发起新对话"]');
     
-    if (newChatButton) {
-      newChatButton.click();
-      await new Promise(resolve => setTimeout(resolve, 3000));
+    if (newChatLink) {
+      newChatLink.click();
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    } else {
+      console.log("[Content] 未找到发起新对话按钮，可能已在新对话页面");
     }
     
     // 步骤2: 填入问题
@@ -60,7 +59,7 @@
     inputEditor.appendChild(pTag);
     inputEditor.dispatchEvent(new Event('input', { bubbles: true }));
     
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
     // 步骤3: 点击发送
     console.log("[Content] 步骤3: 发送问题");
@@ -153,13 +152,36 @@
     const maxWaitTime = 480000; // 8分钟
     const globalStartTime = Date.now();
     
-    // 阶段1: 等待响应开始
+    // 阶段1: 等待"停止回答"按钮出现（表示 AI 开始响应）
+    console.log("[Content] 阶段1: 等待 AI 开始响应...");
+    let responseStarted = false;
+    
     while (Date.now() - globalStartTime < maxWaitTime) {
-      const messageActions = document.querySelector('message-actions');
+      const stopButton = document.querySelector('button[aria-label="停止回答"]');
       
-      if (messageActions) {
+      if (stopButton) {
         const elapsedTime = Math.floor((Date.now() - globalStartTime) / 1000);
-        console.log(`[Content] ✓ 响应开始 (${elapsedTime}秒)`);
+        console.log(`[Content] ✓ AI 开始响应 (${elapsedTime}秒)`);
+        responseStarted = true;
+        break;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    if (!responseStarted) {
+      throw new Error("等待 AI 响应开始超时");
+    }
+    
+    // 阶段2: 等待"停止回答"按钮消失（表示 AI 响应结束）
+    console.log("[Content] 阶段2: 等待 AI 响应结束...");
+    
+    while (Date.now() - globalStartTime < maxWaitTime) {
+      const stopButton = document.querySelector('button[aria-label="停止回答"]');
+      
+      if (!stopButton) {
+        const elapsedTime = Math.floor((Date.now() - globalStartTime) / 1000);
+        console.log(`[Content] ✓ AI 响应结束 (${elapsedTime}秒)`);
         break;
       }
       
@@ -167,46 +189,27 @@
     }
     
     if (Date.now() - globalStartTime >= maxWaitTime) {
-      throw new Error("等待响应超时");
+      throw new Error("等待 AI 响应结束超时");
     }
     
-    // 阶段2: 等待内容稳定
-    console.log("[Content] 等待内容加载完成...");
+    // 阶段3: 等待3秒时间确保 DOM 更新完成
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
-    let lastContentLength = 0;
-    let stableCount = 0;
+    // 阶段4: 获取响应内容
+    console.log("[Content] 阶段3: 获取响应内容...");
+    const messageContents = document.querySelectorAll('message-content');
     
-    while (Date.now() - globalStartTime < maxWaitTime) {
-      const messageContents = document.querySelectorAll('message-content');
-      
-      if (messageContents.length > 0) {
-        const lastMessageContent = messageContents[messageContents.length - 1];
-        const currentText = extractTextContent(lastMessageContent);
-        const currentLength = currentText.length;
-        
-        if (currentLength >= 10) {
-          const lengthDiff = Math.abs(currentLength - lastContentLength);
-          
-          if (lengthDiff <= 5) {
-            stableCount++;
-            
-            if (stableCount >= 2) {
-              const elapsedTime = Math.floor((Date.now() - globalStartTime) / 1000);
-              console.log(`[Content] ✓ 内容加载完成 (${elapsedTime}秒, ${currentLength}字符)`);
-              return currentText;
-            }
-          } else {
-            stableCount = 0;
-          }
-          
-          lastContentLength = currentLength;
-        }
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    if (messageContents.length === 0) {
+      throw new Error("未找到响应内容");
     }
     
-    throw new Error("等待内容加载超时");
+    const lastMessageContent = messageContents[messageContents.length - 1];
+    const content = extractTextContent(lastMessageContent);
+    
+    const elapsedTime = Math.floor((Date.now() - globalStartTime) / 1000);
+    console.log(`[Content] ✓ 内容获取完成 (${elapsedTime}秒, ${content.length}字符)`);
+    
+    return content;
   }
 
 })();

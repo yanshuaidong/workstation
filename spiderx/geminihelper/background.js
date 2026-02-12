@@ -191,7 +191,6 @@ async function executeScheduledTask(isTest = false) {
     // 检查是否有任务
     if (!tasksData.tasks || tasksData.tasks.length === 0) {
       console.log("[Background] ⚠️  没有待分析的任务，跳过本次执行");
-      logger.info("没有待分析的任务");
       return;
     }
     
