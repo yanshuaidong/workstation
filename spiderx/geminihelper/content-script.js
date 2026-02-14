@@ -45,8 +45,12 @@
       console.log("[Content] 未找到发起新对话按钮，可能已在新对话页面");
     }
     
-    // 步骤2: 填入问题
-    console.log("[Content] 步骤2: 填入问题");
+    // 步骤2: 选择思考模型
+    console.log("[Content] 步骤2: 选择思考模型");
+    await selectThinkingModel();
+    
+    // 步骤3: 填入问题
+    console.log("[Content] 步骤3: 填入问题");
     const inputEditor = document.querySelector('.ql-editor');
     
     if (!inputEditor) {
@@ -61,8 +65,8 @@
     
     await new Promise(resolve => setTimeout(resolve, 3000));
     
-    // 步骤3: 点击发送
-    console.log("[Content] 步骤3: 发送问题");
+    // 步骤4: 点击发送
+    console.log("[Content] 步骤4: 发送问题");
     const sendButton = document.querySelector('button[aria-label="发送"]');
     
     if (!sendButton) {
@@ -77,11 +81,11 @@
     sendButton.click();
     console.log("[Content] 问题已发送");
     
-    // 步骤4: 等待并获取结果
+    // 步骤5: 等待并获取结果
     const content = await waitForResponse();
     
-    // 步骤5: 发送到后端
-    console.log("[Content] 步骤4: 保存到后端");
+    // 步骤6: 发送到后端
+    console.log("[Content] 步骤6: 保存到后端");
     const requestData = { 
       title: title, 
       content: content 
@@ -114,6 +118,55 @@
   }
 
   // ==================== 辅助函数 ====================
+
+  // 选择思考模型
+  async function selectThinkingModel() {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    
+    const modeMenuSelector = 'button[aria-label="打开模式选择器"][data-test-id="bard-mode-menu-button"]';
+    const thinkingOptionSelector = 'button[data-test-id="bard-mode-option-思考"], [data-test-id="bard-mode-option-思考"] button';
+    
+    const clickEl = (el) => {
+      if (!el) return false;
+      el.scrollIntoView({ block: "center", inline: "center" });
+      el.click();
+      return true;
+    };
+    
+    // 1) 找到并点击"模式选择器"按钮
+    const menuBtn = document.querySelector(modeMenuSelector);
+    if (!menuBtn) {
+      console.log("[Content] 未找到模式选择器按钮，跳过模型选择");
+      return;
+    }
+    
+    console.log("[Content] 已找到模式选择器按钮，准备点击");
+    clickEl(menuBtn);
+    
+    // 2) 等待菜单展开
+    await sleep(2000);
+    
+    // 3) 找到并点击"思考"选项按钮
+    let optionBtn = document.querySelector(thinkingOptionSelector);
+    
+    // 如果 UI 渲染稍慢，稍微重试几次
+    for (let i = 0; !optionBtn && i < 10; i++) {
+      await sleep(200);
+      optionBtn = document.querySelector(thinkingOptionSelector);
+    }
+    
+    if (!optionBtn) {
+      console.log("[Content] 未找到思考选项，跳过模型选择");
+      return;
+    }
+    
+    console.log("[Content] 已找到思考选项，准备点击");
+    clickEl(optionBtn);
+    
+    // 等待选择生效
+    await sleep(1000);
+    console.log("[Content] ✓ 思考模型选择完成");
+  }
 
   // 提取文本内容
   function extractTextContent(element) {
