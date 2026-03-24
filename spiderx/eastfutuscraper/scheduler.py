@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 东方财富期货数据爬虫调度器
-运行14天（2周），仅在交易日（周一到周五）的下午4点执行
+运行40天，仅在交易日（周一到周五）的下午4点执行
 """
 
 import time
@@ -14,7 +14,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 # 导入主模块功能
-from main import get_all_futures_data, save_all_data_to_db, load_contracts_filter, filter_futures_data
+from main import (
+    get_all_futures_data, save_all_data_to_db,
+    load_contracts_filter, filter_futures_data,
+    fallback_akshare_crawl,
+)
 
 
 class FuturesScheduler:
@@ -22,11 +26,14 @@ class FuturesScheduler:
     
     def __init__(self):
         self.start_time = datetime.now()
-        self.end_time = self.start_time + timedelta(days=40)  # 运行40天
-        self.execution_hour = 16  # 下午4点执行
+        self.end_time = self.start_time + timedelta(days=40)
+        self.execution_hour = 16
         self.execution_count = 0
-        self.max_executions = 30  # 最多执行30次（40天约28-30个交易日）
-        self.shutdown_requested = False  # 优雅退出标志
+        self.max_executions = 30
+        self.shutdown_requested = False
+        
+        self.max_retries = 3
+        self.retry_delays = [60, 180, 300]  # 重试间隔：1分钟、3分钟、5分钟
         
         # 创建logs目录
         self.logs_dir = Path("logs")
@@ -195,61 +202,118 @@ class FuturesScheduler:
         self.logger.info(f"进度: {self.execution_count}/{self.max_executions}, 剩余{remaining.days}天")
     
     def execute_crawl_task(self):
-        """执行一次期货数据爬取任务"""
+        """
+        执行一次期货数据爬取任务，带重试机制。
+        
+        Returns:
+            bool: True=成功, False=所有重试均失败
+        """
+        self.execution_count += 1
+        task_tag = f"[第{self.execution_count}次]"
+        self.logger.info(f"{task_tag} 开始执行 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        
+        for attempt in range(1, self.max_retries + 1):
+            attempt_tag = f"{task_tag}[尝试{attempt}/{self.max_retries}]"
+            
+            if attempt > 1:
+                delay = self.retry_delays[min(attempt - 2, len(self.retry_delays) - 1)]
+                self.logger.info(f"{attempt_tag} 等待 {delay} 秒后重试...")
+                time.sleep(delay)
+                if self.shutdown_requested:
+                    self.logger.info(f"{attempt_tag} 收到退出信号，放弃重试")
+                    return False
+                self.logger.info(f"{attempt_tag} 开始重试")
+            
+            try:
+                valid_symbols = load_contracts_filter()
+                if not valid_symbols:
+                    self.logger.warning(f"{attempt_tag} 合约过滤列表为空，将保存全量数据")
+                else:
+                    self.logger.info(f"{attempt_tag} 已加载 {len(valid_symbols)} 个合约过滤条件")
+                
+                crawl_start = time.time()
+                all_results = get_all_futures_data()
+                crawl_elapsed = time.time() - crawl_start
+                
+                success_exchanges = list(all_results.keys()) if all_results else []
+                self.logger.info(
+                    f"{attempt_tag} 爬取耗时 {crawl_elapsed:.1f}s, "
+                    f"成功交易所: {success_exchanges if success_exchanges else '无'}"
+                )
+                
+                if not all_results:
+                    self.logger.error(f"{attempt_tag} 所有交易所数据获取失败")
+                    continue
+                
+                total_original = 0
+                total_filtered = 0
+                
+                for exchange_id, result in all_results.items():
+                    if valid_symbols:
+                        result = filter_futures_data(result, valid_symbols)
+                    
+                    original_count = result.get('original_count', result.get('total', 0))
+                    filtered_count = result.get('filtered_count', len(result.get('list', [])))
+                    
+                    total_original += original_count
+                    total_filtered += filtered_count
+                
+                db_start = time.time()
+                success_count, failed_count = save_all_data_to_db(all_results)
+                db_elapsed = time.time() - db_start
+                
+                self.logger.info(
+                    f"{task_tag} 完成: 爬取{total_original}条, 过滤后{total_filtered}条, "
+                    f"入库成功{success_count}条, 失败{failed_count}条 (入库耗时 {db_elapsed:.1f}s)"
+                )
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"{attempt_tag} 执行异常: {e}")
+                self.logger.error(traceback.format_exc())
+        
+        self.logger.warning(f"{task_tag} Selenium {self.max_retries}次重试全部失败，启动 AkShare 降级方案")
+        
         try:
-            self.execution_count += 1
-            self.logger.info(f"[第{self.execution_count}次] 开始执行 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+            target_date = datetime.now().strftime('%Y-%m-%d')
+            ok, fail, skip = fallback_akshare_crawl(target_date)
             
-            # 1. 加载过滤条件
-            valid_symbols = load_contracts_filter()
-            
-            # 2. 爬取所有交易所期货数据
-            all_results = get_all_futures_data()
-            
-            if not all_results:
-                self.logger.error("所有交易所数据获取失败")
+            if ok > 0:
+                self.logger.info(
+                    f"{task_tag} AkShare 降级成功: 写入 {ok} 条, 跳过 {skip} 条, 失败 {fail} 条"
+                )
+                return True
+            else:
+                self.logger.error(f"{task_tag} AkShare 降级也未获取到数据 (跳过 {skip}, 失败 {fail})")
                 return False
-            
-            # 3. 过滤数据并统计
-            total_original = 0
-            total_filtered = 0
-            
-            for exchange_id, result in all_results.items():
-                if valid_symbols:
-                    result = filter_futures_data(result, valid_symbols)
-                
-                original_count = result.get('original_count', result.get('total', 0))
-                filtered_count = result.get('filtered_count', len(result.get('list', [])))
-                
-                total_original += original_count
-                total_filtered += filtered_count
-            
-            # 4. 保存数据到数据库
-            success_count, failed_count = save_all_data_to_db(all_results)
-            
-            # 输出汇总信息
-            self.logger.info(f"[第{self.execution_count}次] 完成: 爬取{total_original}条, 过滤后{total_filtered}条, 入库成功{success_count}条, 失败{failed_count}条")
-            
-            return True
-            
         except Exception as e:
-            self.logger.error(f"执行异常: {e}")
+            self.logger.error(f"{task_tag} AkShare 降级异常: {e}")
             self.logger.error(traceback.format_exc())
             return False
     
     def run(self):
         """运行调度器"""
+        consecutive_failures = 0
+        max_consecutive_failures = 5
+        
         try:
-            self.logger.info(f"调度器启动 | 运行至{self.end_time.strftime('%Y-%m-%d')} | 每交易日{self.execution_hour}:00执行")
+            self.logger.info(
+                f"调度器启动 | 运行至{self.end_time.strftime('%Y-%m-%d')} | "
+                f"每交易日{self.execution_hour}:00执行 | "
+                f"每次最多重试{self.max_retries}次 | 连续失败上限{max_consecutive_failures}次"
+            )
             
             # 检查当前是否应该立即执行
             if self.should_execute_now():
-                if not self.execute_crawl_task():
-                    return
-            else:
-                next_time = self.get_next_execution_time()
-                if next_time:
-                    self.logger.info(f"下次执行: {next_time.strftime('%Y-%m-%d %H:%M')}")
+                if self.execute_crawl_task():
+                    consecutive_failures = 0
+                else:
+                    consecutive_failures += 1
+                    self.logger.warning(f"本次爬取失败，连续失败次数: {consecutive_failures}/{max_consecutive_failures}")
+            
+            next_time = self.get_next_execution_time()
+            if next_time:
+                self.logger.info(f"下次执行: {next_time.strftime('%Y-%m-%d %H:%M')}")
             
             # 主循环
             last_execution_date = None
@@ -258,29 +322,41 @@ class FuturesScheduler:
                    self.execution_count < self.max_executions and 
                    not self.shutdown_requested):
                 
-                # 更新日志文件（如果需要，按月切换）
+                if consecutive_failures >= max_consecutive_failures:
+                    self.logger.error(
+                        f"连续失败 {consecutive_failures} 次达到上限，调度器停止。"
+                        "请检查网络、Chrome 环境或目标网站是否有变更。"
+                    )
+                    break
+                
                 self.update_log_file_if_needed()
                 
                 current_time = datetime.now()
                 current_date = current_time.date()
                 
-                # 检查是否为交易日
                 if not self.is_trading_day(current_time):
                     time.sleep(3600)
                     continue
                 
-                # 检查是否到了执行时间
                 if current_time.hour == self.execution_hour and 0 <= current_time.minute < 5:
                     if last_execution_date != current_date:
+                        last_execution_date = current_date
                         if self.execute_crawl_task():
-                            last_execution_date = current_date
+                            consecutive_failures = 0
                             next_time = self.get_next_execution_time(current_time)
                             if next_time:
                                 self.logger.info(f"下次执行: {next_time.strftime('%Y-%m-%d %H:%M')}")
                             else:
+                                self.logger.info("已无下一个执行时间，调度器即将结束")
                                 break
                         else:
-                            return
+                            consecutive_failures += 1
+                            self.logger.warning(
+                                f"本次爬取失败，连续失败次数: {consecutive_failures}/{max_consecutive_failures}"
+                            )
+                            next_time = self.get_next_execution_time(current_time)
+                            if next_time:
+                                self.logger.info(f"下次执行: {next_time.strftime('%Y-%m-%d %H:%M')}")
                     else:
                         time.sleep(300)
                 else:
@@ -294,12 +370,14 @@ class FuturesScheduler:
                 if self.shutdown_requested:
                     break
             
-            # 结束处理
             elapsed_days = (datetime.now() - self.start_time).days
             if self.shutdown_requested:
                 self.logger.info(f"调度器停止 | 执行{self.execution_count}次 | 运行{elapsed_days}天")
             else:
-                self.logger.info(f"调度器完成 | 执行{self.execution_count}次 | 运行{elapsed_days}天")
+                self.logger.info(
+                    f"调度器完成 | 执行{self.execution_count}次 | 运行{elapsed_days}天 | "
+                    f"连续失败{consecutive_failures}次"
+                )
             
         except KeyboardInterrupt:
             self.logger.info("收到中断信号，调度器停止")

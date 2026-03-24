@@ -1,14 +1,23 @@
 import json
 import time
 import re
+import random
 import requests
 import os
+import traceback
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 import logging
 import pymysql
+import pandas as pd
 from datetime import datetime
+
+try:
+    import akshare as ak
+    HAS_AKSHARE = True
+except ImportError:
+    HAS_AKSHARE = False
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -290,119 +299,153 @@ def parse_jsonp(content):
 def get_single_exchange_data(driver, exchange_id, exchange_name):
     """
     获取单个交易所的期货数据
-    
-    Args:
-        driver: Selenium WebDriver 实例
-        exchange_id: 交易所ID (如 113, 114等)
-        exchange_name: 交易所名称 (如 "上期所", "大商所"等)
-    
-    Returns:
-        dict: 包含该交易所数据的字典，如果失败返回 None
     """
+    tag = f"[{exchange_name}({exchange_id})]"
     try:
         target_url = f"https://quote.eastmoney.com/center/gridlist.html#futures_{exchange_id}"
-        logger.debug(f"正在打开 {exchange_name} 页面: {target_url}")
+        logger.info(f"{tag} 打开页面: {target_url}")
+        
+        page_start = time.time()
         driver.get(target_url)
         
-        # 等待页面加载和请求发送
-        time.sleep(5)  # 简单等待，确保请求已发出
+        wait_seconds = 8
+        logger.info(f"{tag} 等待页面加载 {wait_seconds}s...")
+        time.sleep(wait_seconds)
+        page_elapsed = time.time() - page_start
         
-        # 获取性能日志
+        page_title = driver.title
+        current_url = driver.current_url
+        logger.info(f"{tag} 页面加载完成 ({page_elapsed:.1f}s) | title='{page_title}' | url={current_url}")
+        
         logs = driver.get_log('performance')
+        logger.info(f"{tag} 性能日志条数: {len(logs)}")
+        
+        if len(logs) == 0:
+            logger.warning(f"{tag} 性能日志为空！可能 Chrome 未正确捕获网络请求")
+            return None
         
         api_pattern = f"futsseapi.eastmoney.com/list/{exchange_id}"
         found_url = None
+        network_request_count = 0
+        all_api_urls = []
+        
         for entry in logs:
             try:
                 message_obj = json.loads(entry['message'])
                 message = message_obj.get('message', {})
                 
-                # 只关注请求发送事件
                 if message.get('method') == 'Network.requestWillBeSent':
+                    network_request_count += 1
                     request_url = message['params']['request']['url']
+                    if 'eastmoney.com' in request_url:
+                        all_api_urls.append(request_url[:120])
                     if api_pattern in request_url:
-                        logger.debug(f"找到 {exchange_name} API URL: {request_url}")
                         found_url = request_url
-                        break # 找到第一个匹配的即可
+                        break
             except Exception:
                 continue
         
-        if found_url:
-            # 提取必要的头部信息
-            headers = {
-                "User-Agent": driver.execute_script("return navigator.userAgent;"),
-                "Referer": target_url
-            }
+        logger.info(f"{tag} 网络请求总数: {network_request_count}, eastmoney 相关请求: {len(all_api_urls)}")
+        
+        if not found_url:
+            logger.warning(f"{tag} 未找到目标 API (pattern={api_pattern})")
+            if all_api_urls:
+                logger.info(f"{tag} eastmoney 请求列表 (前10条):")
+                for i, url in enumerate(all_api_urls[:10]):
+                    logger.info(f"{tag}   [{i+1}] {url}")
+            else:
+                logger.warning(f"{tag} 未捕获任何 eastmoney 请求，页面可能未正常加载")
+            return None
+        
+        logger.info(f"{tag} 找到目标 API: {found_url[:150]}")
+        
+        headers = {
+            "User-Agent": driver.execute_script("return navigator.userAgent;"),
+            "Referer": target_url
+        }
+        
+        try:
+            resp1_start = time.time()
+            response = requests.get(found_url, headers=headers, timeout=15)
+            resp1_elapsed = time.time() - resp1_start
             
-            # 第一步：先请求一次获取 total 数量
-            try:
-                response = requests.get(found_url, headers=headers)
-                
-                if response.status_code == 200:
-                    content = response.text
-                    initial_data = parse_jsonp(content)
-                    total = initial_data.get('total', 0)
-                    logger.debug(f"{exchange_name} - 数据总数: {total}")
-                    
-                    if total == 0:
-                        logger.warning(f"{exchange_name} - 数据总数为 0")
-                        return None
-                    
-                    # 第二步：修改 URL 参数，一次性获取所有数据
-                    parsed_url = urlparse(found_url)
-                    query_params = parse_qs(parsed_url.query)
-                    
-                    # 修改 pageSize 为 total，pageIndex 为 0
-                    query_params['pageSize'] = [str(total)]
-                    query_params['pageIndex'] = ['0']
-                    
-                    # 重新构建 URL
-                    new_query = urlencode(query_params, doseq=True)
-                    new_url = urlunparse((
-                        parsed_url.scheme,
-                        parsed_url.netloc,
-                        parsed_url.path,
-                        parsed_url.params,
-                        new_query,
-                        parsed_url.fragment
-                    ))
-                    
-                    # 发送第二次请求
-                    response = requests.get(new_url, headers=headers)
-                    
-                    if response.status_code == 200:
-                        content = response.text
-                        final_data = parse_jsonp(content)
-                        actual_count = len(final_data.get('list', []))
-                        logger.debug(f"{exchange_name} - 获取 {actual_count} 条数据")
-                        
-                        # 添加交易所标识
-                        final_data['exchange_id'] = exchange_id
-                        final_data['exchange_name'] = exchange_name
-                        
-                        return final_data
-                    else:
-                        logger.error(f"{exchange_name} - 请求失败，状态码: {response.status_code}")
-                else:
-                    logger.error(f"{exchange_name} - 请求失败，状态码: {response.status_code}")
-            except json.JSONDecodeError as e:
-                logger.error(f"{exchange_name} - JSON 解析失败: {e}")
-            except Exception as e:
-                logger.error(f"{exchange_name} - 请求过程中发生错误: {e}")
-        else:
-            logger.warning(f"{exchange_name} - 未在日志中找到目标 API 请求")
+            if response.status_code != 200:
+                logger.error(f"{tag} 首次请求失败 (HTTP {response.status_code}, {resp1_elapsed:.1f}s)")
+                return None
+            
+            initial_data = parse_jsonp(response.text)
+            total = initial_data.get('total', 0)
+            logger.info(f"{tag} 首次请求成功 ({resp1_elapsed:.1f}s), 数据总量: {total}")
+            
+            if total == 0:
+                logger.warning(f"{tag} 数据总数为 0，可能当日无数据")
+                return None
+            
+            parsed_url = urlparse(found_url)
+            query_params = parse_qs(parsed_url.query)
+            query_params['pageSize'] = [str(total)]
+            query_params['pageIndex'] = ['0']
+            new_query = urlencode(query_params, doseq=True)
+            new_url = urlunparse((
+                parsed_url.scheme, parsed_url.netloc, parsed_url.path,
+                parsed_url.params, new_query, parsed_url.fragment
+            ))
+            
+            resp2_start = time.time()
+            response = requests.get(new_url, headers=headers, timeout=30)
+            resp2_elapsed = time.time() - resp2_start
+            
+            if response.status_code != 200:
+                logger.error(f"{tag} 全量请求失败 (HTTP {response.status_code}, {resp2_elapsed:.1f}s)")
+                return None
+            
+            final_data = parse_jsonp(response.text)
+            actual_count = len(final_data.get('list', []))
+            logger.info(f"{tag} 全量请求成功 ({resp2_elapsed:.1f}s), 获取 {actual_count} 条数据")
+            
+            final_data['exchange_id'] = exchange_id
+            final_data['exchange_name'] = exchange_name
+            return final_data
+            
+        except requests.Timeout:
+            logger.error(f"{tag} HTTP 请求超时")
+        except json.JSONDecodeError as e:
+            logger.error(f"{tag} JSON 解析失败: {e} | 响应前200字符: {response.text[:200]}")
+        except Exception as e:
+            logger.error(f"{tag} HTTP 请求异常: {e}")
             
     except Exception as e:
-        logger.error(f"{exchange_name} - 处理过程发生错误: {e}")
+        logger.error(f"{tag} 处理异常: {e}")
+        logger.error(traceback.format_exc())
     
     return None
 
 
+def create_chrome_driver():
+    """创建并返回一个新的 Chrome WebDriver 实例"""
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--ignore-certificate-errors")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+
+    driver = webdriver.Chrome(options=chrome_options)
+    
+    chrome_version = driver.capabilities.get('browserVersion', 'unknown')
+    chromedriver_version = driver.capabilities.get('chrome', {}).get('chromedriverVersion', 'unknown')
+    logger.info(f"Chrome 已启动 | 浏览器版本: {chrome_version} | 驱动版本: {chromedriver_version}")
+    
+    return driver
+
+
 def get_all_futures_data():
     """
-    使用Selenium打开所有交易所期货页面，劫持API请求参数，并获取数据
+    使用 Selenium 打开所有交易所期货页面，劫持 API 请求参数，并获取数据。
+    每个交易所失败后会重试（新建 driver），确保单个交易所的失败不影响其他交易所。
     """
-    # 定义所有交易所配置
     exchanges = [
         {"id": "113", "name": "上期所"},
         {"id": "142", "name": "上期能源"},
@@ -411,46 +454,277 @@ def get_all_futures_data():
         {"id": "225", "name": "广期所"},
     ]
     
-    # 配置 Chrome 选项
-    chrome_options = Options()
-    # 如果需要无头模式，取消下面一行的注释
-    chrome_options.add_argument("--headless") 
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--ignore-certificate-errors")
-    
-    # 关键：启用性能日志以捕获网络请求
-    chrome_options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
-
-    driver = None
+    max_exchange_retries = 2
     all_results = {}
+    driver = None
     
     try:
-        driver = webdriver.Chrome(options=chrome_options)
+        logger.info(f"开始爬取 {len(exchanges)} 个交易所数据")
+        driver = create_chrome_driver()
         
-        # 遍历所有交易所
         for exchange in exchanges:
             exchange_id = exchange['id']
             exchange_name = exchange['name']
+            success = False
             
-            result = get_single_exchange_data(driver, exchange_id, exchange_name)
+            for attempt in range(1, max_exchange_retries + 1):
+                if attempt > 1:
+                    logger.info(f"[{exchange_name}] 第 {attempt} 次尝试，重建浏览器实例...")
+                    try:
+                        if driver:
+                            driver.quit()
+                    except Exception:
+                        pass
+                    time.sleep(3)
+                    try:
+                        driver = create_chrome_driver()
+                    except Exception as e:
+                        logger.error(f"[{exchange_name}] 重建浏览器失败: {e}")
+                        driver = None
+                        break
+                
+                if driver is None:
+                    logger.error(f"[{exchange_name}] 无可用浏览器实例，跳过")
+                    break
+                
+                result = get_single_exchange_data(driver, exchange_id, exchange_name)
+                
+                if result:
+                    all_results[exchange_id] = result
+                    logger.info(f"[{exchange_name}] 获取成功 (第{attempt}次尝试)")
+                    success = True
+                    break
+                else:
+                    logger.warning(f"[{exchange_name}] 第 {attempt}/{max_exchange_retries} 次尝试失败")
             
-            if result:
-                all_results[exchange_id] = result
-                logger.debug(f"{exchange_name} 获取成功")
-            else:
-                logger.warning(f"{exchange_name} 获取失败")
+            if not success:
+                logger.error(f"[{exchange_name}] 所有尝试均失败")
             
-            # 每个交易所之间稍微等待一下
             time.sleep(2)
             
     except Exception as e:
         logger.error(f"浏览器操作错误: {e}")
+        logger.error(traceback.format_exc())
     finally:
         if driver:
-            driver.quit()
-
+            try:
+                driver.quit()
+                logger.info("浏览器已关闭")
+            except Exception as e:
+                logger.warning(f"关闭浏览器异常: {e}")
+    
+    logger.info(f"爬取完成: {len(all_results)}/{len(exchanges)} 个交易所成功")
     return all_results
+
+
+# ─────────────────────────── AkShare 降级方案 ──────────────────────
+
+def load_futures_mapping():
+    """加载 futures_mapping.json，返回 symbol -> api_symbol 的映射"""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    mapping_path = os.path.join(current_dir, "futures_mapping.json")
+    
+    try:
+        with open(mapping_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("futures", {})
+    except Exception as e:
+        logger.error(f"加载 futures_mapping.json 失败: {e}")
+        return {}
+
+
+def fetch_akshare_day(api_symbol, target_date, max_retries=3):
+    """
+    通过 AkShare 拉取单个品种的主连历史数据，返回 target_date 当天的行。
+    
+    Args:
+        api_symbol: AkShare 品种代码 (如 "CU0", "RB0")
+        target_date: 目标日期 "YYYY-MM-DD"
+        max_retries: 最大重试次数
+    
+    Returns:
+        dict: 包含 OHLCV 等字段的字典，失败返回 None
+    """
+    col_map = {
+        "日期": "trade_date",
+        "开盘价": "open_price",
+        "最高价": "high_price",
+        "最低价": "low_price",
+        "收盘价": "close_price",
+        "成交量": "volume",
+        "持仓量": "open_interest",
+    }
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            df = ak.futures_main_sina(symbol=api_symbol)
+            if df is None or df.empty:
+                return None
+            
+            df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+            if "trade_date" not in df.columns:
+                return None
+            
+            df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
+            row = df[df["trade_date"] == target_date]
+            
+            if row.empty:
+                return None
+            
+            r = row.iloc[0]
+            return {
+                "open_price": safe_decimal(r.get("open_price"), 0),
+                "high_price": safe_decimal(r.get("high_price"), 0),
+                "low_price": safe_decimal(r.get("low_price"), 0),
+                "close_price": safe_decimal(r.get("close_price"), 0),
+                "volume": int(safe_decimal(r.get("volume"), 0)),
+                "open_interest": int(safe_decimal(r.get("open_interest"), 0)),
+            }
+        except Exception as e:
+            if attempt < max_retries:
+                wait = 2 ** attempt + random.uniform(0.5, 1.5)
+                logger.warning(f"  AkShare {api_symbol} 第{attempt}次失败: {e}, {wait:.1f}s 后重试")
+                time.sleep(wait)
+            else:
+                logger.warning(f"  AkShare {api_symbol} {max_retries}次重试全部失败: {e}")
+                return None
+
+
+def akshare_upsert_row(conn, symbol, trade_date, data):
+    """将 AkShare 获取的单条数据写入数据库"""
+    table = f"hist_{symbol.lower()}"
+    create_history_table(conn, symbol.lower())
+    
+    sql = f"""
+        INSERT INTO {table}
+            (trade_date, open_price, high_price, low_price, close_price,
+             volume, open_interest)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            open_price    = VALUES(open_price),
+            high_price    = VALUES(high_price),
+            low_price     = VALUES(low_price),
+            close_price   = VALUES(close_price),
+            volume        = VALUES(volume),
+            open_interest = VALUES(open_interest),
+            ingest_ts     = CURRENT_TIMESTAMP
+    """
+    cursor = conn.cursor()
+    try:
+        cursor.execute(sql, (
+            trade_date,
+            data["open_price"], data["high_price"], data["low_price"],
+            data["close_price"], data["volume"], data["open_interest"],
+        ))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"  AkShare 写库失败 {table}: {e}")
+        conn.rollback()
+        return False
+    finally:
+        cursor.close()
+
+
+def fallback_akshare_crawl(target_date=None):
+    """
+    AkShare 降级爬取：当 Selenium 主流程失败时调用。
+    仅爬取 contracts_main.json 中的品种。
+    
+    Args:
+        target_date: 目标日期 "YYYY-MM-DD"，默认当天
+        
+    Returns:
+        tuple: (success_count, failed_count, skip_count)
+    """
+    if not HAS_AKSHARE:
+        logger.error("[AkShare降级] akshare 库未安装，无法执行降级方案")
+        return 0, 0, 0
+    
+    if target_date is None:
+        target_date = datetime.now().strftime("%Y-%m-%d")
+    
+    logger.info(f"[AkShare降级] 开始执行，目标日期: {target_date}")
+    
+    futures_mapping = load_futures_mapping()
+    if not futures_mapping:
+        logger.error("[AkShare降级] futures_mapping.json 加载失败")
+        return 0, 0, 0
+    
+    valid_symbols = load_contracts_filter()
+    if not valid_symbols:
+        logger.warning("[AkShare降级] contracts_main.json 过滤列表为空，将跳过")
+        return 0, 0, 0
+    
+    # 构建需要爬取的品种列表：contracts_main 中的 symbol 与 mapping 的交集
+    symbols_to_fetch = []
+    for symbol in valid_symbols:
+        symbol_lower = symbol.lower()
+        mapping_entry = futures_mapping.get(symbol) or futures_mapping.get(symbol_lower)
+        if not mapping_entry:
+            for k, v in futures_mapping.items():
+                if k.lower() == symbol_lower:
+                    mapping_entry = v
+                    break
+        if mapping_entry:
+            symbols_to_fetch.append({
+                "symbol": symbol_lower,
+                "api_symbol": mapping_entry["api_symbol"],
+                "name": mapping_entry.get("name", symbol),
+            })
+        else:
+            logger.warning(f"[AkShare降级] 品种 {symbol} 在 futures_mapping.json 中未找到映射，跳过")
+    
+    total = len(symbols_to_fetch)
+    logger.info(f"[AkShare降级] 需要爬取 {total} 个品种")
+    
+    if total == 0:
+        return 0, 0, 0
+    
+    conn = None
+    ok, fail, skip = 0, 0, 0
+    
+    try:
+        conn = get_db_connection()
+        
+        for idx, item in enumerate(symbols_to_fetch, 1):
+            symbol = item["symbol"]
+            api_symbol = item["api_symbol"]
+            name = item["name"]
+            
+            logger.info(f"[AkShare降级] [{idx}/{total}] {symbol}({name}) -> {api_symbol}")
+            
+            data = fetch_akshare_day(api_symbol, target_date)
+            
+            if data is None:
+                logger.info(f"[AkShare降级] [{idx}/{total}] {symbol} - {target_date} 无数据")
+                skip += 1
+            else:
+                if akshare_upsert_row(conn, symbol, target_date, data):
+                    logger.info(
+                        f"[AkShare降级] [{idx}/{total}] {symbol} 写入成功 "
+                        f"(close={data['close_price']}, vol={data['volume']})"
+                    )
+                    ok += 1
+                else:
+                    fail += 1
+            
+            if idx < total:
+                time.sleep(random.uniform(0.8, 1.5))
+    
+    except Exception as e:
+        logger.error(f"[AkShare降级] 执行异常: {e}")
+        logger.error(traceback.format_exc())
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    
+    logger.info(f"[AkShare降级] 完成: 成功 {ok}, 跳过 {skip}, 失败 {fail}")
+    return ok, fail, skip
+
 
 if __name__ == "__main__":
     # 加载过滤条件
