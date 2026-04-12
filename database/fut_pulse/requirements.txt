@@ -1,0 +1,7 @@
+pyautogui
+Pillow
+cnocr
+numpy
+onnxruntime
+pymysql
+python-dotenv

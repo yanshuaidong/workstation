@@ -1,0 +1,362 @@
+{
+  "list_region": [
+    47,
+    85,
+    271,
+    636
+  ],
+  "screenshot_region": [
+    372,
+    541,
+    482,
+    566
+  ],
+  "visible_count": 11,
+  "total_count": 55,
+  "item_height": 50,
+  "click_x": 159,
+  "screenshot_subdirs": {
+    "main_force": "screenshots_main_force",
+    "retail": "screenshots_retail"
+  },
+  "history_screenshot_subdirs": {
+    "main_force": "history_main_force",
+    "retail": "history_retail"
+  },
+  "history_count": 30,
+  "history_hover_delay": 1.0,
+  "output_json": "result.json",
+  "varieties": [
+    {
+      "id": 1,
+      "name": "铁矿石",
+      "key": "im"
+    },
+    {
+      "id": 2,
+      "name": "螺纹钢",
+      "key": "rbm"
+    },
+    {
+      "id": 3,
+      "name": "热卷",
+      "key": "hcm"
+    },
+    {
+      "id": 4,
+      "name": "锰硅",
+      "key": "smm"
+    },
+    {
+      "id": 5,
+      "name": "沪铜",
+      "key": "cum"
+    },
+    {
+      "id": 6,
+      "name": "沪铝",
+      "key": "alm"
+    },
+    {
+      "id": 7,
+      "name": "沪锌",
+      "key": "znm"
+    },
+    {
+      "id": 8,
+      "name": "沪铅",
+      "key": "pbm"
+    },
+    {
+      "id": 9,
+      "name": "沪锡",
+      "key": "snm"
+    },
+    {
+      "id": 10,
+      "name": "工业硅",
+      "key": "sim"
+    },
+    {
+      "id": 11,
+      "name": "多晶硅",
+      "key": "psm"
+    },
+    {
+      "id": 12,
+      "name": "碳酸锂",
+      "key": "lcm"
+    },
+    {
+      "id": 13,
+      "name": "沪金",
+      "key": "aum"
+    },
+    {
+      "id": 14,
+      "name": "豆一",
+      "key": "am"
+    },
+    {
+      "id": 15,
+      "name": "豆二",
+      "key": "bm"
+    },
+    {
+      "id": 16,
+      "name": "豆油",
+      "key": "ym"
+    },
+    {
+      "id": 17,
+      "name": "豆粕",
+      "key": "mm"
+    },
+    {
+      "id": 18,
+      "name": "菜油",
+      "key": "oim"
+    },
+    {
+      "id": 19,
+      "name": "菜粕",
+      "key": "rmm"
+    },
+    {
+      "id": 20,
+      "name": "棕榈油",
+      "key": "pm"
+    },
+    {
+      "id": 21,
+      "name": "玉米",
+      "key": "cm"
+    },
+    {
+      "id": 22,
+      "name": "鸡蛋",
+      "key": "jdm"
+    },
+    {
+      "id": 23,
+      "name": "棉花",
+      "key": "cfm"
+    },
+    {
+      "id": 24,
+      "name": "白糖",
+      "key": "srm"
+    },
+    {
+      "id": 25,
+      "name": "苹果",
+      "key": "apm"
+    },
+    {
+      "id": 26,
+      "name": "红枣",
+      "key": "cjm"
+    },
+    {
+      "id": 27,
+      "name": "花生",
+      "key": "pkm"
+    },
+    {
+      "id": 28,
+      "name": "PTA",
+      "key": "tam"
+    },
+    {
+      "id": 29,
+      "name": "对二甲苯",
+      "key": "pxm"
+    },
+    {
+      "id": 30,
+      "name": "聚丙烯",
+      "key": "ppm"
+    },
+    {
+      "id": 31,
+      "name": "苯乙烯",
+      "key": "ebm"
+    },
+    {
+      "id": 32,
+      "name": "纯苯",
+      "key": "bzm"
+    },
+    {
+      "id": 33,
+      "name": "烧碱",
+      "key": "shm"
+    },
+    {
+      "id": 34,
+      "name": "尿素",
+      "key": "urm"
+    },
+    {
+      "id": 35,
+      "name": "橡胶",
+      "key": "rum"
+    },
+    {
+      "id": 36,
+      "name": "丁二烯胶",
+      "key": "brm"
+    },
+    {
+      "id": 37,
+      "name": "原木",
+      "key": "lgm"
+    },
+    {
+      "id": 38,
+      "name": "纸浆",
+      "key": "spm"
+    },
+    {
+      "id": 39,
+      "name": "上证",
+      "key": "ihm"
+    },
+    {
+      "id": 40,
+      "name": "氧化铝",
+      "key": "aom"
+    },
+    {
+      "id": 41,
+      "name": "沪镍",
+      "key": "nim"
+    },
+    {
+      "id": 42,
+      "name": "沪银",
+      "key": "agm"
+    },
+    {
+      "id": 43,
+      "name": "生猪",
+      "key": "lhm"
+    },
+    {
+      "id": 44,
+      "name": "燃油",
+      "key": "fum"
+    },
+    {
+      "id": 45,
+      "name": "低硫燃油",
+      "key": "lum"
+    },
+    {
+      "id": 46,
+      "name": "甲醇",
+      "key": "mam"
+    },
+    {
+      "id": 47,
+      "name": "PVC",
+      "key": "vm"
+    },
+    {
+      "id": 48,
+      "name": "纯碱",
+      "key": "sam"
+    },
+    {
+      "id": 49,
+      "name": "玻璃",
+      "key": "fgm"
+    },
+    {
+      "id": 50,
+      "name": "塑料",
+      "key": "lm"
+    },
+    {
+      "id": 51,
+      "name": "乙二醇",
+      "key": "egm"
+    },
+    {
+      "id": 52,
+      "name": "沥青",
+      "key": "bum"
+    },
+    {
+      "id": 53,
+      "name": "LPG",
+      "key": "pgm"
+    },
+    {
+      "id": 54,
+      "name": "焦煤",
+      "key": "jmm"
+    },
+    {
+      "id": 55,
+      "name": "欧线集运",
+      "key": "ecm"
+    }
+  ],
+  "trade_dates": [
+    "2026-04-13",
+    "2026-04-10",
+    "2026-04-09",
+    "2026-04-08",
+    "2026-04-07",
+    "2026-04-03",
+    "2026-04-02",
+    "2026-04-01",
+    "2026-03-31",
+    "2026-03-30",
+    "2026-03-27",
+    "2026-03-26",
+    "2026-03-25",
+    "2026-03-24",
+    "2026-03-23",
+    "2026-03-20",
+    "2026-03-19",
+    "2026-03-18",
+    "2026-03-17",
+    "2026-03-16",
+    "2026-03-13",
+    "2026-03-12",
+    "2026-03-11",
+    "2026-03-10",
+    "2026-03-09",
+    "2026-03-06",
+    "2026-03-05",
+    "2026-03-04",
+    "2026-03-03",
+    "2026-03-02"
+  ],
+  "history_date_region": [
+    1128,
+    327,
+    1151,
+    344
+  ],
+  "history_date_step_x": 21.5,
+  "history_latest_date_x": 1149,
+  "history_date_bar_y": 335,
+  "_history_help": {
+    "history_date_step_x": "【关键精度参数】相邻两个日期之间的像素间距。校准时框选区域的宽度 = x2-x1。若 hover 落点偏移（比如总是差半格），在此直接修改这个数字，正数=向右，负数=向左。示例：23 表示每天间隔23像素。",
+    "history_latest_date_x": "【起始点X】最新一天的 hover X 坐标，即校准框选区域的右边界 x2。若最新日期 hover 有偏差，在这里微调（+/- 几像素）。",
+    "history_date_bar_y": "【hover Y坐标】鼠标在日期轴上 hover 的垂直位置，校准框选区域的上下中线。若 tooltip 不出现或出现在错误位置，上下微调这个值。",
+    "history_date_region": "校准时框选的原始区域 [x1,y1,x2,y2]，仅记录用，程序实际用上面三个计算值。",
+    "history_count": "每个合约收集多少天历史数据，默认30。",
+    "history_hover_delay": "hover 后等待多少秒再截图（等 tooltip 弹出），默认0.8秒。若截图内容为空或 tooltip 未出现，适当加大此值。",
+    "调整建议": [
+      "1. 先用截图工具（选项4）测试截图区域是否对准",
+      "2. history_latest_date_x 对准最新日期的竖线中心（屏幕坐标，可用画图工具查看像素位置）",
+      "3. history_date_step_x 若偏小则 hover 点过密，偏大则跨越了多天，需精确测量相邻两日期线的像素距离",
+      "4. history_date_bar_y 调整到日期文字所在行的垂直中心",
+      "5. history_hover_delay 若 tooltip 弹出慢，改为 1.0 或 1.2"
+    ]
+  }
+}

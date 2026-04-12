@@ -1,0 +1,22 @@
+{
+  "list_region": [47, 85, 271, 636],
+  "screenshot_region": [372, 541, 482, 566],
+  "visible_count": 11,
+  "total_count": 55,
+  "item_height": 50,
+  "click_x": 159,
+  "screenshot_subdirs": {
+    "main_force": "screenshots_main_force",
+    "retail": "screenshots_retail"
+  },
+  "history_screenshot_subdirs": {
+    "main_force": "history_main_force",
+    "retail": "history_retail"
+  },
+  "history_count": 30,
+  "history_hover_delay": 1.0,
+  "history_date_region": [1128, 327, 1151, 344],
+  "history_date_step_x": 21.5,
+  "history_latest_date_x": 1149,
+  "history_date_bar_y": 335
+}
