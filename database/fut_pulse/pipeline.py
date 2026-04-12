@@ -149,6 +149,19 @@ def step_screenshot(mode: str, cfg: dict, dry_run: bool = False):
 
     for mode_key in ("main_force", "retail"):
         label = "主力资金" if mode_key == "main_force" else "散户资金"
+
+        if mode_key == "retail" and not dry_run:
+            print("\n" + "=" * 60)
+            print("  主力资金采集完成，即将开始【散户资金】采集")
+            print("=" * 60)
+            print("请先完成以下操作：")
+            print("  1. 在东方财富客户端切换到【散户资金】图表")
+            print("  2. 将左侧合约列表滚动回第一个合约")
+            print("  3. 确保第一个合约处于选中（高亮）状态")
+            print("-" * 60)
+            input("完成后按回车键继续...")
+            logger.info("用户已确认散户资金准备就绪，开始采集")
+
         logger.info("开始采集 %s ...", label)
         if mode == "today":
             collect_today(cfg, mode_key, dry_run=dry_run)
