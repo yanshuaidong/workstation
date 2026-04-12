@@ -8,7 +8,7 @@
 ## 目录结构
 
 ```
-getdata/
+fut_pulse/
 ├── collector/
 │   ├── screenshot.py   # 截图自动化（today / history 两种模式）
 │   └── ocr.py          # OCR 识别（含置信度校验）
