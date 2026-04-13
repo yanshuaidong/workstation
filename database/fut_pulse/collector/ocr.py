@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageFilter
 from cnocr import CnOcr
 
 logger = logging.getLogger(__name__)
@@ -50,13 +50,18 @@ def preprocess(img_path: Path) -> np.ndarray:
     img = Image.open(img_path).convert("RGB")
     img = img.resize((img.width * 4, img.height * 4), Image.LANCZOS)
     img = ImageEnhance.Contrast(img).enhance(2.0)
+    img = ImageEnhance.Sharpness(img).enhance(2.0)
     return np.array(img)
 
 
 # ── 数值提取 ──────────────────────────────────────────────────────────────────
 
 def extract_value(text: str) -> float | None:
-    """从 OCR 文本中提取数值（支持负数和小数）。"""
+    """从 OCR 文本中提取数值（支持负数和小数）。
+
+    源数据始终为 2 位小数格式（如 -21.31）。当 OCR 漏识别小数点时，
+    会产生异常大的整数（如 2131），此时自动在倒数第 2 位前补回小数点。
+    """
     text = text.replace(" ", "").replace("：", ":").replace(",", "")
     text = text.replace("一", "-").replace("—", "-").replace("–", "-")
     for ch in "↑↓个↗↘†‡":
@@ -64,7 +69,22 @@ def extract_value(text: str) -> float | None:
     match = re.search(r"(-?\d+\.?\d*)", text)
     if not match:
         return None
-    return round(float(match.group(1)), 2)
+    raw = match.group(1)
+    if "." not in raw:
+        sign = "-" if raw.startswith("-") else ""
+        digits = raw.lstrip("-")
+        if len(digits) >= 4:
+            integer_part = digits[:-2]
+            decimal_part = digits[-2:]
+            corrected = f"{sign}{integer_part}.{decimal_part}"
+            logger.info("小数点修正: %r → %s（原始文本: %r）", raw, corrected, text)
+            raw = corrected
+        elif len(digits) == 3:
+            logger.warning(
+                "疑似漏识别小数点（3位整数 %s），但无法确定是否为正常值，未自动修正（原始文本: %r）",
+                raw, text,
+            )
+    return round(float(raw), 2)
 
 
 # ── 单张图识别 ────────────────────────────────────────────────────────────────
