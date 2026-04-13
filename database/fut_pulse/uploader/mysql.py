@@ -5,7 +5,7 @@ MySQL 上传模块
   1. 自动检测并创建 fut_variety / fut_strength 表（不存在时才创建）。
   2. 将品种列表同步到 fut_variety。
   3. 按 trade_dates 日期索引将 result 数据逐条写入 fut_strength。
-     重复的 (variety_id, trade_date) 使用 INSERT IGNORE 自动跳过。
+     重复的 (variety_id, trade_date) 使用 ON DUPLICATE KEY UPDATE 自动更新。
 
 连接配置从项目根目录的 .env 文件读取：
   DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
@@ -146,15 +146,19 @@ def upload_strength(
     """
     将 result 数据按 trade_dates 索引逐条上传到 fut_strength。
     result 中 main_force / retail 可为标量（today 模式）或列表（history 模式）。
-    重复的 (variety_id, trade_date) 使用 INSERT IGNORE 跳过。
+    重复的 (variety_id, trade_date) 使用 ON DUPLICATE KEY UPDATE 更新。
     """
     if collected_at is None:
         collected_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     sql = """
-        INSERT IGNORE INTO fut_strength
+        INSERT INTO fut_strength
             (variety_id, trade_date, main_force, retail, collected_at)
         VALUES (%s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            main_force = VALUES(main_force),
+            retail = VALUES(retail),
+            collected_at = VALUES(collected_at)
     """
     batch = []
     for item in result:
@@ -171,22 +175,24 @@ def upload_strength(
             retail_val = retail_list[day_idx] if day_idx < len(retail_list) else None
             batch.append((variety_id, trade_date, main_val, retail_val, collected_at))
 
-    inserted = skipped = 0
+    inserted = updated = unchanged = 0
     with conn.cursor() as cur:
         for row in batch:
             affected = cur.execute(sql, row)
-            if affected:
+            if affected == 1:
                 inserted += 1
+            elif affected == 2:
+                updated += 1
             else:
-                skipped += 1
+                unchanged += 1
     conn.commit()
 
     logger.info(
-        "强度数据上传完成：新增 %d 条，跳过 %d 条（合计 %d 条）",
-        inserted, skipped, len(batch),
+        "强度数据上传完成：新增 %d 条，更新 %d 条，未变化 %d 条（合计 %d 条）",
+        inserted, updated, unchanged, len(batch),
     )
     print(
-        f"日度数据上传完成：新增 {inserted} 条，跳过重复 {skipped} 条。"
+        f"日度数据上传完成：新增 {inserted} 条，更新重复 {updated} 条，未变化 {unchanged} 条。"
         f"（合计尝试 {len(batch)} 条）"
     )
 
