@@ -2,18 +2,23 @@
 """
 MySQL 历史数据补录工具
 
-通过 AkShare 拉取指定日期的期货主连数据，写入 MySQL。
-适用场景：定时任务漏跑，需要手动补录某一天的数据。
+通过 AkShare 拉取期货主连数据，写入 MySQL（支持单日或多日；多日时每品种只请求一次接口）。
+适用场景：定时任务漏跑，需要手动补录一个或多个交易日的数据。
 
 使用方法:
-    # 补录 2026-03-05 的数据
+    # 补录单日
     python backfill_mysql.py --date 2026-03-05
+
+    # 多个日期：每个品种只请求一次 AkShare，再写入这些天的行
+    python backfill_mysql.py --date 2026-03-05 2026-03-06
 
     # 预览模式（只打印，不写库）
     python backfill_mysql.py --date 2026-03-05 --dry-run
 
     # 只补录指定品种
     python backfill_mysql.py --date 2026-03-05 --symbol aum,cum,rbm
+
+    # 以下品种在脚本中固定不补录：lFm / ppFm / vFm（月均主连接口不稳）、wrm（常无数据）
 """
 
 import os
@@ -32,6 +37,9 @@ import pymysql
 # ─────────────────────────── 路径 ────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MAPPING_PATH = os.path.join(SCRIPT_DIR, "futures_mapping.json")
+
+# 补录时固定跳过：月均主连(LF0/PPF0/VF0) AkShare 常返回 JSON 解析失败；线材主连常无数据
+BACKFILL_SKIP_SYMBOLS = frozenset({"lfm", "ppfm", "vfm", "wrm"})
 
 # ─────────────────────────── MySQL 配置 ──────────────────────
 DB_CONFIG = {
@@ -114,11 +122,10 @@ def safe_float(val, default=0.0):
         return default
 
 
-def fetch_day_data(api_symbol: str, target_date: str, max_retries: int = 3):
+def fetch_main_history_df(api_symbol: str, max_retries: int = 3):
     """
-    从 AkShare 拉取主连历史数据，仅返回 target_date 当天那行。
-    target_date 格式：YYYY-MM-DD
-    失败时自动重试，重试间隔指数递增。
+    从 AkShare 拉取主连完整历史（每个品种只应调用一次）。
+    返回已规范列名、trade_date 为 YYYY-MM-DD 字符串的 DataFrame；失败返回 None。
     """
     col_map = {
         "日期": "trade_date",
@@ -140,9 +147,9 @@ def fetch_day_data(api_symbol: str, target_date: str, max_retries: int = 3):
             if "trade_date" not in df.columns:
                 return None
 
+            df = df.copy()
             df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
-            row = df[df["trade_date"] == target_date]
-            return row if not row.empty else None
+            return df
 
         except Exception as e:
             if attempt < max_retries:
@@ -186,9 +193,10 @@ def upsert_row(conn, table: str, row: pd.Series, target_date: str):
 
 # ─────────────────────────── 主逻辑 ──────────────────────────
 
-def run(target_date: str, symbols_filter=None, dry_run=False):
+def run(target_dates: list, symbols_filter=None, dry_run=False):
+    dates_str = ", ".join(target_dates)
     logger.info("=" * 60)
-    logger.info(f"补录日期: {target_date}  dry-run={dry_run}")
+    logger.info(f"补录日期: {dates_str}  dry-run={dry_run}")
     logger.info("=" * 60)
 
     mapping = load_mapping()
@@ -198,6 +206,17 @@ def run(target_date: str, symbols_filter=None, dry_run=False):
         symbols_filter_lower = {s.lower() for s in symbols_filter}
         futures_cfg = {k: v for k, v in futures_cfg.items()
                        if k.lower() in symbols_filter_lower}
+
+    n_before_skip = len(futures_cfg)
+    futures_cfg = {
+        k: v for k, v in futures_cfg.items()
+        if k.lower() not in BACKFILL_SKIP_SYMBOLS
+    }
+    if len(futures_cfg) < n_before_skip:
+        logger.info(
+            "已排除常失败/无数据品种（不补录）: "
+            "lFm 塑料月均主连, ppFm 聚丙烯月均主连, vFm PVC月均主连, wrm 线材主连"
+        )
 
     if not futures_cfg:
         logger.error("没有匹配的品种，请检查 --symbol 参数")
@@ -214,31 +233,48 @@ def run(target_date: str, symbols_filter=None, dry_run=False):
             name = cfg["name"]
             label = f"{symbol}({name})"
 
-            df_day = fetch_day_data(api_symbol, target_date)
+            df_hist = fetch_main_history_df(api_symbol)
 
-            if df_day is None or df_day.empty:
-                logger.info(f"  ⚠  [{idx}/{total}] {label} — {target_date} 无数据")
-                skip += 1
-            else:
-                row = df_day.iloc[0]
+            if df_hist is None or df_hist.empty:
+                logger.info(f"  ⚠  [{idx}/{total}] {label} — AkShare 无数据")
+                skip += len(target_dates)
+                if idx < total:
+                    time.sleep(random.uniform(0.8, 1.5))
+                continue
 
+            table = None
+            written_dates = []
+            for d in target_dates:
+                sub = df_hist[df_hist["trade_date"] == d]
+                if sub.empty:
+                    logger.info(f"  ⚠  [{idx}/{total}] {label} — {d} 无数据")
+                    skip += 1
+                    continue
+
+                row = sub.iloc[0]
                 if dry_run:
                     logger.info(
-                        f"  [预览] [{idx}/{total}] {label} — "
+                        f"  [预览] [{idx}/{total}] {label} {d} — "
                         f"open={safe_float(row.get('open_price'))}, "
                         f"close={safe_float(row.get('close_price'))}, "
                         f"vol={safe_float(row.get('volume'))}"
                     )
                     ok += 1
+                    written_dates.append(d)
                 else:
                     try:
-                        table = ensure_table(conn, symbol)
-                        upsert_row(conn, table, row, target_date)
-                        logger.info(f"  ✅ [{idx}/{total}] {label} → {table}")
+                        if table is None:
+                            table = ensure_table(conn, symbol)
+                        upsert_row(conn, table, row, d)
                         ok += 1
+                        written_dates.append(d)
                     except Exception as e:
-                        logger.error(f"  ❌ [{idx}/{total}] {label} 写库失败: {e}")
+                        logger.error(f"  ❌ [{idx}/{total}] {label} {d} 写库失败: {e}")
                         fail += 1
+
+            if not dry_run and written_dates and table is not None:
+                ds = ", ".join(written_dates)
+                logger.info(f"  ✅ [{idx}/{total}] {label} → {table}  ({ds})")
 
             # 每次请求后随机等待，避免触发新浪API限流
             if idx < total:
@@ -258,8 +294,8 @@ def run(target_date: str, symbols_filter=None, dry_run=False):
 def main():
     parser = argparse.ArgumentParser(description="MySQL 历史数据补录工具")
     parser.add_argument(
-        "--date", "-d", required=True,
-        help="要补录的交易日期，格式 YYYY-MM-DD，例如 2026-03-05"
+        "--date", "-d", required=True, nargs="+",
+        help="要补录的交易日期，可多个，格式 YYYY-MM-DD，例如 2026-03-05 2026-03-06"
     )
     parser.add_argument(
         "--symbol", "-s", type=str, default=None,
@@ -271,15 +307,19 @@ def main():
     )
     args = parser.parse_args()
 
-    # 校验日期格式
-    try:
-        datetime.strptime(args.date, "%Y-%m-%d")
-    except ValueError:
-        logger.error("日期格式错误，请使用 YYYY-MM-DD")
-        sys.exit(1)
+    target_dates = []
+    for d in args.date:
+        d = d.strip()
+        try:
+            datetime.strptime(d, "%Y-%m-%d")
+        except ValueError:
+            logger.error(f"日期格式错误: {d!r}，请使用 YYYY-MM-DD")
+            sys.exit(1)
+        target_dates.append(d)
+    target_dates = sorted(set(target_dates))
 
     symbols = [s.strip() for s in args.symbol.split(",")] if args.symbol else None
-    run(args.date, symbols_filter=symbols, dry_run=args.dry_run)
+    run(target_dates, symbols_filter=symbols, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
