@@ -84,6 +84,8 @@ export const getAssistantPositionsHistoryApi = `${BASE_URL_API_A}/assistant/posi
 export const getAssistantAccountCurveApi = `${BASE_URL_API_A}/assistant/account/curve`;
 export const getAssistantAccountSummaryApi = `${BASE_URL_API_A}/assistant/account/summary`;
 export const getAssistantMarketContextApi = `${BASE_URL_API_A}/assistant/market-context`;
+export const getAssistantVarietyListApi = `${BASE_URL_API_A}/assistant/variety-list`;
+export const getAssistantVarietyKlineApi = `${BASE_URL_API_A}/assistant/variety-kline`;
 
 // 导出端口配置，方便组件使用
 export const API_PORTS = {

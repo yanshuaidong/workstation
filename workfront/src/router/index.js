@@ -9,6 +9,7 @@ import AssistantSignalsView from '@/views/assistant/SignalsView.vue'
 import AssistantOperationsView from '@/views/assistant/OperationsView.vue'
 import AssistantPositionsView from '@/views/assistant/PositionsView.vue'
 import AssistantCurveView from '@/views/assistant/CurveView.vue'
+import AssistantKlineView from '@/views/assistant/KlineView.vue'
 
 
 const routes = [
@@ -86,6 +87,14 @@ const routes = [
         component: AssistantCurveView,
         meta: {
           title: '资金曲线'
+        }
+      },
+      {
+        path: 'kline',
+        name: 'AssistantKline',
+        component: AssistantKlineView,
+        meta: {
+          title: 'K线展示'
         }
       }
     ]

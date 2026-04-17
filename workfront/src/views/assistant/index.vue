@@ -38,6 +38,7 @@
         <el-tab-pane label="操作建议" name="/assistant/operations" />
         <el-tab-pane label="持仓盈亏" name="/assistant/positions" />
         <el-tab-pane label="资金曲线" name="/assistant/curve" />
+        <el-tab-pane label="K线展示" name="/assistant/kline" />
       </el-tabs>
       <router-view />
     </div>

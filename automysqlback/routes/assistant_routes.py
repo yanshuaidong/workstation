@@ -616,3 +616,108 @@ def get_assistant_market_context():
     finally:
         cursor.close()
         conn.close()
+
+
+@assistant_bp.route("/variety-list", methods=["GET"])
+def variety_list():
+    """获取有 contracts_symbol 映射的品种列表（用于K线展示品种选择器）。"""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT id, name, contracts_symbol FROM fut_variety "
+            "WHERE contracts_symbol IS NOT NULL AND contracts_symbol != '' "
+            "ORDER BY id"
+        )
+        rows = cursor.fetchall()
+        return _success({"varieties": [
+            {"id": row["id"], "name": row["name"], "contracts_symbol": row["contracts_symbol"]}
+            for row in rows
+        ]})
+    except Exception as exc:
+        logger.error("获取品种列表失败: %s", exc)
+        return _error(f"获取失败: {exc}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@assistant_bp.route("/variety-kline", methods=["GET"])
+def variety_kline():
+    """
+    获取品种K线 + 主力/散户指数。
+    参数：variety_id（必填），start_date，end_date（可选，默认近60天）。
+    K线以 hist_{contracts_symbol.lower()} 表为主，指数以 fut_strength LEFT JOIN。
+    """
+    variety_id = request.args.get("variety_id")
+    if not variety_id:
+        return _error("variety_id 不能为空")
+
+    from datetime import timedelta
+    today = date.today()
+    default_start = (today - timedelta(days=60)).isoformat()
+    start_date = request.args.get("start_date") or default_start
+    end_date = request.args.get("end_date") or today.isoformat()
+
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT id, name, contracts_symbol FROM fut_variety WHERE id = %s",
+            (int(variety_id),)
+        )
+        variety = cursor.fetchone()
+        if not variety or not variety["contracts_symbol"]:
+            return _error("品种不存在或未配置 contracts_symbol")
+
+        symbol = variety["contracts_symbol"].lower()
+        table = f"hist_{symbol}"
+
+        cursor.execute(
+            f"SELECT trade_date, open_price, high_price, low_price, close_price, volume "
+            f"FROM {table} "
+            f"WHERE trade_date >= %s AND trade_date <= %s "
+            f"ORDER BY trade_date ASC",
+            (start_date, end_date),
+        )
+        kline_rows = cursor.fetchall()
+
+        cursor.execute(
+            "SELECT trade_date, main_force, retail FROM fut_strength "
+            "WHERE variety_id = %s AND trade_date >= %s AND trade_date <= %s "
+            "ORDER BY trade_date ASC",
+            (int(variety_id), start_date, end_date),
+        )
+        strength_rows = cursor.fetchall()
+        strength_map = {_date_str(r["trade_date"]): r for r in strength_rows}
+
+        kline = []
+        strength = []
+        for row in kline_rows:
+            dt = _date_str(row["trade_date"])
+            kline.append({
+                "trade_date": dt,
+                "open":   float(row["open_price"]),
+                "high":   float(row["high_price"]),
+                "low":    float(row["low_price"]),
+                "close":  float(row["close_price"]),
+                "volume": int(row["volume"]),
+            })
+            s = strength_map.get(dt)
+            strength.append({
+                "trade_date": dt,
+                "main_force": float(s["main_force"]) if s and s["main_force"] is not None else None,
+                "retail":     float(s["retail"])     if s and s["retail"]     is not None else None,
+            })
+
+        return _success({
+            "variety": {"id": variety["id"], "name": variety["name"]},
+            "kline":   kline,
+            "strength": strength,
+        })
+    except Exception as exc:
+        logger.error("获取品种K线失败: %s", exc)
+        return _error(f"获取失败: {exc}")
+    finally:
+        cursor.close()
+        conn.close()
