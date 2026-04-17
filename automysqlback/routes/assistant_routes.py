@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pymysql
 from flask import Blueprint, current_app, jsonify, request
@@ -622,7 +622,7 @@ def get_assistant_market_context():
 def variety_list():
     """获取有 contracts_symbol 映射的品种列表（用于K线展示品种选择器）。"""
     conn = _get_conn()
-    cursor = conn.cursor()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
     try:
         cursor.execute(
             "SELECT id, name, contracts_symbol FROM fut_variety "
@@ -653,14 +653,13 @@ def variety_kline():
     if not variety_id:
         return _error("variety_id 不能为空")
 
-    from datetime import timedelta
     today = date.today()
     default_start = (today - timedelta(days=60)).isoformat()
     start_date = request.args.get("start_date") or default_start
     end_date = request.args.get("end_date") or today.isoformat()
 
     conn = _get_conn()
-    cursor = conn.cursor()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
     try:
         cursor.execute(
             "SELECT id, name, contracts_symbol FROM fut_variety WHERE id = %s",
