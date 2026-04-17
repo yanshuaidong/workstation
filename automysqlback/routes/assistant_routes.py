@@ -618,7 +618,7 @@ def get_assistant_market_context():
         conn.close()
 
 
-@assistant_bp.route("/variety-list", methods=["GET"])
+@assistant_bp.route("/assistant/variety-list", methods=["GET"])
 def variety_list():
     """获取有 contracts_symbol 映射的品种列表（用于K线展示品种选择器）。"""
     conn = _get_conn()
@@ -642,7 +642,7 @@ def variety_list():
         conn.close()
 
 
-@assistant_bp.route("/variety-kline", methods=["GET"])
+@assistant_bp.route("/assistant/variety-kline", methods=["GET"])
 def variety_kline():
     """
     获取品种K线 + 主力/散户指数。
