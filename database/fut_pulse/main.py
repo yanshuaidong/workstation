@@ -6,6 +6,7 @@
   python main.py today --no-upload                      # 仅截图+OCR，不上传
   python main.py history --days 30                      # 采集最近30个交易日
   python main.py history --start 2026-03-01 --end 2026-04-10  # 指定日期范围
+  python main.py close-history --days 30                # 只回填收盘价
   python main.py history --no-screenshot                # 仅对已有历史截图跑OCR+上传
   python main.py calibrate                              # 进入校准菜单
   python main.py ocr-only                               # 仅对已有截图跑OCR（历史模式）
@@ -58,7 +59,19 @@ def cmd_ocr_only(args):
 
 def cmd_upload_only(args):
     from pipeline import run_upload_only
-    run_upload_only()
+    run_upload_only(dry_run=args.dry_run)
+
+
+def cmd_close_history(args):
+    from close_price import run_close_history
+
+    run_close_history(
+        days=args.days,
+        start=args.start,
+        end=args.end,
+        symbols=args.symbol,
+        dry_run=args.dry_run,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -103,6 +116,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_hist.add_argument("--no-upload", action="store_true", help="仅截图+OCR，跳过上传")
     p_hist.set_defaults(func=cmd_history)
+
+    # ── close-history ──
+    p_close = sub.add_parser("close-history", help="仅通过 AkShare 回填 fut_daily_close")
+    close_days = p_close.add_mutually_exclusive_group()
+    close_days.add_argument(
+        "--days", type=int, metavar="N",
+        help="从今天向前取 N 个交易日进行 close 价格回填",
+    )
+    close_days.add_argument(
+        "--start", metavar="YYYY-MM-DD",
+        help="与 --end 配合指定 close 回填开始日期",
+    )
+    p_close.add_argument(
+        "--end", metavar="YYYY-MM-DD",
+        help="与 --start 配合指定 close 回填结束日期（默认今天）",
+    )
+    p_close.add_argument(
+        "--symbol", metavar="k1,k2",
+        help="只处理指定品种 key，例如 rbm,cum",
+    )
+    p_close.set_defaults(func=cmd_close_history)
 
     # ── calibrate ──
     p_calib = sub.add_parser("calibrate", help="进入校准交互菜单（框选屏幕区域）")

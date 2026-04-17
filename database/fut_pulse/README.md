@@ -1,29 +1,40 @@
-# 期货资金强度采集系统
+# 期货资金强度与收盘价采集系统
 
-自动截图 → OCR 识别 → 上传 MySQL 的完整数据采集流程。  
-支持**当天单日采集**与**连续多日历史采集**两种模式。
+当前 `fut_pulse` 已经同时负责两类基础数据：
+
+- `fut_strength`：主力 / 散户资金强度
+- `fut_daily_close`：期货主连日收盘价
+
+其中：
+
+- `today` 会在上传强度数据后，自动补齐当日 `fut_daily_close`
+- 历史 close 通过独立命令 `close-history` 处理
 
 ---
 
 ## 目录结构
 
-```
+```text
 fut_pulse/
 ├── collector/
-│   ├── screenshot.py   # 截图自动化（today / history 两种模式）
-│   └── ocr.py          # OCR 识别（含置信度校验）
-├── uploader/
-│   └── mysql.py        # MySQL 上传（含连接重试）
+│   ├── screenshot.py
+│   └── ocr.py
 ├── config/
-│   ├── calibration.json    # 屏幕几何校准参数（首次需校准生成）
-│   ├── varieties.json      # 品种列表（可直接编辑增减品种）
-│   └── holidays.json       # 节假日列表（可选，用于精确排除节假日）
-├── data/               # 截图与 OCR 结果输出目录
-├── logs/               # 运行日志（每次运行独立一个文件）
-├── pipeline.py         # 流程编排（截图 → OCR → 上传）
-├── main.py             # 统一入口
-├── .env                # 数据库连接（不提交到版本库）
-└── .env.example        # 数据库连接配置示例
+│   ├── calibration.json
+│   ├── varieties.json
+│   └── holidays.json
+├── database/
+│   ├── __init__.py
+│   └── init_tables.py
+├── uploader/
+│   └── mysql.py
+├── close_price.py
+├── pipeline.py
+├── main.py
+├── requirements.txt
+├── .env
+├── data/
+└── logs/
 ```
 
 ---
@@ -38,106 +49,7 @@ pip install -r requirements.txt
 
 ### 2. 配置数据库连接
 
-```bash
-cp .env.example .env
-# 编辑 .env，填写真实的数据库连接信息
-```
-
-### 3. 首次校准（必须）
-
-启动东方财富客户端并切换到目标页面，然后运行：
-
-```bash
-python main.py calibrate
-```
-
-校准菜单选项：
-- **选项1**：框选合约列表区域 + 截图数据区域（当天模式必须）
-- **选项2**：框选日期轴相邻两日区域（历史模式必须）
-- **选项3**：测试截图，验证区域是否正确
-
-校准结果自动保存到 `config/calibration.json`。
-
----
-
-## 日常使用
-
-### 采集当天数据
-
-```bash
-python main.py today
-```
-
-完整流程：截图（主力+散户）→ OCR → 上传 MySQL
-
-```bash
-python main.py today --no-upload    # 仅截图+OCR，不上传
-```
-
-### 采集历史多日数据
-
-```bash
-python main.py history --days 30               # 最近30个交易日
-python main.py history --start 2026-03-01 --end 2026-04-10  # 指定日期范围
-python main.py history --days 30 --no-upload   # 仅截图+OCR，不上传
-python main.py history --no-screenshot         # 已有截图，仅OCR+上传
-```
-
-### 单独执行某一步
-
-```bash
-python main.py ocr-only             # 对已有历史截图重新跑OCR
-python main.py ocr-only --today     # 对已有今日截图重新跑OCR
-python main.py upload-only          # 将已有 data/result.json 上传
-```
-
-### 测试运行（不执行实际操作）
-
-```bash
-python main.py --dry-run today
-python main.py --dry-run history --days 30
-```
-
----
-
-## 配置文件说明
-
-### `config/calibration.json` — 屏幕几何参数
-
-通过 `python main.py calibrate` 自动生成，通常无需手动编辑。
-
-| 字段 | 说明 |
-|------|------|
-| `list_region` | 合约列表区域 `[x1, y1, x2, y2]` |
-| `screenshot_region` | 数据截图区域 `[x1, y1, x2, y2]` |
-| `visible_count` | 列表中同时可见的合约数量 |
-| `total_count` | 合约总数量 |
-| `item_height` | 单个合约行的像素高度 |
-| `click_x` | 点击列表时的 X 坐标 |
-| `screenshot_subdirs` | 今日截图存放的子目录名 |
-| `history_screenshot_subdirs` | 历史截图存放的子目录名 |
-| `history_count` | 历史模式默认采集天数（`--days` 未指定时使用） |
-| `history_hover_delay` | hover 后等待截图的秒数（tooltip 出现较慢时调大） |
-| `history_date_step_x` | 日期轴相邻两日的像素间距 |
-| `history_latest_date_x` | 最新日期的 X 坐标 |
-| `history_date_bar_y` | 日期轴 hover 的 Y 坐标 |
-
-### `config/varieties.json` — 品种列表
-
-JSON 数组，每项包含 `id`、`name`、`key` 三个字段。  
-可直接编辑增减品种，`id` 须与东方财富列表中的顺序一致（从1开始）。
-
-### `config/holidays.json` — 节假日（可选）
-
-若要精确排除节假日（如春节、国庆），创建此文件：
-
-```json
-["2026-01-01", "2026-02-04", "2026-02-05", "2026-02-06"]
-```
-
-不创建此文件时，系统只排除周末。
-
-### `.env` — 数据库连接
+在 `database/fut_pulse/.env` 中填写：
 
 ```ini
 DB_HOST=your_host
@@ -147,34 +59,181 @@ DB_PASSWORD=your_password
 DB_NAME=futures
 ```
 
-**注意：请勿将 `.env` 提交到版本库。**
+### 3. 首次校准
+
+启动东方财富客户端并切到目标页面后执行：
+
+```bash
+python main.py calibrate
+```
+
+---
+
+## 日常命令
+
+### 当天采集
+
+```bash
+python main.py today
+```
+
+实际流程：
+
+1. 截图主力 / 散户资金
+2. OCR 识别
+3. 上传 `fut_variety` / `fut_strength`
+4. 通过 AkShare 自动同步当日 `fut_daily_close`
+
+只截图和 OCR，不写库：
+
+```bash
+python main.py today --no-upload
+```
+
+### 历史强度采集
+
+```bash
+python main.py history --days 30
+python main.py history --start 2026-03-01 --end 2026-04-10
+python main.py history --days 30 --no-upload
+python main.py history --no-screenshot
+```
+
+注意：
+
+- `history` 只处理截图 / OCR / `fut_strength`
+- 历史 `fut_daily_close` 不会在 `history` 里自动补齐
+- 历史 close 请单独执行 `close-history`
+
+### 历史收盘价回填
+
+```bash
+python main.py close-history --days 30
+python main.py close-history --start 2026-03-01 --end 2026-04-10
+python main.py close-history --start 2026-03-01 --end 2026-04-10 --symbol rbm,cum
+python main.py --dry-run close-history --days 5
+```
+
+`close-history` 会：
+
+- 读取 `config/varieties.json`
+- 使用 `close_price.py` 内部固定映射表找到 AkShare `api_symbol`
+- 每个品种只请求一次主连历史
+- 将目标日期范围内的 `close_price` 幂等写入 `fut_daily_close`
+
+### 单独执行某一步
+
+```bash
+python main.py ocr-only
+python main.py ocr-only --today
+python main.py upload-only
+```
+
+说明：
+
+- `upload-only` 依赖已有 `data/result.json`
+- 如果推断为今日模式，上传 `fut_strength` 后会继续自动补齐当日 `fut_daily_close`
+- 如果推断为历史模式，只上传 `fut_strength`，历史 close 仍需手动执行 `close-history`
+
+### dry-run
+
+```bash
+python main.py --dry-run today
+python main.py --dry-run history --days 30
+python main.py --dry-run close-history --days 5
+```
+
+---
+
+## 自动建表
+
+系统运行时会自动检查并创建以下三张基础表：
+
+- `fut_variety`
+- `fut_strength`
+- `fut_daily_close`
+
+其中 `fut_daily_close` 结构固定包含：
+
+- `variety_id`
+- `trade_date`
+- `close_price`
+- `collected_at`
 
 ---
 
 ## 数据流程
 
-```
-main.py
+### `today`
+
+```text
+main.py today
   └── pipeline.py
         ├── [步骤1] collector/screenshot.py → data/screenshots/*.png
         ├── [步骤2] collector/ocr.py        → data/result.json
+        ├── [步骤3] uploader/mysql.py       → MySQL (fut_variety / fut_strength)
+        └── [步骤4] close_price.py          → MySQL (fut_daily_close)
+```
+
+### `history`
+
+```text
+main.py history
+  └── pipeline.py
+        ├── [步骤1] collector/screenshot.py
+        ├── [步骤2] collector/ocr.py
         └── [步骤3] uploader/mysql.py       → MySQL (fut_variety / fut_strength)
 ```
 
-每次运行的详细日志保存在 `logs/run_YYYYMMDD_HHMMSS.log`。
+### `close-history`
+
+```text
+main.py close-history
+  └── close_price.py                        → MySQL (fut_daily_close)
+```
+
+---
+
+## 配置说明
+
+### `config/varieties.json`
+
+这是 `fut_pulse` 的主品种清单，字段包括：
+
+- `id`
+- `name`
+- `key`
+
+### `close_price.py` 固定映射
+
+收盘价同步不再运行时读取外部映射文件，而是直接使用 `close_price.py` 中写死的 `CLOSE_API_SYMBOL_MAP`。
+
+因此如果你以后给 `varieties.json` 新增品种，必须同步补这份映射，否则 close 同步会直接报错并终止。
+
+### `config/holidays.json`
+
+可选文件，用于精确排除节假日：
+
+```json
+["2026-01-01", "2026-02-04", "2026-02-05"]
+```
 
 ---
 
 ## 常见问题
 
-**Q: OCR 识别率低，很多值为 null？**  
-A: 先用 `python main.py calibrate` 选项3测试截图，确认截图区域对准数值；适当调大 `history_hover_delay`（历史模式）。
+**Q: `today` 跑完后会不会自动有收盘价？**  
+A: 会。`today` 在 `fut_strength` 上传成功后，会自动同步当日 `fut_daily_close`。
 
-**Q: 历史模式 hover 日期偏移？**  
-A: 在 `config/calibration.json` 中微调 `history_date_step_x`（每天像素间距）和 `history_latest_date_x`（最新日期X坐标）。
+**Q: `history` 跑完后为什么 assistant 还是缺少 close？**  
+A: 因为 `history` 只负责强度链路。历史收盘价请单独执行 `python main.py close-history ...`。
 
 **Q: 上传失败后如何重试？**  
-A: 截图和 OCR 结果已保存，直接运行 `python main.py upload-only` 重试上传。
+A: 如果是今日模式，直接执行 `python main.py upload-only`。它会先上传 `fut_strength`，再自动补今日 close。  
+A: 如果是历史模式，先执行 `python main.py upload-only` 上传强度，再执行 `python main.py close-history ...` 补历史 close。
 
-**Q: 想只更新部分日期的数据？**  
-A: 使用 `python main.py history --start 2026-04-07 --end 2026-04-10`，已存在的记录会自动跳过（INSERT IGNORE）。
+**Q: 为什么不把历史 close 直接塞进 `history` 命令？**  
+A: 因为 `history` 是截图 / OCR 驱动，历史 close 是纯 AkShare API 拉取，两条链路拆开后更稳定，也更方便单独重试。
+
+**Q: 哪里看运行日志？**  
+A: 每次运行都会写到 `logs/run_YYYYMMDD_HHMMSS.log`。

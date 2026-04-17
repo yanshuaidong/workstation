@@ -1,7 +1,8 @@
 """
 流程编排模块
 
-串联三个步骤：截图 → OCR → 上传
+串联截图 → OCR → 上传流程。
+today 模式在强度上传成功后，会额外同步当日 fut_daily_close。
 支持 today / history 两种模式，自动生成 trade_dates（排除周末）。
 
 每次运行的日志写入 logs/run_YYYYMMDD_HHMMSS.log
@@ -213,6 +214,18 @@ def step_upload(result: list, trade_dates: list, varieties: list, dry_run: bool 
     logger.info("MySQL 上传完成")
 
 
+def step_close_sync(trade_dates: list[str], varieties: list, dry_run: bool = False):
+    """步骤4：同步日收盘价。"""
+    from close_price import sync_close_prices
+
+    logger = logging.getLogger("pipeline.close")
+    logger.info("=== 步骤4：close 价格同步 ===")
+    logger.info("目标交易日: %s", ", ".join(trade_dates))
+
+    sync_close_prices(trade_dates=trade_dates, varieties=varieties, dry_run=dry_run)
+    logger.info("close 价格同步完成")
+
+
 # ── 主编排函数 ────────────────────────────────────────────────────────────────
 
 def run(
@@ -299,6 +312,15 @@ def run(
         logger.info("跳过上传步骤")
         print("跳过上传步骤。")
 
+    if not skip_upload and mode == "today":
+        try:
+            step_close_sync(trade_dates, varieties, dry_run=dry_run)
+        except Exception as e:
+            logger.error("close 价格同步失败: %s", e, exc_info=True)
+            print(f"\n[错误] close 价格同步失败。\n  原因：{e}")
+            print("  fut_strength 已上传成功，可稍后重跑 today 或单独处理收盘价补录。")
+            sys.exit(1)
+
     logger.info("========== 采集流程完成 [%s] ==========", run_tag)
     print(f"\n===== 全部完成！日志: logs/run_{run_tag}.log =====")
 
@@ -326,7 +348,7 @@ def run_ocr_only(mode: str = "history"):
     return result
 
 
-def run_upload_only():
+def run_upload_only(dry_run: bool = False):
     """从已有 result.json 读取数据并上传 MySQL。"""
     run_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
     setup_logging(run_tag)
@@ -352,11 +374,21 @@ def run_upload_only():
         trade_dates = generate_trade_dates(days=n_days)
         logger.info("推断历史模式，%d 天", n_days)
         print(f"推断为历史模式，{n_days} 个交易日")
+        print("提示：历史收盘价请使用 close-history 命令单独回填。")
     else:
         trade_dates = generate_trade_dates()
         logger.info("推断今日模式")
         print("推断为今日模式")
 
-    step_upload(result, trade_dates, varieties)
+    step_upload(result, trade_dates, varieties, dry_run=dry_run)
+
+    if not dry_run and not isinstance(main_sample, list):
+        try:
+            step_close_sync(trade_dates, varieties, dry_run=False)
+        except Exception as e:
+            logger.error("upload-only 后续 close 价格同步失败: %s", e, exc_info=True)
+            print(f"\n[错误] upload-only 后续 close 价格同步失败。\n  原因：{e}")
+            print("  fut_strength 已上传成功，可稍后重跑 today 或单独处理收盘价补录。")
+            sys.exit(1)
     logger.info("upload-only 完成")
     print(f"\n===== 上传完成！日志: logs/run_{run_tag}.log =====")

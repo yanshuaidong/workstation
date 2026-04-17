@@ -4,6 +4,11 @@ import NewsTracking from '@/components/NewsTracking.vue'
 import FuturesPositions from '@/components/FuturesPositions.vue'
 // import FuturesChart from '@/components/FuturesChart.vue'
 import FuturesChart from '@/views/futures-chart/index.vue'
+import AssistantLayout from '@/views/assistant/index.vue'
+import AssistantSignalsView from '@/views/assistant/SignalsView.vue'
+import AssistantOperationsView from '@/views/assistant/OperationsView.vue'
+import AssistantPositionsView from '@/views/assistant/PositionsView.vue'
+import AssistantCurveView from '@/views/assistant/CurveView.vue'
 
 
 const routes = [
@@ -42,6 +47,48 @@ const routes = [
     meta: {
       title: '期货K线图'
     }
+  },
+  {
+    path: '/assistant',
+    component: AssistantLayout,
+    meta: {
+      title: '辅助决策'
+    },
+    redirect: '/assistant/signals',
+    children: [
+      {
+        path: 'signals',
+        name: 'AssistantSignals',
+        component: AssistantSignalsView,
+        meta: {
+          title: '信号面板'
+        }
+      },
+      {
+        path: 'operations',
+        name: 'AssistantOperations',
+        component: AssistantOperationsView,
+        meta: {
+          title: '操作建议'
+        }
+      },
+      {
+        path: 'positions',
+        name: 'AssistantPositions',
+        component: AssistantPositionsView,
+        meta: {
+          title: '持仓与盈亏'
+        }
+      },
+      {
+        path: 'curve',
+        name: 'AssistantCurve',
+        component: AssistantCurveView,
+        meta: {
+          title: '资金曲线'
+        }
+      }
+    ]
   },
 ]
 

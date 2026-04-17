@@ -22,7 +22,7 @@
       <el-collapse-transition>
         <div v-if="isMobileDevice && mobileMenuVisible" class="mobile-menu-panel">
           <el-menu
-            :default-active="$route.path"
+            :default-active="activeMenuPath"
             router
             class="mobile-menu"
             @select="handleMobileMenuSelect"
@@ -43,6 +43,10 @@
               <el-icon class="menu-icon"><DataLine /></el-icon>
               <span class="menu-text">期货K线图</span>
             </el-menu-item>
+            <el-menu-item index="/assistant/signals" class="mobile-menu-item">
+              <el-icon class="menu-icon"><DataBoard /></el-icon>
+              <span class="menu-text">辅助决策</span>
+            </el-menu-item>
           </el-menu>
         </div>
       </el-collapse-transition>
@@ -55,7 +59,7 @@
           class="app-aside"
         >
           <el-menu
-            :default-active="$route.path"
+            :default-active="activeMenuPath"
             router
             class="side-menu"
             background-color="#001529"
@@ -77,6 +81,10 @@
             <el-menu-item index="/futures-chart" class="menu-item">
               <el-icon class="menu-icon"><DataLine /></el-icon>
               <span class="menu-text">期货K线图</span>
+            </el-menu-item>
+            <el-menu-item index="/assistant/signals" class="menu-item">
+              <el-icon class="menu-icon"><DataBoard /></el-icon>
+              <span class="menu-text">辅助决策</span>
             </el-menu-item>
           </el-menu>
         </el-aside>
@@ -121,6 +129,11 @@ export default {
       
       // 移动端菜单状态
       mobileMenuVisible: false
+    }
+  },
+  computed: {
+    activeMenuPath() {
+      return this.$route.path.startsWith('/assistant') ? '/assistant/signals' : this.$route.path
     }
   },
   
