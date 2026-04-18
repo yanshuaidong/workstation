@@ -30,6 +30,20 @@ pip install -r requirements.txt
 python start.py
 ```
 
+### macOS 一键启动
+
+推荐直接运行同目录下的启动脚本：
+
+```bash
+cd automysqlback
+./devrun.sh
+```
+
+脚本会自动完成以下步骤：
+- 创建或复用 `.venv` 虚拟环境
+- 安装或更新 `requirements.txt` 里的依赖
+- 启动后端服务
+
 ### Docker 部署
 
 ```bash
