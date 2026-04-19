@@ -2,55 +2,49 @@
 
 ## 项目简介
 
-期货数据查询系统后端服务，提供期货合约列表查询、历史数据查询、财联社新闻管理、持仓管理等功能。
+期货数据查询与业务后端服务，提供系统设置、合约与历史数据查询、财联社新闻与 OSS、持仓、品种事件，以及辅助决策（信号、操作建议、账户曲线、市场上下文等）相关 HTTP API。默认通过 MySQL 读取数据；新闻截图等业务使用阿里云 OSS。
 
 ## 技术栈
 
-- **后端框架**: Flask + Flask-CORS
-- **数据库**: MySQL (阿里云RDS)
-- **存储**: 阿里云OSS (新闻截图)
-- **部署**: Docker
+- **后端**：Flask、Flask-CORS
+- **依赖库（见 `requirements.txt`）**：PyMySQL、pandas、numpy、APScheduler、requests、oss2、python-dotenv、`ta`、cryptography
+- **数据**：MySQL（连接信息由环境变量或本地配置提供）
+- **对象存储**：阿里云 OSS（新闻截图、预签名上传等）
+- **部署**：Docker（镜像内监听 7001；`Dockerfile` 含健康检查 `GET /api/settings`）
 
-## 核心功能
+## 核心能力模块
 
-- 期货主连合约列表查询
-- 期货历史数据查询（数据来自阿里云 MySQL）
-- 财联社新闻数据管理与跟踪流程
-- 期货持仓管理
+- 系统设置（`/api/settings`）
+- 期货合约列表与历史数据（`/api/contracts/*`、`/api/history/data`）
+- 财联社新闻 CRUD、处理与跟踪（`/api/news/*`），以及 OSS 预签名（`/api/oss/*`）
+- 期货持仓 CRUD 与统计（`/api/positions/*`）
+- 品种事件 CRUD 与近期事件（`/api/events/*`）
+- 辅助决策：信号、操作建议、持仓与历史持仓、资金曲线与账户摘要、市场上下文、品种列表与 K 线（`/api/assistant/*`）
 
 ## 快速启动
 
-### 本地开发
+### 依赖与入口
 
 ```bash
-# 安装依赖
 pip install -r requirements.txt
-
-# 启动服务
 python start.py
 ```
 
-### macOS 一键启动
+服务监听 `0.0.0.0:7001`（见 `start.py`）。
 
-推荐直接运行同目录下的启动脚本：
+### macOS：同目录脚本
 
 ```bash
 cd automysqlback
 ./devrun.sh
 ```
 
-脚本会自动完成以下步骤：
-- 创建或复用 `.venv` 虚拟环境
-- 安装或更新 `requirements.txt` 里的依赖
-- 启动后端服务
+脚本会创建或复用 `.venv`、按 `requirements.txt` 安装/更新依赖（通过时间戳判断）、再执行 `python start.py`。默认开发地址：`http://127.0.0.1:7001`。
 
-### Docker 部署
+### Docker
 
 ```bash
-# 构建镜像
 docker build -t automysqlback .
-
-# 运行容器
 docker run -d -p 7001:7001 \
   -e DB_HOST=your_db_host \
   -e DB_USER=your_db_user \
@@ -58,216 +52,192 @@ docker run -d -p 7001:7001 \
   automysqlback
 ```
 
+按需传入 `DB_*`、OSS 及 `ENVIRONMENT` 等变量（见下表）。
+
 ## 环境变量
 
-| 变量名 | 描述 | 必填 |
-|--------|------|------|
-| DB_HOST | 数据库主机地址 | 是 |
-| DB_PORT | 数据库端口 | 否 (默认3306) |
-| DB_USER | 数据库用户名 | 是 |
-| DB_PASSWORD | 数据库密码 | 是 |
-| DB_NAME | 数据库名称 | 否 (默认futures) |
-| OSS_ENDPOINT | OSS端点地址 | 是 |
-| OSS_BUCKET | OSS存储桶名 | 是 |
-| OSS_ACCESS_KEY_ID | OSS访问密钥ID | 是 |
-| OSS_ACCESS_KEY_SECRET | OSS访问密钥 | 是 |
+| 变量名 | 说明 |
+|--------|------|
+| `DB_HOST` | 数据库主机 |
+| `DB_PORT` | 端口，默认 `3306` |
+| `DB_USER` | 用户名 |
+| `DB_PASSWORD` | 密码 |
+| `DB_NAME` | 库名，默认 `futures` |
+| `ENVIRONMENT` | 运行环境标识，默认 `development`；非开发且缺少关键 `DB_*` 时进程会退出 |
+| `OSS_ENDPOINT` | OSS Endpoint |
+| `OSS_BUCKET` | Bucket 名 |
+| `OSS_ACCESS_KEY_ID` | 访问 Key |
+| `OSS_ACCESS_KEY_SECRET` | 访问 Secret |
+| `OSS_BASE_URL` | 可选，公网访问基 URL |
+
+启动时会校验 `DB_HOST`、`DB_USER`、`DB_PASSWORD`、`DB_NAME` 是否设置；OSS 相关在调用 OSS/新闻截图链路时使用（见 `app.py` 中 `OSS_CONFIG`）。
+
+本地配置：存在时依次加载当前目录下的 `.env`、`env.production`（见 `app.py` 中 `load_env_config`）。
 
 ---
 
-## API 接口文档
+## API 说明
 
-**基础信息**
-- 默认端口: **7001**
-- 统一响应格式: `{code: 0/1, message: string, data: object}`
-- `code: 0` 表示成功，`code: 1` 表示失败
+**公共约定**
 
----
-
-### 一、系统设置 (2个接口)
-
-#### 1.1 获取系统设置
-- **路径**: `GET /api/settings`
-- **功能**: 获取系统配置信息
-- **返回字段**:
-  - `auto_update_enabled`: 是否开启自动更新
-  - `daily_update_time`: 每日自动更新时间
-  - `multithread_enabled`: 是否开启多线程
-  - `concurrency`: 并发数量
-  - `timeout_seconds`: 超时时间(秒)
-
-#### 1.2 更新系统设置
-- **路径**: `POST /api/settings`
-- **功能**: 更新系统配置，并重新配置定时任务
-- **请求参数**: JSON格式，包含上述配置字段
+- 默认端口：**7001**
+- 统一响应：`{ "code": 0 \| 1, "message": string, "data": object }`（成功为 `0`，失败为 `1`）
 
 ---
 
-### 二、合约管理 (2个接口)
+### 一、系统设置（2）
 
-#### 2.1 获取合约列表
-- **路径**: `GET /api/contracts/list`
-- **功能**: 获取数据库中所有活跃的主连合约
-- **返回**: `contracts` (合约数组), `total` (总数)
-
-#### 2.2 获取历史数据
-- **路径**: `GET /api/history/data`
-- **功能**: 获取指定合约的历史数据（含技术指标）
-- **请求参数**: `symbol` (必填), `start_date`, `end_date`
-- **返回**: 价格、成交量、技术指标等
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/settings` | 读取系统配置 |
+| POST | `/api/settings` | 更新系统配置并刷新定时任务相关设置 |
 
 ---
 
-### 三、新闻管理 (11个接口)
+### 二、合约与历史数据（2）
 
-#### 3.1 新闻统计
-- **路径**: `GET /api/news/stats`
-- **返回**: `total`, `today_count`, `latest_time`, `earliest_time`
-
-#### 3.2 新闻列表
-- **路径**: `GET /api/news/list`
-- **功能**: 分页查询新闻，支持高级搜索
-- **请求参数**:
-  - `page`, `page_size`: 分页参数
-  - `search`: 搜索关键字
-  - `search_field`: 搜索字段 (title/content/message_type/market_react)
-  - `message_label`: 标签筛选 (hard/soft/unknown)
-  - `start_date`, `end_date`: 日期范围
-
-#### 3.3 创建新闻
-- **路径**: `POST /api/news/create`
-- **请求参数**: `title` (必填), `content` (必填), `ctime`, `ai_analysis`, `message_score`, `message_label`, `message_type`, `market_react`, `screenshots`
-
-#### 3.4 获取新闻详情
-- **路径**: `GET /api/news/detail/<news_id>`
-
-#### 3.5 更新新闻
-- **路径**: `PUT /api/news/update/<news_id>`
-
-#### 3.6 删除新闻
-- **路径**: `DELETE /api/news/delete/<news_id>`
-- **说明**: 同时删除关联的OSS文件和跟踪记录
-
-#### 3.7 获取待校验新闻
-- **路径**: `GET /api/news/process/unreviewed`
-- **功能**: 获取最近30天内未校验的新闻
-
-#### 3.8 标记已校验
-- **路径**: `POST /api/news/process/review`
-- **请求参数**: `tracking_id`
-
-#### 3.9 获取跟踪列表
-- **路径**: `GET /api/news/process/tracking-list`
-- **功能**: 获取需要跟踪的硬消息列表（按3/7/14/28天分组）
-
-#### 3.10 更新跟踪状态
-- **路径**: `POST /api/news/process/update-tracking`
-- **请求参数**: `tracking_id`, `track_type` (day3/day7/day14/day28)
-
-#### 3.11 初始化跟踪记录
-- **路径**: `POST /api/news/process/init-tracking`
-- **功能**: 为现有新闻初始化跟踪记录（数据迁移用）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/contracts/list` | 合约列表 |
+| GET | `/api/history/data` | 历史数据（查询参数含 `symbol` 等） |
 
 ---
 
-### 四、持仓管理 (7个接口)
+### 三、新闻（11）
 
-#### 4.1 获取持仓列表
-- **路径**: `GET /api/positions/list`
-- **请求参数**: `status` (1=有仓/0=空仓), `direction` (LONG/SHORT), `symbol`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/news/stats` | 新闻统计 |
+| GET | `/api/news/list` | 分页与筛选列表 |
+| POST | `/api/news/create` | 创建 |
+| GET | `/api/news/detail/<news_id>` | 详情 |
+| PUT | `/api/news/update/<news_id>` | 更新 |
+| DELETE | `/api/news/delete/<news_id>` | 删除（含关联 OSS/跟踪等逻辑，见实现） |
+| GET | `/api/news/process/unreviewed` | 待校验新闻 |
+| POST | `/api/news/process/review` | 标记已校验 |
+| GET | `/api/news/process/tracking-list` | 跟踪列表 |
+| POST | `/api/news/process/update-tracking` | 更新跟踪节点 |
+| POST | `/api/news/process/init-tracking` | 初始化跟踪记录 |
 
-#### 4.2 创建持仓
-- **路径**: `POST /api/positions/create`
-- **请求参数**: `symbol` (必填), `direction` (必填), `status` (默认1)
+### 四、OSS（2）
 
-#### 4.3 获取持仓详情
-- **路径**: `GET /api/positions/detail/<position_id>`
-
-#### 4.4 更新持仓
-- **路径**: `PUT /api/positions/update/<position_id>`
-
-#### 4.5 删除持仓
-- **路径**: `DELETE /api/positions/delete/<position_id>`
-
-#### 4.6 持仓统计
-- **路径**: `GET /api/positions/stats`
-- **返回**: `total`, `hold_count`, `flat_count`, `long_count`, `short_count`
-
-#### 4.7 切换持仓状态
-- **路径**: `POST /api/positions/toggle-status/<position_id>`
-- **功能**: 在有仓/空仓之间切换
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/oss/upload-url` | 预签名上传 URL |
+| POST | `/api/oss/access-url` | 预签名访问 URL |
 
 ---
 
-### 五、OSS文件管理 (2个接口)
+### 五、持仓（7）
 
-#### 5.1 获取上传URL
-- **路径**: `POST /api/oss/upload-url`
-- **请求参数**: `news_id`, `filename`, `content_type` (默认image/png)
-- **返回**: `upload_url`, `object_key`, `expires`
-
-#### 5.2 获取访问URL
-- **路径**: `POST /api/oss/access-url`
-- **请求参数**: `object_key`, `expires` (默认3600秒)
-- **返回**: `access_url`, `expires`
-
----
-
-## 接口统计
-
-| 模块 | 接口数量 | 说明 |
-|------|---------|------|
-| 系统设置 | 2 | 配置管理 |
-| 合约管理 | 2 | 合约列表、历史数据查询 |
-| 新闻管理 | 11 | 新闻CRUD、处理流程跟踪 |
-| 持仓管理 | 7 | 持仓CRUD和统计 |
-| OSS文件管理 | 2 | 文件上传和访问 |
-| **总计** | **24** | - |
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/positions/list` | 列表 |
+| POST | `/api/positions/create` | 创建 |
+| GET | `/api/positions/detail/<position_id>` | 详情 |
+| PUT | `/api/positions/update/<position_id>` | 更新 |
+| DELETE | `/api/positions/delete/<position_id>` | 删除 |
+| GET | `/api/positions/stats` | 统计 |
+| POST | `/api/positions/toggle-status/<position_id>` | 切换有仓/空仓 |
 
 ---
 
-## 数据库表结构
+### 六、品种事件（6）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/events/list` | 列表（需 `symbol` 等，见 `events_routes.py`） |
+| POST | `/api/events/create` | 创建 |
+| GET | `/api/events/detail/<event_id>` | 详情 |
+| PUT | `/api/events/update/<event_id>` | 更新 |
+| DELETE | `/api/events/delete/<event_id>` | 删除 |
+| GET | `/api/events/recent` | 近期事件 |
+
+数据表：`futures_events`（见 `events_routes.py`）。
+
+---
+
+### 七、辅助决策 Assistant（9）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/assistant/signals` | 信号列表；查询参数如 `date`、`variety_id`、`variety_name`、`indicator`、`direction` |
+| GET | `/api/assistant/operations` | 操作建议；查询参数如 `date`、`account_type`（默认 `mechanical`）、`variety_id`、`strategy`、`direction` |
+| GET | `/api/assistant/positions` | 当前开放持仓；可选 `account_type` |
+| GET | `/api/assistant/positions/history` | 已平仓历史；可选 `account_type`、`limit`（1–500，默认 100） |
+| GET | `/api/assistant/account/curve` | 资金曲线；可选 `start_date`、`end_date`、`account_type` |
+| GET | `/api/assistant/account/summary` | 账户摘要；可选 `date` |
+| GET | `/api/assistant/market-context` | 市场上下文；必填 `variety_id`；可选 `days`（3–60，默认 10）、`end_date` |
+| GET | `/api/assistant/variety-list` | 含 `contracts_symbol` 的品种列表 |
+| GET | `/api/assistant/variety-kline` | 品种 K 线与主力/散户指标；必填 `variety_id`；可选 `start_date`、`end_date` |
+
+相关数据表包括但不限于：`assistant_signals`、`assistant_operations`、`assistant_positions`、`assistant_account_daily`、`fut_variety`、`fut_strength`、`fut_daily_close`，以及按品种拼表名的 `hist_{contracts_symbol}`（见 `assistant_routes.py`）。
+
+---
+
+## 接口数量汇总
+
+| 模块 | 数量 |
+|------|------|
+| 系统设置 | 2 |
+| 合约与历史 | 2 |
+| 新闻 | 11 |
+| OSS | 2 |
+| 持仓 | 7 |
+| 事件 | 6 |
+| 辅助决策 | 9 |
+| **合计** | **39** |
+
+---
+
+## 数据库表（与当前代码的对应关系）
+
+**应用启动时 `init_database()` 会创建的表**（见 `app.py`）
 
 | 表名 | 说明 |
 |------|------|
-| `contracts_main` | 期货主连合约列表 |
-| `system_config` | 系统配置表 |
-| `hist_{symbol}` | 各合约历史数据表 (动态创建) |
+| `contracts_main` | 主连合约 |
+| `system_config` | 系统配置 |
+| `contract_list_update_log` | 合约列表更新记录 |
+| `history_update_log` | 主连历史更新日志 |
+| `recommendation_log` | 每日多空推荐记录 |
 | `news_red_telegraph` | 财联社新闻主表 |
-| `news_process_tracking` | 新闻处理流程跟踪表 |
-| `futures_positions` | 期货持仓表 |
+| `news_process_tracking` | 新闻处理跟踪 |
+| `futures_positions` | 期货持仓（业务持仓模块） |
+
+**不在上述初始化中创建、由接口查询使用的表（示例）**
+
+| 表名 | 说明 |
+|------|------|
+| `futures_events` | 品种事件 |
+| `assistant_*`、`fut_*` | 辅助决策与行情/品种维表 |
+| `hist_{symbol}` | 各品种历史 K 线（表名随品种动态） |
 
 ---
 
-## 项目结构
+## 目录结构
 
 ```
 automysqlback/
-├── app.py              # 主入口，系统设置API，数据库初始化
-├── start.py            # 启动脚本
-├── routes/
-│   ├── __init__.py
-│   ├── contracts_routes.py   # 合约列表、历史数据模块
-│   ├── news_routes.py        # 新闻、OSS模块
-│   └── positions_routes.py   # 持仓模块
+├── app.py                 # Flask 应用、系统设置 API、数据库初始化、调度器
+├── start.py               # 启动入口
+├── devrun.sh              # 本地虚拟环境与启动脚本
 ├── requirements.txt
 ├── Dockerfile
+├── routes/
+│   ├── __init__.py
+│   ├── contracts_routes.py
+│   ├── news_routes.py
+│   ├── positions_routes.py
+│   ├── events_routes.py
+│   └── assistant_routes.py
 └── README.md
 ```
 
 ---
 
-## 技术特点
+## 行为与运维说明（当前实现）
 
-1. **统一响应格式**: 所有接口使用 `{code, message, data}` 格式
-2. **数据完整性**: 新闻删除时级联删除OSS文件和跟踪记录
-3. **数据来源**: 所有期货数据从阿里云 MySQL 数据库读取
-
----
-
-## 注意事项
-
-- 定时任务默认关闭，需在系统设置中启用
-- OSS文件按日期组织目录 (screenshots/YYYY/MM/DD/)
-- 新闻处理流程：标签校验 → 定期跟踪 (3/7/14/28天)
-- 爬虫功能已迁移到 `spiderx` 项目
-- 期货数据获取功能已移除，所有数据从阿里云 MySQL 读取
+- 定时任务是否启用及参数由 `system_config` 决定（默认自动更新关闭，见 `init_database` 插入的默认值）。
+- OSS 对象路径组织方式见 `news_routes` 与 OSS 相关逻辑（如按日期分目录）。
+- 新闻处理包含标签校验与多时点跟踪（如 3/7/14/28 天），与 `news_process_tracking` 字段一致。

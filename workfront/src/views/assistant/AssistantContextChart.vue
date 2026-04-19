@@ -4,11 +4,14 @@
     <div v-if="loading" class="chart-placeholder">正在加载图表...</div>
     <div v-else-if="!seriesData.length" class="chart-placeholder">暂无上下文数据</div>
     <div v-else ref="chartRef" class="chart-canvas"></div>
+    <div v-if="seriesData.length" class="chart-footnote">hover 任一点可查看当天收盘价、主力值和散户值，用来判断价格与资金是否共振或背离。</div>
   </div>
 </template>
 
 <script>
+import { markRaw } from 'vue'
 import * as echarts from 'echarts'
+import { buildAssistantContextChartOption } from '@/utils/assistantContextChartOptions.mjs'
 
 export default {
   name: 'AssistantContextChart',
@@ -24,7 +27,9 @@ export default {
   },
   data() {
     return {
-      chart: null
+      chart: null,
+      resizeFrame: null,
+      renderFrame: null
     }
   },
   computed: {
@@ -33,11 +38,19 @@ export default {
     }
   },
   mounted() {
-    this.renderChart()
+    this.scheduleRender()
     window.addEventListener('resize', this.handleResize)
   },
   beforeUnmount() {
     window.removeEventListener('resize', this.handleResize)
+    if (this.resizeFrame) {
+      cancelAnimationFrame(this.resizeFrame)
+      this.resizeFrame = null
+    }
+    if (this.renderFrame) {
+      cancelAnimationFrame(this.renderFrame)
+      this.renderFrame = null
+    }
     if (this.chart) {
       this.chart.dispose()
       this.chart = null
@@ -47,20 +60,35 @@ export default {
     seriesData: {
       deep: true,
       handler() {
-        this.renderChart()
+        this.scheduleRender()
       }
     },
     loading() {
       this.$nextTick(() => {
-        this.renderChart()
+        this.scheduleRender()
       })
     }
   },
   methods: {
     handleResize() {
-      if (this.chart) {
-        this.chart.resize()
+      if (this.resizeFrame) {
+        cancelAnimationFrame(this.resizeFrame)
       }
+      this.resizeFrame = requestAnimationFrame(() => {
+        if (this.chart) {
+          this.chart.resize()
+        }
+        this.resizeFrame = null
+      })
+    },
+    scheduleRender() {
+      if (this.renderFrame) {
+        cancelAnimationFrame(this.renderFrame)
+      }
+      this.renderFrame = requestAnimationFrame(() => {
+        this.renderChart()
+        this.renderFrame = null
+      })
     },
     renderChart() {
       if (this.loading || !this.$refs.chartRef || !this.seriesData.length) {
@@ -68,87 +96,10 @@ export default {
       }
 
       if (!this.chart) {
-        this.chart = echarts.init(this.$refs.chartRef)
+        this.chart = markRaw(echarts.init(this.$refs.chartRef))
       }
 
-      const dates = this.seriesData.map(item => item.trade_date)
-      const closeSeries = this.seriesData.map(item => item.close_price)
-      const mainForceSeries = this.seriesData.map(item => item.main_force)
-      const retailSeries = this.seriesData.map(item => item.retail)
-
-      this.chart.setOption({
-        color: ['#2f7cff', '#db7c26', '#2f9d62'],
-        tooltip: {
-          trigger: 'axis'
-        },
-        legend: {
-          top: 0
-        },
-        grid: [
-          { top: 40, left: 50, right: 20, height: '42%' },
-          { left: 50, right: 20, top: '60%', height: '28%' }
-        ],
-        xAxis: [
-          {
-            type: 'category',
-            data: dates,
-            boundaryGap: false
-          },
-          {
-            type: 'category',
-            data: dates,
-            boundaryGap: false,
-            gridIndex: 1
-          }
-        ],
-        yAxis: [
-          {
-            type: 'value',
-            scale: true,
-            name: '收盘价'
-          },
-          {
-            type: 'value',
-            scale: true,
-            gridIndex: 1,
-            name: '资金值'
-          }
-        ],
-        series: [
-          {
-            name: '收盘价',
-            type: 'line',
-            smooth: true,
-            symbol: 'circle',
-            symbolSize: 6,
-            data: closeSeries,
-            lineStyle: { width: 3 },
-            areaStyle: {
-              opacity: 0.12
-            }
-          },
-          {
-            name: 'main_force',
-            type: 'line',
-            xAxisIndex: 1,
-            yAxisIndex: 1,
-            smooth: true,
-            symbolSize: 6,
-            data: mainForceSeries,
-            lineStyle: { width: 2 }
-          },
-          {
-            name: 'retail',
-            type: 'line',
-            xAxisIndex: 1,
-            yAxisIndex: 1,
-            smooth: true,
-            symbolSize: 6,
-            data: retailSeries,
-            lineStyle: { width: 2 }
-          }
-        ]
-      })
+      this.chart.setOption(buildAssistantContextChartOption({ seriesData: this.seriesData }))
     }
   }
 }
@@ -183,5 +134,11 @@ export default {
   color: #8a98a8;
   font-size: 13px;
 }
-</style>
 
+.chart-footnote {
+  margin-top: 10px;
+  color: #7d8d9c;
+  font-size: 12px;
+  line-height: 1.6;
+}
+</style>

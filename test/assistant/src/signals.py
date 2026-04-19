@@ -268,6 +268,15 @@ def _generate_variety_signals(group: pd.DataFrame) -> list[dict[str, Any]]:
 
         if streak and streak["length"] in (3, 5, 7):
             duration_value = f"D{streak['length']}"
+            duration_values = [
+                float(mf[j])
+                for j in range(streak["start_idx"], idx + 1)
+                if not np.isnan(mf[j])
+            ]
+            duration_deltas = [
+                float(duration_values[j] - duration_values[j - 1])
+                for j in range(1, len(duration_values))
+            ]
             records.append(
                 _make_signal_row(
                     group,
@@ -276,7 +285,11 @@ def _generate_variety_signals(group: pd.DataFrame) -> list[dict[str, Any]]:
                     streak["direction"],
                     float(streak["length"]),
                     duration_value,
-                    {"streak_length": streak["length"]},
+                    {
+                        "streak_length": streak["length"],
+                        "values": duration_values,
+                        "deltas": duration_deltas,
+                    },
                 )
             )
 

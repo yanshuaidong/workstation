@@ -1,5 +1,12 @@
 const { defineConfig } = require('@vue/cli-service')
 
+function shouldShowRuntimeOverlay(error) {
+  const message = error
+    ? (error.message || (typeof error.toString === 'function' ? error.toString() : ''))
+    : ''
+  return !/ResizeObserver loop completed with undelivered notifications/i.test(message || '')
+}
+
 module.exports = defineConfig({
   transpileDependencies: true,
 
@@ -46,6 +53,13 @@ module.exports = defineConfig({
   devServer: {
     host: '0.0.0.0',
     port: 8080,
+    client: {
+      overlay: {
+        errors: true,
+        warnings: false,
+        runtimeErrors: shouldShowRuntimeOverlay
+      }
+    },
     // 代理配置 - 将 /api-a/ 转发到本地7001端口
     proxy: {
       '/api-a': {

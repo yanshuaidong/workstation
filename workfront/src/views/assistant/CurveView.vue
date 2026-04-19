@@ -21,6 +21,7 @@
 </template>
 
 <script>
+import { markRaw } from 'vue'
 import * as echarts from 'echarts'
 import request from '@/utils/request'
 import { getAssistantAccountCurveApi } from '@/api'
@@ -35,7 +36,9 @@ export default {
         mechanical: [],
         llm: []
       },
-      chart: null
+      chart: null,
+      resizeFrame: null,
+      renderFrame: null
     }
   },
   computed: {
@@ -49,6 +52,14 @@ export default {
   },
   beforeUnmount() {
     window.removeEventListener('resize', this.handleResize)
+    if (this.resizeFrame) {
+      cancelAnimationFrame(this.resizeFrame)
+      this.resizeFrame = null
+    }
+    if (this.renderFrame) {
+      cancelAnimationFrame(this.renderFrame)
+      this.renderFrame = null
+    }
     if (this.chart) {
       this.chart.dispose()
       this.chart = null
@@ -59,16 +70,31 @@ export default {
       deep: true,
       handler() {
         this.$nextTick(() => {
-          this.renderChart()
+          this.scheduleRender()
         })
       }
     }
   },
   methods: {
     handleResize() {
-      if (this.chart) {
-        this.chart.resize()
+      if (this.resizeFrame) {
+        cancelAnimationFrame(this.resizeFrame)
       }
+      this.resizeFrame = requestAnimationFrame(() => {
+        if (this.chart) {
+          this.chart.resize()
+        }
+        this.resizeFrame = null
+      })
+    },
+    scheduleRender() {
+      if (this.renderFrame) {
+        cancelAnimationFrame(this.renderFrame)
+      }
+      this.renderFrame = requestAnimationFrame(() => {
+        this.renderChart()
+        this.renderFrame = null
+      })
     },
     async fetchCurve() {
       this.loading = true
@@ -94,7 +120,7 @@ export default {
       }
 
       if (!this.chart) {
-        this.chart = echarts.init(this.$refs.chartRef)
+        this.chart = markRaw(echarts.init(this.$refs.chartRef))
       }
 
       const allDates = Array.from(
@@ -196,4 +222,3 @@ export default {
   }
 }
 </style>
-

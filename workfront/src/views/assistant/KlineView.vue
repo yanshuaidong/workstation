@@ -4,11 +4,13 @@
       <el-select
         v-model="selectedVarietyId"
         placeholder="选择品种"
+        filterable
+        :filter-method="handleVarietyFilter"
         style="width: 160px"
         @change="fetchData"
       >
         <el-option
-          v-for="v in varieties"
+          v-for="v in filteredVarieties"
           :key="v.id"
           :label="v.name"
           :value="v.id"
@@ -40,9 +42,16 @@
 </template>
 
 <script>
+import { markRaw } from 'vue'
 import * as echarts from 'echarts'
 import request from '@/utils/request'
 import { getAssistantVarietyListApi, getAssistantVarietyKlineApi } from '@/api'
+import {
+  buildAssistantIndexOption,
+  buildAssistantKlineOption,
+  filterVarietiesByName,
+  normalizeAssistantKlineData
+} from '@/utils/assistantKlineOptions.mjs'
 
 const DAYS_DEFAULT = 60
 
@@ -60,18 +69,26 @@ export default {
   data() {
     return {
       varieties: [],
+      filteredVarieties: [],
       selectedVarietyId: null,
       dateRange: [daysAgoStr(DAYS_DEFAULT), todayStr()],
       loading: false,
       klineInstance: null,
       mainForceInstance: null,
       retailInstance: null,
+      resizeHandler: null,
     }
   },
   mounted() {
+    this.resizeHandler = () => this.resizeCharts()
+    window.addEventListener('resize', this.resizeHandler)
     this.fetchVarieties()
   },
   beforeUnmount() {
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler)
+      this.resizeHandler = null
+    }
     this.disposeCharts()
   },
   methods: {
@@ -80,10 +97,15 @@ export default {
         const res = await request.get(getAssistantVarietyListApi)
         if (res.code === 0) {
           this.varieties = res.data.varieties
+          this.filteredVarieties = [...this.varieties]
         }
       } catch (e) {
         console.error('获取品种列表失败', e)
       }
+    },
+
+    handleVarietyFilter(keyword) {
+      this.filteredVarieties = filterVarietiesByName(this.varieties, keyword)
     },
 
     async fetchData() {
@@ -106,12 +128,19 @@ export default {
     },
 
     renderCharts(data) {
-      const dates = data.kline.map(r => r.trade_date)
-      const ohlcv = data.kline.map(r => [r.open, r.close, r.low, r.high])
-      const volumes = data.kline.map(r => r.volume)
-      const mainForce = data.strength.map(r => r.main_force)
-      const retail = data.strength.map(r => r.retail)
-      const varietyName = data.variety.name
+      const {
+        dates,
+        ohlcv,
+        volumes,
+        mainForce,
+        retail,
+        varietyName
+      } = normalizeAssistantKlineData(data)
+
+      if (!dates.length) {
+        this.disposeCharts()
+        return
+      }
 
       this.renderKline(dates, ohlcv, volumes, varietyName)
       this.renderIndex(this.$refs.mainForceChart, 'mainForceInstance', dates, mainForce, `${varietyName} 主力指数`, '#2f7cff')
@@ -119,83 +148,50 @@ export default {
     },
 
     renderKline(dates, ohlcv, volumes, title) {
-      if (!this.klineInstance) {
-        this.klineInstance = echarts.init(this.$refs.klineChart)
+      if (!this.$refs.klineChart) {
+        return
       }
-      const upColor = '#ef5350'
-      const downColor = '#26a69a'
-      this.klineInstance.setOption({
-        title: { text: `${title} K线`, left: 12, top: 8, textStyle: { fontSize: 13, color: '#3c5168' } },
-        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-        axisPointer: { link: [{ xAxisIndex: [0, 1] }] },
-        grid: [
-          { left: 60, right: 16, top: 44, bottom: 80 },
-          { left: 60, right: 16, height: 50, bottom: 20 }
-        ],
-        xAxis: [
-          { type: 'category', data: dates, gridIndex: 0, axisLabel: { show: false } },
-          { type: 'category', data: dates, gridIndex: 1, axisLabel: { fontSize: 11 } }
-        ],
-        yAxis: [
-          { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#f0f4f8' } } },
-          { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { formatter: v => (v / 10000).toFixed(0) + 'w' } }
-        ],
-        dataZoom: [
-          { type: 'inside', xAxisIndex: [0, 1], start: 60, end: 100 },
-          { type: 'slider', xAxisIndex: [0, 1], bottom: 4, height: 14 }
-        ],
-        series: [
-          {
-            name: 'K线',
-            type: 'candlestick',
-            xAxisIndex: 0,
-            yAxisIndex: 0,
-            data: ohlcv,
-            itemStyle: {
-              color: upColor, color0: downColor,
-              borderColor: upColor, borderColor0: downColor
-            }
-          },
-          {
-            name: '成交量',
-            type: 'bar',
-            xAxisIndex: 1,
-            yAxisIndex: 1,
-            data: volumes,
-            itemStyle: { color: '#b0bec5' }
-          }
-        ]
-      }, true)
+      if (!this.klineInstance) {
+        this.klineInstance = markRaw(echarts.init(this.$refs.klineChart))
+      }
+      this.klineInstance.setOption(
+        buildAssistantKlineOption({ dates, ohlcv, volumes, title }),
+        true
+      )
     },
 
     renderIndex(el, instanceKey, dates, values, title, color) {
-      if (!this[instanceKey]) {
-        this[instanceKey] = echarts.init(el)
+      if (!el) {
+        return
       }
-      this[instanceKey].setOption({
-        title: { text: title, left: 12, top: 6, textStyle: { fontSize: 13, color: '#3c5168' } },
-        tooltip: { trigger: 'axis' },
-        grid: { left: 60, right: 16, top: 36, bottom: 28 },
-        xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 11 } },
-        yAxis: { scale: true, splitLine: { lineStyle: { color: '#f0f4f8' } } },
-        dataZoom: [{ type: 'inside', start: 60, end: 100 }],
-        series: [{
-          type: 'line',
-          data: values,
-          smooth: true,
-          symbol: 'none',
-          lineStyle: { color, width: 2 },
-          areaStyle: { color: echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: color + '33' },
-            { offset: 1, color: color + '00' }
-          ]) }
-        }]
-      }, true)
+      if (!this[instanceKey]) {
+        this[instanceKey] = markRaw(echarts.init(el))
+      }
+      this[instanceKey].setOption(
+        buildAssistantIndexOption({
+          dates,
+          values,
+          title,
+          color
+        }),
+        true
+      )
+    },
+
+    resizeCharts() {
+      ['klineInstance', 'mainForceInstance', 'retailInstance'].forEach((key) => {
+        if (this[key]) {
+          this[key].resize()
+        }
+      })
     },
 
     disposeCharts() {
       ['klineInstance', 'mainForceInstance', 'retailInstance'].forEach(k => {
-        if (this[k]) { this[k].dispose(); this[k] = null }
+        if (this[k]) {
+          this[k].dispose()
+          this[k] = null
+        }
       })
     }
   }
