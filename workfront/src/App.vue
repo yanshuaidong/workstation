@@ -47,6 +47,10 @@
               <el-icon class="menu-icon"><DataBoard /></el-icon>
               <span class="menu-text">辅助决策</span>
             </el-menu-item>
+            <el-menu-item index="/trading/signals" class="mobile-menu-item">
+              <el-icon class="menu-icon"><TrendCharts /></el-icon>
+              <span class="menu-text">量化策略</span>
+            </el-menu-item>
           </el-menu>
         </div>
       </el-collapse-transition>
@@ -85,6 +89,10 @@
             <el-menu-item index="/assistant/signals" class="menu-item">
               <el-icon class="menu-icon"><DataBoard /></el-icon>
               <span class="menu-text">辅助决策</span>
+            </el-menu-item>
+            <el-menu-item index="/trading/signals" class="menu-item">
+              <el-icon class="menu-icon"><TrendCharts /></el-icon>
+              <span class="menu-text">量化策略</span>
             </el-menu-item>
           </el-menu>
         </el-aside>

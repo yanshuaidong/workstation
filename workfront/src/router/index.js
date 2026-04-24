@@ -10,6 +10,12 @@ import AssistantOperationsView from '@/views/assistant/OperationsView.vue'
 import AssistantPositionsView from '@/views/assistant/PositionsView.vue'
 import AssistantCurveView from '@/views/assistant/CurveView.vue'
 import AssistantKlineView from '@/views/assistant/KlineView.vue'
+import TradingLayout from '@/views/trading/index.vue'
+import TradingSignalsView from '@/views/trading/SignalsView.vue'
+import TradingOperationsView from '@/views/trading/OperationsView.vue'
+import TradingPositionsView from '@/views/trading/PositionsView.vue'
+import TradingCurveView from '@/views/trading/CurveView.vue'
+import TradingKlineView from '@/views/trading/KlineView.vue'
 
 
 const routes = [
@@ -96,6 +102,44 @@ const routes = [
         meta: {
           title: 'K线展示'
         }
+      }
+    ]
+  },
+  {
+    path: '/trading',
+    component: TradingLayout,
+    meta: { title: '量化策略' },
+    redirect: '/trading/signals',
+    children: [
+      {
+        path: 'signals',
+        name: 'TradingSignals',
+        component: TradingSignalsView,
+        meta: { title: '信号面板' }
+      },
+      {
+        path: 'operations',
+        name: 'TradingOperations',
+        component: TradingOperationsView,
+        meta: { title: '操作建议' }
+      },
+      {
+        path: 'positions',
+        name: 'TradingPositions',
+        component: TradingPositionsView,
+        meta: { title: '持仓盈亏' }
+      },
+      {
+        path: 'curve',
+        name: 'TradingCurve',
+        component: TradingCurveView,
+        meta: { title: '资金曲线' }
+      },
+      {
+        path: 'kline',
+        name: 'TradingKline',
+        component: TradingKlineView,
+        meta: { title: 'K线展示' }
       }
     ]
   },

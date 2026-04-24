@@ -87,6 +87,18 @@ export const getAssistantMarketContextApi = `${BASE_URL_API_A}/assistant/market-
 export const getAssistantVarietyListApi = `${BASE_URL_API_A}/assistant/variety-list`;
 export const getAssistantVarietyKlineApi = `${BASE_URL_API_A}/assistant/variety-kline`;
 
+// trading 量化策略接口
+export const getTradingSignalsApi = `${BASE_URL_API_A}/trading/signals`;
+export const getTradingOperationsApi = `${BASE_URL_API_A}/trading/operations`;
+export const getTradingPositionsApi = `${BASE_URL_API_A}/trading/positions`;
+export const getTradingPositionsHistoryApi = `${BASE_URL_API_A}/trading/positions/history`;
+export const getTradingAccountCurveApi = `${BASE_URL_API_A}/trading/account/curve`;
+export const getTradingAccountSummaryApi = `${BASE_URL_API_A}/trading/account/summary`;
+export const getTradingPoolApi = `${BASE_URL_API_A}/trading/pool`;
+export const getTradingMarketContextApi = `${BASE_URL_API_A}/trading/market-context`;
+export const getTradingVarietyListApi = `${BASE_URL_API_A}/trading/variety-list`;
+export const getTradingVarietyKlineApi = `${BASE_URL_API_A}/trading/variety-kline`;
+
 // 导出端口配置，方便组件使用
 export const API_PORTS = {
   // PORT_3000: BASE_URL_3000,  // 暂时注释不用
