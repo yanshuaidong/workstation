@@ -36,10 +36,19 @@ python start.py
 
 ```bash
 cd automysqlback
-./devrun.sh
+./mac.devrun.sh
 ```
 
 脚本会创建或复用 `.venv`、按 `requirements.txt` 安装/更新依赖（通过时间戳判断）、再执行 `python start.py`。默认开发地址：`http://127.0.0.1:7001`。
+
+### Windows：同目录脚本
+
+```bat
+cd automysqlback
+win.devrun.bat
+```
+
+`win.devrun.bat` 用于 Windows 环境的一键本地启动：会自动创建或复用 `.venv`、按需安装/更新 `requirements.txt` 依赖，然后启动 `start.py`（默认地址：`http://127.0.0.1:7001`）。
 
 ### Docker
 
@@ -221,7 +230,8 @@ docker run -d -p 7001:7001 \
 automysqlback/
 ├── app.py                 # Flask 应用、系统设置 API、数据库初始化、调度器
 ├── start.py               # 启动入口
-├── devrun.sh              # 本地虚拟环境与启动脚本
+├── mac.devrun.sh          # macOS 本地一键启动脚本
+├── win.devrun.bat         # Windows 本地一键启动脚本
 ├── requirements.txt
 ├── Dockerfile
 ├── routes/
