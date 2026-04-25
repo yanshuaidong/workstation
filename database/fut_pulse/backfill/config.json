@@ -1,0 +1,19 @@
+{
+  "target_trade_date": "2026-04-24",
+  "hover_x": 1140,
+  "hover_y": 335,
+  "hover_delay": 1.0,
+  "hover_region": [
+    1132,
+    570,
+    1148,
+    596
+  ],
+  "move_duration": 0.4,
+  "jiggle_pixels": 2,
+  "pre_jiggle_wait": 0.2,
+  "screenshot_subdirs": {
+    "main_force": "main_force",
+    "retail": "retail"
+  }
+}
