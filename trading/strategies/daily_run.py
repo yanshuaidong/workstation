@@ -42,9 +42,14 @@ def main() -> None:
     from trading.strategies.signals import run_signals_for_all
     from trading.strategies.operations import generate_operations
     from trading.strategies.account import execute_close_signals, execute_open_operations, update_account_daily
+    from trading.strategies.create_tables import sync_pool_with_varieties
 
     conn = get_connection()
     try:
+        added = sync_pool_with_varieties(conn)
+        if added:
+            logger.info("trading_pool 补齐 %d 个未激活品种（is_active=0）", added)
+
         ok, msg = check_data_completeness(conn, run_date.isoformat())
         if not ok:
             logger.error("数据完整性校验失败，终止运行: %s", msg)

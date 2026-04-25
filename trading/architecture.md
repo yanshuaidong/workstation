@@ -39,7 +39,7 @@ workfront                 Vue 3 前端，通过 /api-a 经 Nginx 反代访问后
 
 | 表名 | 作用 |
 |------|------|
-| `trading_pool` | 池子 A 品种配置（12 个固定品种 + 板块 + `is_active`） |
+| `trading_pool` | 池子 A 品种配置（全市场品种镜像，默认 12 个激活 + 板块 + `is_active`） |
 | `trading_signals` | 每日全品种信号（开仓 / 平仓 / `main_score` / `extra_json`） |
 | `trading_operations` | 每日操作建议与落选原因（`is_selected`、`reject_reason`） |
 | `trading_positions` | 自动账户持仓与已平仓记录（`status='open'/'closed'`、`pnl_pct`） |
@@ -92,14 +92,15 @@ workfront                 Vue 3 前端，通过 /api-a 经 Nginx 反代访问后
 
 ```text
 trading/strategies/
-├── db.py            数据库连接
-├── data_loader.py   读取 fut_variety / fut_strength / fut_daily_close + 完整性检查
-├── signals.py       计算 A 通道开平仓信号 + main_score，写 trading_signals / trading_signal_state
-├── operations.py    生成池子 A 操作建议，写 trading_operations
-├── account.py       自动账户平仓 → 开仓 → 资金曲线
-├── settings.py      策略常量与池子 A 配置
-├── create_tables.py 建表与初始化
-└── daily_run.py     每日批处理入口
+├── db.py                     数据库连接
+├── data_loader.py            读取 fut_variety / fut_strength / fut_daily_close + 完整性检查
+├── signals.py                计算 A 通道开平仓信号 + main_score，写 trading_signals / trading_signal_state
+├── operations.py             生成池子 A 操作建议，写 trading_operations
+├── account.py                自动账户平仓 → 开仓 → 资金曲线
+├── settings.py               策略常量、默认池子 A、VARIETY_SECTORS 全品种板块映射
+├── create_tables.py          建表、初始化池子、sync_pool_with_varieties 同步入口
+├── backfill_pool_sectors.py  一次性迁移脚本：回填老库空 sector、补齐全品种镜像
+└── daily_run.py              每日批处理入口
 ```
 
 ### 3.2 核心常量
@@ -115,7 +116,7 @@ TURN_WINDOW = 3
 MOMENTUM_LOOKBACK = 30
 ```
 
-池子 A 固定为 12 个品种，覆盖有色金属、贵金属、黑色系、化工能化、油脂油料、农产品 6 个板块。
+池子 A 默认激活 12 个品种，覆盖有色金属、贵金属、黑色系、化工能化、油脂油料、农产品 6 个板块；`trading_pool` 中同时镜像 `fut_variety` 所有品种（其余以 `is_active=0` 持有），由前端「池子管理」页面通过 `PATCH /api/trading/pool/variety/<id>` 动态切换启用状态。`trading/strategies/daily_run.py` 启动时会调用 `sync_pool_with_varieties`，保证 `fut_pulse` 新增品种下一批处理就自动纳入可管理列表。
 
 ### 3.3 每日批处理顺序
 

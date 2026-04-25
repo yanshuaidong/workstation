@@ -417,7 +417,10 @@ def get_trading_pool():
                    COALESCE(p.is_active, 0) AS is_active
             FROM fut_variety v
             LEFT JOIN trading_pool p ON v.id = p.variety_id
-            ORDER BY p.id IS NULL, COALESCE(p.sector, ''), v.name
+            ORDER BY COALESCE(p.is_active, 0) DESC,
+                     CASE WHEN COALESCE(p.sector, '') = '' THEN 1 ELSE 0 END,
+                     COALESCE(p.sector, ''),
+                     v.name
             """
         )
         rows = cursor.fetchall()

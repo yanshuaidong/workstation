@@ -16,6 +16,7 @@
 trading/strategies/
 ├── README.md
 ├── account.py
+├── backfill_pool_sectors.py
 ├── create_tables.py
 ├── daily_run.py
 ├── data_loader.py
@@ -32,7 +33,8 @@ trading/strategies/
 - `signals.py`：计算 A 通道开平仓信号、动量分位分，并写入 `trading_signals`
 - `operations.py`：根据池子 A、仓位上限和板块约束生成操作建议，写入 `trading_operations`
 - `account.py`：执行平仓、开仓并更新 `trading_account_daily` 和 `trading_positions`
-- `create_tables.py`：创建策略相关数据表、初始化池子 A 和账户起始记录
+- `create_tables.py`：创建策略相关数据表、初始化池子 A 和账户起始记录，并暴露 `sync_pool_with_varieties`
+- `backfill_pool_sectors.py`：一次性迁移脚本，回填老库 `trading_pool` 空 sector 并补齐全品种镜像
 - `daily_run.py`：每日批处理入口，按固定顺序串联全部步骤
 
 ## 配置常量
@@ -50,7 +52,7 @@ TURN_WINDOW = 3
 MOMENTUM_LOOKBACK = 30
 ```
 
-池子 A 固定为 12 个品种：
+池子 A 的默认激活品种为以下 12 个；`trading_pool` 同时镜像 `fut_variety` 全部 55 个品种，其余品种初始状态为 `is_active=0`，`sector` 由 `settings.VARIETY_SECTORS` 提供标准板块分类，由前端「池子管理」页面动态切换激活：
 
 | 品种 | 板块 |
 |------|------|
@@ -66,6 +68,8 @@ MOMENTUM_LOOKBACK = 30
 | 豆粕 | 油脂油料 |
 | 棕榈油 | 油脂油料 |
 | 玉米 | 农产品 |
+
+操作建议的筛选只看 `trading_pool.is_active=1`，因此全品种 55 个都可在 UI 中自由切换启用状态，激活后的品种才会进入当日操作建议候选池。
 
 ## 数据读取与完整性检查
 
@@ -279,7 +283,9 @@ MOMENTUM_LOOKBACK = 30
 
 其中：
 
-- `trading_pool` 按 `TARGET_POOL` 初始化
+- `trading_pool` 首次初始化时按 `TARGET_POOL` 写入 12 个激活品种（`is_active=1`），随后按 `settings.VARIETY_SECTORS` 把 `fut_variety` 中其余品种全部补齐为 `is_active=0`，`sector` 取标准板块分类（黑色系 / 有色金属 / 贵金属 / 化工能化 / 油脂油料 / 农产品 / 金融 / 航运）。前端池子管理视图可以看到「激活品种 12 / 55」
+- `sync_pool_with_varieties(conn)` 是补齐逻辑的独立入口，`daily_run.py` 每次启动时也会调用一次，保证 `fut_pulse` 新增品种下次批处理就自动纳入可管理列表；新品种 sector 取 `VARIETY_SECTORS`，未覆盖时回退为 `DEFAULT_SECTOR='未分类'`
+- `backfill_pool_sectors.py` 是一次性迁移脚本，用于把老库里已有但 sector 为空的 `trading_pool` 行回填标准板块，同时补齐缺失品种；脚本可重复运行
 - `trading_account_daily` 首次初始化时写入一条起始记录，日期为执行初始化脚本当天
 - `trading_signal_state` 以 `(variety_id, state_date)` 为主键，供信号层快速确认历史状态
 
@@ -315,8 +321,24 @@ python -m trading.strategies.create_tables
 1. 删除 `assistant_signals`、`assistant_operations`、`assistant_positions`、`assistant_account_daily`
 2. 创建 6 张 `trading_*` 表
 3. 执行已实现的增量迁移
-4. 初始化 `trading_pool`
+4. 初始化 `trading_pool`（默认激活 12 个 + 全量镜像 55 个）
 5. 初始化 `trading_account_daily`
+
+### 老库补齐板块
+
+如果线上数据库中 `trading_pool` 已有 12 条旧记录（sector 齐全）且希望扩展到全市场，建议执行一次性迁移脚本：
+
+```bash
+python -m trading.strategies.backfill_pool_sectors
+```
+
+脚本会：
+
+1. 对 `trading_pool` 中 `sector` 为空或 NULL 的记录，按 `VARIETY_SECTORS` 填标准板块
+2. 对 `fut_variety` 中尚未入池的品种，以 `is_active=0 + 标准 sector` 插入
+3. 打印 `VARIETY_SECTORS` 未覆盖到的品种，便于手动补分类
+
+脚本多次执行安全，不会覆盖已有正确 sector 或激活状态。
 
 ### 每日运行
 

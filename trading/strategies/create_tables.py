@@ -106,30 +106,66 @@ CREATE_STMTS = [
 ]
 
 
+def sync_pool_with_varieties(conn) -> int:
+    """把 fut_variety 中尚未在 trading_pool 的品种，以 is_active=0 + 标准 sector 的默认状态补齐。
+
+    sector 从 VARIETY_SECTORS 映射取值；映射中不存在的品种回退为 DEFAULT_SECTOR。
+    已存在的记录不会被改动，保留用户手动调整过的 sector 和 is_active。
+    返回本次新补齐的品种数量，便于调用方打印日志。
+    """
+    from trading.strategies.settings import VARIETY_SECTORS, DEFAULT_SECTOR
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT id, name FROM fut_variety")
+        varieties = list(cur.fetchall())
+        cur.execute("SELECT variety_id FROM trading_pool")
+        existing_ids = {int(r["variety_id"]) for r in cur.fetchall()}
+
+        added = 0
+        for r in varieties:
+            vid = int(r["id"])
+            if vid in existing_ids:
+                continue
+            sector = VARIETY_SECTORS.get(r["name"], DEFAULT_SECTOR)
+            cur.execute(
+                "INSERT IGNORE INTO trading_pool (variety_id, variety_name, sector, is_active) "
+                "VALUES (%s,%s,%s,0)",
+                (vid, r["name"], sector),
+            )
+            added += 1
+    conn.commit()
+    return added
+
+
 def init_pool(conn) -> None:
     from trading.strategies.settings import TARGET_POOL
 
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) AS cnt FROM trading_pool")
-        if cur.fetchone()["cnt"] > 0:
-            print("trading_pool 已有数据，跳过初始化")
-            return
+        existing_count = int(cur.fetchone()["cnt"])
 
-        cur.execute("SELECT id, name FROM fut_variety")
-        variety_map = {r["name"]: int(r["id"]) for r in cur.fetchall()}
+        if existing_count == 0:
+            cur.execute("SELECT id, name FROM fut_variety")
+            variety_map = {r["name"]: int(r["id"]) for r in cur.fetchall()}
 
-        for name, sector in TARGET_POOL:
-            vid = variety_map.get(name)
-            if vid is None:
-                print(f"  警告：未找到品种 {name}，跳过")
-                continue
-            cur.execute(
-                "INSERT IGNORE INTO trading_pool (variety_id, variety_name, sector, is_active) "
-                "VALUES (%s,%s,%s,1)",
-                (vid, name, sector),
-            )
-    conn.commit()
-    print("trading_pool 初始化完成")
+            for name, sector in TARGET_POOL:
+                vid = variety_map.get(name)
+                if vid is None:
+                    print(f"  警告：未找到品种 {name}，跳过")
+                    continue
+                cur.execute(
+                    "INSERT IGNORE INTO trading_pool (variety_id, variety_name, sector, is_active) "
+                    "VALUES (%s,%s,%s,1)",
+                    (vid, name, sector),
+                )
+            conn.commit()
+            print(f"trading_pool 初始化完成：默认激活 {len(TARGET_POOL)} 个品种")
+        else:
+            print(f"trading_pool 已有 {existing_count} 条记录，保留原有激活状态")
+
+    added = sync_pool_with_varieties(conn)
+    if added:
+        print(f"trading_pool 补齐 {added} 个未激活品种（is_active=0）")
 
 
 def init_account_daily(conn) -> None:
