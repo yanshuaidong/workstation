@@ -75,6 +75,9 @@ import { getTradingPositionsApi, getTradingPositionsHistoryApi } from '@/api'
 
 export default {
   name: 'TradingPositionsView',
+  inject: {
+    refreshAccountSummary: { default: null }
+  },
   data() {
     return {
       loading: false,
@@ -100,6 +103,9 @@ export default {
         }
         if (histRes.code === 0) {
           this.history = histRes.data?.history || []
+        }
+        if (this.refreshAccountSummary) {
+          this.refreshAccountSummary()
         }
       } catch (error) {
         console.error('获取持仓数据失败', error)

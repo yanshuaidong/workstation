@@ -29,6 +29,9 @@ import { getTradingAccountCurveApi } from '@/api'
 
 export default {
   name: 'TradingCurveView',
+  inject: {
+    refreshAccountSummary: { default: null }
+  },
   data() {
     return {
       loading: false,
@@ -86,6 +89,9 @@ export default {
         })
         if (res.code === 0) {
           this.curve = res.data?.curve || []
+        }
+        if (this.refreshAccountSummary) {
+          this.refreshAccountSummary()
         }
       } catch (error) {
         console.error('获取资金曲线失败', error)

@@ -151,43 +151,77 @@ def execute_open_operations(conn: pymysql.Connection, signal_date: date, closed_
 
 
 def update_account_daily(conn: pymysql.Connection, signal_date: date) -> None:
+    # 只取当天之前的最新一行，避免同一天重跑时把今天已写入的 equity 当作 prev_equity
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT equity, cash FROM trading_account_daily "
-            "ORDER BY record_date DESC LIMIT 1"
+            "SELECT equity FROM trading_account_daily "
+            "WHERE record_date<%s ORDER BY record_date DESC LIMIT 1",
+            (signal_date,),
         )
         last = cur.fetchone()
         prev_equity = float(last["equity"]) if last else INITIAL_CAPITAL
-        prev_cash = float(last["cash"]) if last else INITIAL_CAPITAL
 
+        # 仍开放的持仓：贡献 daily_pnl + position_val
         cur.execute(
-            "SELECT variety_id, direction, open_price, size_pct "
+            "SELECT variety_id, direction, open_price, open_date, size_pct "
             "FROM trading_positions WHERE status='open'"
         )
         open_pos = cur.fetchall()
 
+        # 今日刚平仓的持仓：也要把 base_price→close_price 这段 daily_pnl 计入
+        # execute_close_signals 已将 status 改为 closed，这里单独捡回来
+        cur.execute(
+            "SELECT variety_id, direction, open_price, open_date, close_price, size_pct "
+            "FROM trading_positions WHERE status='closed' AND close_date=%s",
+            (signal_date,),
+        )
+        closed_today = cur.fetchall()
+
     daily_pnl = 0.0
     position_val = 0.0
+
+    def _daily_ret(pos, end_price: float) -> float | None:
+        """base_price 对今日开仓用 open_price（当日 daily_ret=0），其余用昨日收盘。"""
+        direction_sign = 1 if pos["direction"] == "LONG" else -1
+        if pos["open_date"] == signal_date:
+            base_price = float(pos["open_price"])
+        else:
+            prev_price = _get_prev_close(conn, int(pos["variety_id"]), signal_date)
+            if prev_price is None or prev_price == 0:
+                return None
+            base_price = prev_price
+        if base_price == 0:
+            return None
+        return direction_sign * (end_price - base_price) / base_price
 
     for pos in open_pos:
         vid = int(pos["variety_id"])
         cur_price = _get_close_price(conn, vid, signal_date)
-        prev_price = _get_prev_close(conn, vid, signal_date)
-        if cur_price is None or prev_price is None or prev_price == 0:
+        if cur_price is None:
             continue
 
-        direction_sign = 1 if pos["direction"] == "LONG" else -1
         size_pct = float(pos["size_pct"])
         open_price = float(pos["open_price"])
 
-        daily_ret = direction_sign * (cur_price - prev_price) / prev_price
-        daily_pnl += prev_equity * size_pct * daily_ret * LEVERAGE
+        ret = _daily_ret(pos, cur_price)
+        if ret is not None:
+            daily_pnl += prev_equity * size_pct * ret * LEVERAGE
 
+        direction_sign = 1 if pos["direction"] == "LONG" else -1
         float_ret = direction_sign * (cur_price - open_price) / open_price
         position_val += prev_equity * size_pct * (1 + float_ret * LEVERAGE)
 
-    cash = prev_equity - position_val if open_pos else prev_equity
-    equity = cash + position_val
+    for pos in closed_today:
+        close_price = float(pos["close_price"])
+        size_pct = float(pos["size_pct"])
+
+        ret = _daily_ret(pos, close_price)
+        if ret is not None:
+            daily_pnl += prev_equity * size_pct * ret * LEVERAGE
+
+    # equity 严格按 daily_pnl 累计，不再被 prev_equity 锁死
+    equity = prev_equity + daily_pnl
+    cash = equity - position_val
 
     with conn.cursor() as cur:
         cur.execute(
@@ -201,4 +235,7 @@ def update_account_daily(conn: pymysql.Connection, signal_date: date) -> None:
             (signal_date, equity, cash, position_val, daily_pnl),
         )
     conn.commit()
-    logger.info("资金曲线更新 date=%s equity=%.2f daily_pnl=%.2f", signal_date, equity, daily_pnl)
+    logger.info(
+        "资金曲线更新 date=%s equity=%.2f daily_pnl=%.2f position_val=%.2f cash=%.2f",
+        signal_date, equity, daily_pnl, position_val, cash,
+    )

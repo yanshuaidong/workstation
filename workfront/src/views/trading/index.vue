@@ -41,6 +41,11 @@ const defaultSummary = {
 
 export default {
   name: 'TradingLayout',
+  provide() {
+    return {
+      refreshAccountSummary: () => this.fetchSummary()
+    }
+  },
   data() {
     return {
       summary: { ...defaultSummary }

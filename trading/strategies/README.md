@@ -248,23 +248,32 @@ MOMENTUM_LOOKBACK = 30
 
 ### 资金曲线
 
-`update_account_daily()` 会读取最近一条 `trading_account_daily` 作为上一日权益基准：
+`update_account_daily()` 会读取 `record_date < signal_date` 条件下最近一条 `trading_account_daily` 作为上一日权益基准：
 
-- `prev_equity`
-- `prev_cash`
+- `prev_equity`（首次运行或当日之前无记录时退化为 `INITIAL_CAPITAL`）
 
-随后遍历当前全部 `status='open'` 的持仓，逐个计算：
+限定「当天之前」的目的是：同一天重跑 `daily_run` 时不会把今天已写入的 equity 当作 prev_equity，保证重跑幂等。
 
-- `daily_ret = direction_sign * (cur_price - prev_price) / prev_price`
+随后分别遍历两组仓位：
+
+1. `status='open'` 的持仓：贡献 `daily_pnl` + `position_val`
+2. `status='closed' AND close_date=signal_date` 的当日平仓仓位：贡献 `daily_pnl`（`base_price → close_price`）
+
+`base_price` 的约定：
+
+- 如果 `open_date == signal_date`（今天刚开仓），`base_price = open_price`，这样 `daily_ret=0`，避免把「前日收盘 → 今日收盘」这段不属于账户的波动计入 `daily_pnl`
+- 否则 `base_price = prev_close`
+
+逐仓位计算：
+
+- `daily_ret = direction_sign * (end_price - base_price) / base_price`，其中 `end_price` 对 open 仓是 `cur_price`、对今日平仓仓是 `close_price`
 - `daily_pnl += prev_equity * size_pct * daily_ret * LEVERAGE`
-- `float_ret = direction_sign * (cur_price - open_price) / open_price`
-- `position_val += prev_equity * size_pct * (1 + float_ret * LEVERAGE)`
+- 对 open 仓另外累计：`float_ret = direction_sign * (cur_price - open_price) / open_price`，`position_val += prev_equity * size_pct * (1 + float_ret * LEVERAGE)`
 
-最终账户值按当前实现写为：
+最终账户值：
 
-- 有持仓时：`cash = prev_equity - position_val`
-- 无持仓时：`cash = prev_equity`
-- `equity = cash + position_val`
+- `equity = prev_equity + daily_pnl`（权益严格按当日盈亏累计，不再被 prev_equity 锁死）
+- `cash = equity - position_val`
 
 结果按 `record_date` 写入 `trading_account_daily`，若当日已存在记录则覆盖更新。
 
