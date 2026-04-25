@@ -84,6 +84,7 @@ export const getTradingPositionsHistoryApi = `${BASE_URL_API_A}/trading/position
 export const getTradingAccountCurveApi = `${BASE_URL_API_A}/trading/account/curve`;
 export const getTradingAccountSummaryApi = `${BASE_URL_API_A}/trading/account/summary`;
 export const getTradingPoolApi = `${BASE_URL_API_A}/trading/pool`;
+export const patchTradingPoolApi = (varietyId) => `${BASE_URL_API_A}/trading/pool/variety/${varietyId}`;
 export const getTradingMarketContextApi = `${BASE_URL_API_A}/trading/market-context`;
 export const getTradingVarietyListApi = `${BASE_URL_API_A}/trading/variety-list`;
 export const getTradingVarietyKlineApi = `${BASE_URL_API_A}/trading/variety-kline`;

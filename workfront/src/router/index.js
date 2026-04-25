@@ -10,6 +10,7 @@ import TradingOperationsView from '@/views/trading/OperationsView.vue'
 import TradingPositionsView from '@/views/trading/PositionsView.vue'
 import TradingCurveView from '@/views/trading/CurveView.vue'
 import TradingKlineView from '@/views/trading/KlineView.vue'
+import TradingPoolView from '@/views/trading/PoolView.vue'
 
 
 const routes = [
@@ -84,6 +85,12 @@ const routes = [
         name: 'TradingKline',
         component: TradingKlineView,
         meta: { title: 'K线展示' }
+      },
+      {
+        path: 'pool',
+        name: 'TradingPool',
+        component: TradingPoolView,
+        meta: { title: '池子管理' }
       }
     ]
   },

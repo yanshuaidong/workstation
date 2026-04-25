@@ -23,10 +23,94 @@
       <el-tag type="danger">开空 {{ countByType('A_OPEN_SHORT') }}</el-tag>
       <el-tag type="warning">平多 {{ countByType('A_CLOSE_LONG') }}</el-tag>
       <el-tag>平空 {{ countByType('A_CLOSE_SHORT') }}</el-tag>
-      <span class="total-hint">共 {{ signals.length }} 条</span>
+      <span class="total-hint">共 {{ signals.length }} 条 · 点击行展开计算过程</span>
     </div>
 
-    <el-table v-loading="loading" :data="signals" stripe class="data-table">
+    <el-table
+      v-loading="loading"
+      :data="signals"
+      stripe
+      class="data-table"
+      row-key="id"
+      @expand-change="onExpandChange"
+    >
+      <el-table-column type="expand">
+        <template #default="{ row: sig }">
+          <div class="sig-detail">
+            <template v-if="sig.extra_json && sig.extra_json.window && sig.extra_json.window.length">
+              <!-- ECharts 图表区 -->
+              <div
+                :ref="el => { if (el) chartRefs[sig.id] = el }"
+                class="signal-chart"
+              ></div>
+
+              <!-- 图表下方关键数字 + 条件 -->
+              <div class="info-bar">
+                <!-- 开仓：背景期数值 -->
+                <template v-if="isOpen(sig.signal_type) && sig.extra_json.bg">
+                  <div class="info-section">
+                    <span class="section-label">背景期</span>
+                    <span v-for="k in ['bg1', 'bg2', 'bg3', 'bg4', 'bg5']" :key="k" class="kv-chip">
+                      <span class="kv-name">{{ k }}</span>
+                      <span :class="numCls(sig.extra_json.bg[k])">{{ fmtNum(sig.extra_json.bg[k]) }}</span>
+                    </span>
+                  </div>
+
+                  <!-- 开仓：触发期差值 -->
+                  <div class="info-section" v-if="sig.extra_json.trigger">
+                    <span class="section-label">触发期</span>
+                    <span class="kv-chip">
+                      <span class="kv-name">主力diff[t-1]</span>
+                      <span :class="numCls(sig.extra_json.trigger.main_diff_t1)">{{ fmtNum(sig.extra_json.trigger.main_diff_t1) }}</span>
+                    </span>
+                    <span class="kv-chip">
+                      <span class="kv-name">主力diff[t]</span>
+                      <span :class="numCls(sig.extra_json.trigger.main_diff_t)">{{ fmtNum(sig.extra_json.trigger.main_diff_t) }}</span>
+                    </span>
+                    <span class="kv-chip">
+                      <span class="kv-name">散户diff[t-1]</span>
+                      <span :class="numCls(sig.extra_json.trigger.retail_diff_t1)">{{ fmtNum(sig.extra_json.trigger.retail_diff_t1) }}</span>
+                    </span>
+                    <span class="kv-chip">
+                      <span class="kv-name">散户diff[t]</span>
+                      <span :class="numCls(sig.extra_json.trigger.retail_diff_t)">{{ fmtNum(sig.extra_json.trigger.retail_diff_t) }}</span>
+                    </span>
+                  </div>
+                </template>
+
+                <!-- 平仓：m3 值 -->
+                <template v-else-if="!isOpen(sig.signal_type)">
+                  <div class="info-section">
+                    <span class="section-label">平仓指标</span>
+                    <span class="kv-chip">
+                      <span class="kv-name">m3 = main[t]−main[t-2]</span>
+                      <span :class="numCls(sig.extra_json.m3)">{{ fmtNum(sig.extra_json.m3) }}</span>
+                    </span>
+                  </div>
+                </template>
+
+                <!-- 条件分解 -->
+                <div class="info-section">
+                  <span class="section-label">条件</span>
+                  <span
+                    v-for="(val, key) in sig.extra_json.conditions"
+                    :key="key"
+                    class="cond-chip"
+                    :class="val ? 'cond-pass' : 'cond-fail'"
+                  >
+                    {{ val ? '✓' : '✗' }} {{ getCondLabel(key, sig.signal_type) }}
+                  </span>
+                </div>
+              </div>
+            </template>
+
+            <div v-else class="no-detail">
+              旧数据未存储计算过程，请重新运行 <code>daily_run</code> 补录
+            </div>
+          </div>
+        </template>
+      </el-table-column>
+
       <el-table-column prop="signal_date" label="日期" width="120" />
       <el-table-column prop="variety_name" label="品种" min-width="100" />
       <el-table-column label="信号类型" min-width="150">
@@ -54,14 +138,53 @@
 </template>
 
 <script>
+import { markRaw } from 'vue'
+import * as echarts from 'echarts'
 import request from '@/utils/request'
 import { getTradingSignalsApi } from '@/api'
 
 const SIGNAL_META = {
-  A_OPEN_LONG: { label: 'A-开多', type: 'success' },
+  A_OPEN_LONG:  { label: 'A-开多', type: 'success' },
   A_OPEN_SHORT: { label: 'A-开空', type: 'danger' },
   A_CLOSE_LONG: { label: 'A-平多', type: 'warning' },
-  A_CLOSE_SHORT: { label: 'A-平空', type: 'info' },
+  A_CLOSE_SHORT:{ label: 'A-平空', type: 'info' },
+}
+
+const COND_LABELS = {
+  A_OPEN_LONG: {
+    cont7:              '连续7日无中断',
+    bg1_lt0:            'bg1<0',
+    bg2_lt0:            'bg2<0',
+    bg3_lt0:            'bg3<0',
+    bg4_lt0:            'bg4<0',
+    bg5_lt0:            'bg5<0',
+    bg5_is_min:         'bg5是背景期最低点（极值唯一性）',
+    main_diff_t1_gt0:   '主力diff[t-1]>0',
+    main_diff_t_gt0:    '主力diff[t]>0',
+    retail_diff_t1_lt0: '散户diff[t-1]<0',
+    retail_diff_t_lt0:  '散户diff[t]<0',
+  },
+  A_OPEN_SHORT: {
+    cont7:              '连续7日无中断',
+    bg1_gt0:            'bg1>0',
+    bg2_gt0:            'bg2>0',
+    bg3_gt0:            'bg3>0',
+    bg4_gt0:            'bg4>0',
+    bg5_gt0:            'bg5>0',
+    bg5_is_max:         'bg5是背景期最高点（极值唯一性）',
+    main_diff_t1_lt0:   '主力diff[t-1]<0',
+    main_diff_t_lt0:    '主力diff[t]<0',
+    retail_diff_t1_gt0: '散户diff[t-1]>0',
+    retail_diff_t_gt0:  '散户diff[t]>0',
+  },
+  A_CLOSE_LONG: {
+    cont3:  '连续3日无中断',
+    m3_lt0: 'm3<0（主力3日拐头向下）',
+  },
+  A_CLOSE_SHORT: {
+    cont3:  '连续3日无中断',
+    m3_gt0: 'm3>0（主力3日拐头向上）',
+  },
 }
 
 export default {
@@ -70,15 +193,23 @@ export default {
     return {
       loading: false,
       signals: [],
-      filters: {
-        date: '',
-        signal_type: '',
-        variety_name: ''
-      }
+      filters: { date: '', signal_type: '', variety_name: '' },
+      chartRefs: {},
+      chartInstances: {},
     }
+  },
+  watch: {
+    signals() {
+      Object.values(this.chartInstances).forEach(inst => inst.dispose())
+      this.chartInstances = {}
+      this.chartRefs = {}
+    },
   },
   mounted() {
     this.fetchSignals()
+  },
+  beforeUnmount() {
+    Object.values(this.chartInstances).forEach(inst => inst.dispose())
   },
   methods: {
     async fetchSignals() {
@@ -88,8 +219,8 @@ export default {
           params: {
             date: this.filters.date || undefined,
             signal_type: this.filters.signal_type || undefined,
-            variety_name: this.filters.variety_name || undefined
-          }
+            variety_name: this.filters.variety_name || undefined,
+          },
         })
         if (res.code === 0) {
           this.signals = res.data?.signals || []
@@ -103,16 +234,146 @@ export default {
         this.loading = false
       }
     },
-    getSignalLabel(type) {
-      return SIGNAL_META[type]?.label || type
+
+    async onExpandChange(row, expandedRows) {
+      const id = row.id
+      const isExpanded = expandedRows.some(r => r.id === id)
+      if (isExpanded) {
+        await this.$nextTick()
+        const el = this.chartRefs[id]
+        if (!el) return
+        const extra = row.extra_json
+        if (!extra?.window?.length) return
+        if (this.chartInstances[id]) {
+          this.chartInstances[id].dispose()
+        }
+        const inst = markRaw(echarts.init(el))
+        inst.setOption(this.buildChartOption(row))
+        this.chartInstances[id] = inst
+      } else {
+        const inst = this.chartInstances[id]
+        if (inst) {
+          inst.dispose()
+          delete this.chartInstances[id]
+        }
+      }
     },
-    getSignalTagType(type) {
-      return SIGNAL_META[type]?.type || 'info'
+
+    buildChartOption(sig) {
+      const extra = sig.extra_json
+      const win = extra.window
+      const isOpenSig = this.isOpen(sig.signal_type)
+      const dates = win.map(w => w.trade_date.slice(5))
+      const mainData = win.map(w => w.main_force ?? null)
+      const retailData = win.map(w => w.retail ?? null)
+
+      // 主力线：触发期两点放大标注
+      const mainSeriesData = mainData.map((v, i) => {
+        if (isOpenSig && win.length === 7 && i >= 5) {
+          return { value: v, symbolSize: 10, itemStyle: { color: '#e6413a', borderColor: '#fff', borderWidth: 2 } }
+        }
+        return v
+      })
+
+      const mainSeries = {
+        name: '主力净持仓',
+        type: 'line',
+        data: mainSeriesData,
+        symbol: 'circle',
+        symbolSize: 5,
+        lineStyle: { color: '#e6413a', width: 2.5 },
+        itemStyle: { color: '#e6413a' },
+        // y=0 参考线
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          data: [{ yAxis: 0, lineStyle: { color: '#d0d7e3', type: 'dashed', width: 1 }, label: { show: false } }],
+        },
+      }
+
+      // 开仓信号：标注背景期和触发期分区（bg1..bg5=dates[0..4]，触发期=dates[5..6]）
+      if (isOpenSig && win.length === 7) {
+        mainSeries.markArea = {
+          silent: true,
+          data: [
+            [
+              {
+                name: '背景期',
+                xAxis: dates[0],
+                itemStyle: { color: 'rgba(180,180,180,0.10)' },
+                label: { color: '#aaa', fontSize: 10, position: 'insideTopLeft' },
+              },
+              { xAxis: dates[4] },
+            ],
+            [
+              {
+                name: '触发期',
+                xAxis: dates[5],
+                itemStyle: { color: 'rgba(103,194,58,0.12)' },
+                label: { color: '#67c23a', fontSize: 10, position: 'insideTopLeft' },
+              },
+              { xAxis: dates[6] },
+            ],
+          ],
+        }
+      }
+
+      const retailSeries = {
+        name: '散户净持仓',
+        type: 'line',
+        data: retailData,
+        symbol: 'circle',
+        symbolSize: 5,
+        lineStyle: { color: '#409eff', width: 2.5 },
+        itemStyle: { color: '#409eff' },
+      }
+
+      return {
+        backgroundColor: 'transparent',
+        grid: { top: 36, right: 24, bottom: 28, left: 64 },
+        tooltip: {
+          trigger: 'axis',
+          formatter(params) {
+            let s = `<b>${params[0].axisValue}</b><br/>`
+            params.forEach(p => {
+              const v = p.value !== null && p.value !== undefined ? Number(p.value).toFixed(4) : '--'
+              s += `${p.marker}${p.seriesName}: <b>${v}</b><br/>`
+            })
+            return s
+          },
+        },
+        legend: { top: 4, right: 12, textStyle: { fontSize: 11 } },
+        xAxis: {
+          type: 'category',
+          data: dates,
+          axisLabel: { fontSize: 11 },
+          axisLine: { lineStyle: { color: '#d0d7e3' } },
+          axisTick: { lineStyle: { color: '#d0d7e3' } },
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: { fontSize: 10, formatter: v => v.toFixed(2) },
+          splitLine: { lineStyle: { color: '#f0f0f0' } },
+        },
+        series: [mainSeries, retailSeries],
+      }
     },
-    countByType(type) {
-      return this.signals.filter(s => s.signal_type === type).length
-    }
-  }
+
+    getSignalLabel(type)    { return SIGNAL_META[type]?.label || type },
+    getSignalTagType(type)  { return SIGNAL_META[type]?.type  || 'info' },
+    countByType(type)       { return this.signals.filter(s => s.signal_type === type).length },
+    isOpen(type)            { return type === 'A_OPEN_LONG' || type === 'A_OPEN_SHORT' },
+    getCondLabel(key, type) { return COND_LABELS[type]?.[key] || key },
+
+    fmtNum(v) {
+      if (v === null || v === undefined || isNaN(v)) return '--'
+      return Number(v).toFixed(4)
+    },
+    numCls(v) {
+      if (v === null || v === undefined || isNaN(v)) return ''
+      return v > 0 ? 'pos' : v < 0 ? 'neg' : ''
+    },
+  },
 }
 </script>
 
@@ -130,9 +391,7 @@ export default {
   align-items: center;
 }
 
-.tool-item {
-  width: 200px;
-}
+.tool-item { width: 200px; }
 
 .stats-row {
   display: flex;
@@ -141,10 +400,7 @@ export default {
   flex-wrap: wrap;
 }
 
-.total-hint {
-  color: #8a98a8;
-  font-size: 13px;
-}
+.total-hint { color: #8a98a8; font-size: 13px; }
 
 .empty-card {
   padding: 18px 20px;
@@ -153,21 +409,92 @@ export default {
   background: #fbfdff;
 }
 
-.data-table {
-  width: 100%;
+.data-table { width: 100%; }
+.dim { color: #bbb; }
+
+/* ── 展开区域 ── */
+.sig-detail {
+  padding: 16px 20px 18px;
+  background: #f7f9fc;
 }
 
-.dim {
-  color: #bbb;
+/* ECharts 容器 */
+.signal-chart {
+  width: 100%;
+  height: 210px;
+  margin-bottom: 12px;
+}
+
+/* 图表下方信息栏 */
+.info-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a98a8;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+/* 数值 chip */
+.kv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eef1f7;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.kv-name { color: #8a98a8; }
+
+/* 条件 chip */
+.cond-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cond-pass { background: #f0faf0; color: #52a94e; }
+.cond-fail { background: #fff5f5; color: #e05252; }
+
+/* 数值着色（期货惯例：红涨绿跌） */
+.pos { color: #e6413a; font-weight: 600; }
+.neg { color: #2e9e5e; font-weight: 600; }
+
+.no-detail {
+  color: #9aa5b4;
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.no-detail code {
+  background: #eef1f5;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
 }
 
 @media (max-width: 768px) {
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .tool-item {
-    width: 100%;
-  }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .tool-item { width: 100%; }
 }
 </style>

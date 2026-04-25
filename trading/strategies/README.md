@@ -1,208 +1,345 @@
 # trading/strategies
 
-> 独立的策略计算模块：从线上 MySQL 拉取原始数据 → 计算 A 通道信号 → 生成操作建议 → 执行自动化账户的开平仓 → 更新资金曲线。
->
-> 定位：**数据 → 信号 → 决策 → 执行**的单向管道。不依赖 `test/` 实验代码，也不包含任何 HTTP 接口（对外服务由 `automysqlback/routes/trading_routes.py` 暴露）。
+`trading/strategies` 是交易策略批处理模块，负责按日完成以下链路：
 
----
+1. 从 MySQL 读取品种维表、主力/散户强度和收盘价
+2. 对全市场品种计算 A 通道信号
+3. 对池子 A 品种生成操作建议
+4. 按信号执行自动账户的平仓和开仓
+5. 更新账户资金曲线
 
-## 一、设计理念：三层信息漏斗
+模块不提供 HTTP 接口，只负责写入策略结果表；对外查询由后端接口读取这些表。
 
-前端展示、后端接口、库表结构全部围绕这条决策链路组织。每一层都是可解释、可审计的过滤，不是黑箱：
+## 目录结构
 
-```
-【信号面板】全市场观察
-  对 fut_variety 全部品种计算 A 通道信号，提供全局视野。
-  即使池子外的品种不做，也能看到市场机会和风险。
-        ↓ 过滤：只看池子 A 的品种
-【操作建议】决策透明
-  池子 A 中所有触发开仓信号的品种全部列出，包括落选的。
-  每条记录附 reject_reason：capacity_full / sector_conflict / null(已选中)。
-        ↓ 过滤：is_selected = 1 的记录
-【持仓盈亏 / 资金曲线】执行记录
-  自动化账户按建议实际开平仓的结果，可回溯来源 operation_id。
-```
-
----
-
-## 二、策略核心：A 通道信号
-
-对每个品种每个交易日 `t`，计算 4 种信号与 1 个排序分。实现见 `signals.py::compute_signals`，逻辑严格对标实验期脚本 `test/plan2/scripts/backtest_portfolio_strict7_tp3.py::compute_signals_strict7_tp3`。
-
-### 开仓信号（需要连续 7 个交易日数据，由 `cont7` 校验）
-
-**A_OPEN_LONG**（A 通道开多）
-
-- 背景期 `[t-6, t-3]`：`main_force` 四点全部 < 0，且 `bg4 - bg1 < 0`（整体仍在下行）
-- 触发期 `[t-2, t]`：`main_force` 严格连续上升（`main_diff[t-1] > 0` 且 `main_diff[t] > 0`），同时 `retail` 严格连续下降（反向确认）
-
-**A_OPEN_SHORT**（A 通道开空，与开多完全对称）
-
-- 背景期四点全部 > 0 且 `bg4 - bg1 > 0`
-- 触发期 `main_force` 3 连降 + `retail` 3 连升
-
-### 平仓信号（需要连续 3 个交易日数据，由 `cont3` 校验）
-
-- **A_CLOSE_LONG**：`m3 = main_force[t] - main_force[t-2] < 0`（主力 3 日拐头向下）
-- **A_CLOSE_SHORT**：`m3 > 0`（3 日拐头向上）
-
-> 不设止盈止损，只看主力拐头。
-
-### 动量分位分 `main_score`（操作建议排序依据）
-
-- `|m3|` 与品种自身过去 30 个交易日（不含 t）的 `|m3|` 序列比较
-- `main_score = hist.le(current).sum() / 30`
-- 历史不足 30 日置 NaN；NaN 品种排在候选最后，但仍可被选中
-- 排序键：`(isnan(main_score), -main_score, variety_name 字典序)`
-
----
-
-## 三、池子 A 与组合约束
-
-**池子 A（12 个品种）**在 `settings.py::TARGET_POOL` 中定义，`create_tables.py` 首次运行时同步写入 `trading_pool` 表，之后可通过数据库直接调整 `is_active`，代码层无需改动。
-
-| 板块 | 品种 |
-|------|------|
-| 有色金属 | 沪铜、沪铝、沪锌 |
-| 贵金属 | 沪金 |
-| 黑色系 | 铁矿石、焦煤 |
-| 化工能化 | PTA、甲醇、橡胶 |
-| 油脂油料 | 豆粕、棕榈油 |
-| 农产品 | 玉米 |
-
-**组合约束**（`operations.py::generate_operations`，严格按顺序）：
-
-1. 只保留 `A_OPEN_LONG` / `A_OPEN_SHORT` 信号
-2. 品种必须在 `trading_pool` 且 `is_active = 1`
-3. 跳过当日已持仓品种
-4. 跳过 `closed_today`（当日刚平仓的品种，防止当日反手）
-5. 已满槽（`entry_capacity = 0`）→ 所有剩余信号标 `capacity_full` 落选
-6. 当前持仓占用的板块 → `sector_conflict` 落选
-7. 剩余候选按排序键排序，依次选入；同一板块第二个候选再次 `sector_conflict` 落选
-
-落选和选中记录统一写入 `trading_operations`，通过 `is_selected` 和 `reject_reason` 区分，对前端完全透明。
-
----
-
-## 四、模块结构与文件职责
-
-```
+```text
 trading/strategies/
-├── README.md            # 本文件
-├── cleanup_plan.md      # 老 assistant 模块（后端路由、前端视图、菜单）清理步骤
-├── settings.py          # 常量：资金、杠杆、槽位、窗口、池子 A
-├── db.py                # MySQL 连接（从 .env / env.production 加载）
-├── data_loader.py       # fut_strength + fut_daily_close + fut_variety 拉取、数据完整性校验
-├── signals.py           # A 通道 4 种信号 + main_score 计算，写 trading_signals
-├── operations.py        # 池子 A 过滤 + 组合约束，写 trading_operations
-├── account.py           # 自动化账户：平仓 → 开仓 → 资金曲线，写 trading_positions / trading_account_daily
-├── create_tables.py     # 删除旧 assistant_* 表、建 trading_* 表、初始化池子和首条资金曲线
-└── daily_run.py         # 每日入口，按固定顺序串联上述步骤
+├── README.md
+├── account.py
+├── create_tables.py
+├── daily_run.py
+├── data_loader.py
+├── db.py
+├── operations.py
+├── settings.py
+└── signals.py
 ```
 
-### 关键常量（`settings.py`）
+各文件职责如下：
+
+- `db.py`：从项目根目录的 `.env` 或 `env.production` 读取数据库配置，返回 PyMySQL 连接
+- `data_loader.py`：读取 `fut_variety`、`fut_strength`、`fut_daily_close`，并做当日数据完整性检查
+- `signals.py`：计算 A 通道开平仓信号、动量分位分，并写入 `trading_signals`
+- `operations.py`：根据池子 A、仓位上限和板块约束生成操作建议，写入 `trading_operations`
+- `account.py`：执行平仓、开仓并更新 `trading_account_daily` 和 `trading_positions`
+- `create_tables.py`：创建策略相关数据表、初始化池子 A 和账户起始记录
+- `daily_run.py`：每日批处理入口，按固定顺序串联全部步骤
+
+## 配置常量
+
+`settings.py` 中定义了当前策略的固定参数：
 
 ```python
 INITIAL_CAPITAL = 30000.0
 LEVERAGE = 10.0
 MAX_SLOTS = 3
 SIZE_PCT = 1 / 3
-BACKGROUND_WINDOW = 4
+BACKGROUND_WINDOW = 5
 TRIGGER_WINDOW = 3
 TURN_WINDOW = 3
 MOMENTUM_LOOKBACK = 30
 ```
 
-### 账户执行细节（`account.py`）
+池子 A 固定为 12 个品种：
 
-每日执行顺序固定：**先平仓 → 再开仓 → 更新资金曲线**。
+| 品种 | 板块 |
+|------|------|
+| 沪铜 | 有色金属 |
+| 沪铝 | 有色金属 |
+| 沪锌 | 有色金属 |
+| 沪金 | 贵金属 |
+| 铁矿石 | 黑色系 |
+| 焦煤 | 黑色系 |
+| PTA | 化工能化 |
+| 甲醇 | 化工能化 |
+| 橡胶 | 化工能化 |
+| 豆粕 | 油脂油料 |
+| 棕榈油 | 油脂油料 |
+| 玉米 | 农产品 |
 
-- 平仓：从 `trading_signals` 读当日 `A_CLOSE_LONG / A_CLOSE_SHORT`，对 `status='open'` 且方向匹配的持仓以当日收盘价平仓，`pnl_pct` 存无杠杆收益率
-  - 多头：`(close - open) / open`
-  - 空头：`(open - close) / open`
-- 开仓：读 `trading_operations` 中 `is_selected = 1` 的记录，以当日收盘价开仓，关联 `operation_id` 便于回溯
-- 资金曲线：
-  - `daily_pnl = Σ prev_equity × size_pct × daily_ret × LEVERAGE`
-  - `position_val = Σ prev_equity × size_pct × (1 + float_ret × LEVERAGE)`
-  - `equity = cash + position_val`
+## 数据读取与完整性检查
 
----
+### 上游数据表
 
-## 五、数据表
+策略模块依赖以下只读表：
 
-所有表名以 `trading_` 前缀，通过 `create_tables.py` 一次性建表。旧 `assistant_*` 四张表在同一脚本中先被 DROP。
+- `fut_variety`
+- `fut_strength`
+- `fut_daily_close`
 
-| 表名 | 作用 | 写入方 |
-|------|------|--------|
-| `trading_pool` | 池子 A 品种配置（板块、is_active） | `create_tables.py` 初始化，之后手工维护 |
-| `trading_signals` | 全品种每日 A 通道信号 + main_score | `signals.py` |
-| `trading_operations` | 池子 A 操作建议，含 `is_selected` + `reject_reason` | `operations.py` |
-| `trading_positions` | 自动化账户持仓（最多 3 槽），`operation_id` 可回溯建议 | `account.py` |
-| `trading_account_daily` | 每日资金曲线（equity / cash / position_val / daily_pnl） | `account.py` |
+### 单品种数据装载
 
-上游依赖表（只读）：`fut_variety`、`fut_strength`、`fut_daily_close`。这些由 `database/fut_pulse` 负责维护。
+`load_variety_data()` 会分别读取某个品种的：
 
----
+- `fut_strength.trade_date, main_force, retail`
+- `fut_daily_close.trade_date, close_price AS close`
 
-## 六、运行方式
+随后按 `trade_date` 做内连接，并删除空值，得到该品种的完整时序数据。
 
-### 配置
+### 每日完整性检查
 
-`.env` 从项目根目录加载（优先 `.env`，其次 `env.production`），必填：
+`check_data_completeness(conn, trade_date)` 的逻辑是：
 
+- 统计 `fut_strength` 在指定日期有数据的品种数
+- 找出 `fut_variety` 中哪些品种在该日期缺少 `fut_strength`
+- 只要池子 A 中有任一品种缺失当日 `fut_strength`，当日批处理就终止
+
+当前检查只校验池子 A 的 `fut_strength` 是否齐全，不校验 `fut_daily_close`。
+
+## 信号计算逻辑
+
+### 连续性标记
+
+`signals.py` 先对每个品种构造：
+
+- `date_cont`：当前记录与上一条记录的日期差是否小于等于 7 天
+- `cont7`：最近 7 条记录是否满足连续性要求
+- `cont3`：最近 3 条记录是否满足连续性要求
+
+这里的连续性判断基于相邻记录的自然日间隔，不要求数据库中逐日有记录。
+
+### 开仓信号
+
+对交易日 `t`：
+
+- 背景窗口使用 `main_force[t-6] ~ main_force[t-2]`
+- 触发窗口使用 `main_diff[t-1], main_diff[t]` 和 `retail_diff[t-1], retail_diff[t]`
+
+`A_OPEN_LONG` 条件：
+
+- `cont7 = True`
+- `bg1 ~ bg5` 全部小于 0
+- `bg5` 严格小于 `bg1 ~ bg4`
+- `main_force` 连续两日上升
+- `retail` 连续两日下降
+
+`A_OPEN_SHORT` 条件：
+
+- `cont7 = True`
+- `bg1 ~ bg5` 全部大于 0
+- `bg5` 严格大于 `bg1 ~ bg4`
+- `main_force` 连续两日下降
+- `retail` 连续两日上升
+
+### 平仓信号
+
+定义：
+
+- `m3 = main_force[t] - main_force[t-2]`
+
+初始平仓条件：
+
+- `A_CLOSE_LONG`：`cont3 = True` 且 `m3 < 0`
+- `A_CLOSE_SHORT`：`cont3 = True` 且 `m3 > 0`
+
+随后会经过两层状态过滤：
+
+1. `compute_signals()` 内部先用状态机过滤，只在本品种此前出现过对应开仓信号的情况下保留平仓信号
+2. `save_signals()` 写库前再读取 `trading_signal_state` 中该品种在当日前的最新状态；如果数据库快照里没有对应方向的激活状态，则不会把该平仓信号写入 `trading_signals`
+
+信号写入完成后，`save_signals()` 会同步更新 `trading_signal_state`，把该品种在当日结束后的状态写成 `none / long / short`。
+
+### 动量分位分 `main_score`
+
+`main_score` 只用于开仓信号排序，计算方式为：
+
+- 取当前 `abs(m3)`
+- 与该品种之前最多 30 条记录的 `abs(m3)` 历史序列比较
+- 若历史有效样本少于 30，则记为 `NaN`
+- 否则计算 `hist.le(current).sum() / 30`
+
+开仓候选在排序时按以下键值排序：
+
+1. `main_score` 是否为 `NaN`
+2. `main_score` 从大到小
+3. `variety_name` 升序
+
+### 信号写表行为
+
+`run_signals_for_all()` 会遍历 `fut_variety` 全部品种，逐个加载数据并计算信号。
+
+`save_signals()` 的写表规则：
+
+- 只处理目标日期对应的最后一条记录
+- 写入前先删除该品种该日期在 `trading_signals` 中的旧记录
+- 开仓信号写入 `main_score`
+- 平仓信号不写 `main_score`
+- `extra_json` 中保存用于前端解释的窗口数据、背景值、触发值和条件判断结果
+
+## 操作建议生成逻辑
+
+`generate_operations(conn, signal_date)` 的输入来自三部分：
+
+- 当日 `trading_signals` 中的开仓信号
+- `trading_pool` 中 `is_active = 1` 的池子 A 品种
+- `trading_positions` 中的历史持仓状态
+
+具体流程如下：
+
+1. 删除 `trading_operations` 当日全部旧记录，保证重跑时结果覆盖
+2. 读取在 `signal_date` 之前已经开仓且仍为 `open` 的持仓，作为当前占用槽位
+3. 读取当日已经平仓的品种集合，避免同日反手
+4. 从当日开仓信号里筛出候选，候选必须同时满足：
+   - 品种在 `trading_pool` 且 `is_active = 1`
+   - 品种当前没有历史开放持仓
+   - 品种不在 `closed_today`
+5. 计算可开仓槽位：`entry_capacity = MAX_SLOTS - 当前开放持仓数`
+6. 先排除与当前持仓板块重复的候选，这部分写入 `reject_reason='sector_conflict'`
+7. 对剩余候选按 `main_score` 排序，依次选入：
+   - 已用过的板块不可重复
+   - 超过剩余槽位的候选写入 `reject_reason='capacity_full'`
+   - 同板块后续候选写入 `reject_reason='sector_conflict'`
+8. 将选中和落选结果统一写入 `trading_operations`
+
+需要注意：
+
+- 非池子 A 品种不会进入 `trading_operations`
+- 已持仓品种不会写入 `trading_operations`
+- 当日刚平仓的品种不会写入 `trading_operations`
+- 当可用槽位 `<= 0` 时，当前候选会全部写成 `capacity_full`
+
+## 账户执行逻辑
+
+账户执行顺序固定为：
+
+1. `execute_close_signals()`
+2. `execute_open_operations()`
+3. `update_account_daily()`
+
+### 平仓
+
+`execute_close_signals()` 会：
+
+- 读取当日 `trading_signals` 中的 `A_CLOSE_LONG / A_CLOSE_SHORT`
+- 查找当前全部 `status='open'` 的持仓
+- 方向匹配时，使用当日 `fut_daily_close.close_price` 平仓
+- 将持仓更新为 `status='closed'`，同时写入 `close_date`、`close_price`、`pnl_pct`
+
+`pnl_pct` 为不带杠杆的收益率：
+
+- 多头：`(close_price - open_price) / open_price`
+- 空头：`(open_price - close_price) / open_price`
+
+函数返回当日已平仓品种集合，用于后续阻止同日再次开仓。
+
+### 开仓
+
+`execute_open_operations()` 会读取当日 `trading_operations` 中 `is_selected = 1` 的记录，并按以下规则开仓：
+
+- 当日已平仓的品种直接跳过
+- 若同一品种在同一开仓日已经存在 `status='open'` 的记录，则跳过，避免重跑时重复开仓
+- 使用当日 `fut_daily_close.close_price` 作为开仓价
+- `signal_type = A_OPEN_LONG` 时开多，否则开空
+- 新持仓写入 `trading_positions`，`size_pct` 固定为 `SIZE_PCT`
+
+### 资金曲线
+
+`update_account_daily()` 会读取最近一条 `trading_account_daily` 作为上一日权益基准：
+
+- `prev_equity`
+- `prev_cash`
+
+随后遍历当前全部 `status='open'` 的持仓，逐个计算：
+
+- `daily_ret = direction_sign * (cur_price - prev_price) / prev_price`
+- `daily_pnl += prev_equity * size_pct * daily_ret * LEVERAGE`
+- `float_ret = direction_sign * (cur_price - open_price) / open_price`
+- `position_val += prev_equity * size_pct * (1 + float_ret * LEVERAGE)`
+
+最终账户值按当前实现写为：
+
+- 有持仓时：`cash = prev_equity - position_val`
+- 无持仓时：`cash = prev_equity`
+- `equity = cash + position_val`
+
+结果按 `record_date` 写入 `trading_account_daily`，若当日已存在记录则覆盖更新。
+
+## 数据表
+
+`create_tables.py` 会创建以下 6 张策略表：
+
+| 表名 | 作用 |
+|------|------|
+| `trading_pool` | 池子 A 品种配置 |
+| `trading_signals` | 每日全品种信号 |
+| `trading_operations` | 每日操作建议与落选原因 |
+| `trading_positions` | 自动账户持仓与已平仓记录 |
+| `trading_account_daily` | 每日账户权益、现金、持仓市值、日盈亏 |
+| `trading_signal_state` | 每个品种的信号状态快照 |
+
+其中：
+
+- `trading_pool` 按 `TARGET_POOL` 初始化
+- `trading_account_daily` 首次初始化时写入一条起始记录，日期为执行初始化脚本当天
+- `trading_signal_state` 以 `(variety_id, state_date)` 为主键，供信号层快速确认历史状态
+
+## 初始化与运行
+
+### 环境变量
+
+数据库连接从项目根目录读取：
+
+1. `.env`
+2. `env.production`
+
+需要提供：
+
+```text
+DB_HOST
+DB_PORT
+DB_USER
+DB_PASSWORD
+DB_NAME
 ```
-DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
-```
 
-### 首次初始化
+### 初始化
+
+在项目根目录执行：
 
 ```bash
-# 项目根目录执行（将 workstation/ 加入 PYTHONPATH）
 python -m trading.strategies.create_tables
 ```
 
-该脚本会：
+脚本会：
 
-1. DROP 掉 4 张旧 `assistant_*` 表
-2. 建立 5 张 `trading_*` 表
-3. 从 `fut_variety` 映射品种 id，将 `TARGET_POOL` 写入 `trading_pool`
-4. 插入首条 `trading_account_daily` 记录：`equity = cash = INITIAL_CAPITAL`，作为资金曲线起点
+1. 删除 `assistant_signals`、`assistant_operations`、`assistant_positions`、`assistant_account_daily`
+2. 创建 6 张 `trading_*` 表
+3. 执行已实现的增量迁移
+4. 初始化 `trading_pool`
+5. 初始化 `trading_account_daily`
 
 ### 每日运行
 
 ```bash
-# 当日
 python -m trading.strategies.daily_run
-
-# 指定日期（回放/补录）
 python -m trading.strategies.daily_run 2026-04-25
 ```
 
-流程：
+执行顺序固定为：
 
-1. `check_data_completeness`：池子 A 品种当日 `fut_strength` 必须齐全，否则中止
-2. `run_signals_for_all`：对全部 `fut_variety` 计算信号 → `trading_signals`
-3. `generate_operations`：过滤 + 组合约束 → `trading_operations`
-4. `execute_close_signals`：按平仓信号平仓 → `trading_positions`（`closed_today` 集合防反手）
-5. `execute_open_operations`：按选中建议开仓 → `trading_positions`
-6. `update_account_daily` → `trading_account_daily`
+1. `check_data_completeness`
+2. `run_signals_for_all`
+3. `generate_operations`
+4. `execute_close_signals`
+5. `execute_open_operations`
+6. `update_account_daily`
 
-> 手动触发，不使用 crontab —— 上游 `fut_strength` 数据需要人工确认采集完成后再跑。
+`daily_run.py` 在运行前会把仓库根目录加入 `sys.path`，因此推荐从项目根目录以模块方式执行。
 
----
+## 对外读取
 
-## 七、对外集成点
+策略模块的结果表供后端接口读取。当前仓库中的接口入口位于：
 
-本模块**不直接对外**，所有对外读取由后端 HTTP 接口完成：
+- `automysqlback/routes/trading_routes.py`
 
-- 后端：`automysqlback/routes/trading_routes.py`（蓝图 `trading_bp`，已在 `automysqlback/app.py` 注册），提供 `/api/trading/*` 下 10 个接口：
-  - `signals` / `operations` / `positions` / `positions/history` / `account/curve` / `account/summary` / `pool` / `market-context` / `variety-list` / `variety-kline`
-- 前端：`workfront/src/views/trading/`（Tab：信号面板 / 操作建议 / 持仓盈亏 / 资金曲线 / K线），路由 `/trading`
-- Nginx：请求经 `/api-a/` 前缀反向代理到后端（见仓库根 `CLAUDE.md`）
-
----
-
-## 八、遗留待办
-
-- `cleanup_plan.md`：老 `/assistant` 后端路由、前端视图、菜单与路由项的删除步骤，**在新系统稳定跑过完整一轮后**再执行，属不可逆操作
-- `test/assistant/` 和 `test/plan2/` 目录保留作为实验参考，不清理
+前端和 API 查询使用这些结果表，不直接调用 `trading/strategies` 内部函数。

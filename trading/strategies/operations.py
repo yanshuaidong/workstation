@@ -17,11 +17,13 @@ from .settings import MAX_SLOTS, SECTOR_BY_VARIETY
 logger = logging.getLogger(__name__)
 
 
-def _get_open_positions(conn: pymysql.Connection) -> list[dict]:
+def _get_open_positions(conn: pymysql.Connection, signal_date: date) -> list[dict]:
+    # 只取 signal_date 之前开仓的持仓，当天新开的不计入已有槽位
     with conn.cursor() as cur:
         cur.execute(
             "SELECT variety_id, variety_name, direction, sector "
-            "FROM trading_positions WHERE status='open'"
+            "FROM trading_positions WHERE status='open' AND open_date < %s",
+            (signal_date,),
         )
         return list(cur.fetchall())
 
@@ -38,7 +40,7 @@ def _get_pool_varieties(conn: pymysql.Connection) -> dict[int, dict]:
 def _get_today_signals(conn: pymysql.Connection, signal_date: date) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT variety_id, variety_name, signal_type, main_score "
+            "SELECT id, variety_id, variety_name, signal_type, main_score "
             "FROM trading_signals WHERE signal_date=%s "
             "AND signal_type IN ('A_OPEN_LONG','A_OPEN_SHORT')",
             (signal_date,),
@@ -57,9 +59,14 @@ def _get_closed_today(conn: pymysql.Connection, signal_date: date) -> set[int]:
 
 def generate_operations(conn: pymysql.Connection, signal_date: date) -> None:
     pool = _get_pool_varieties(conn)
-    open_positions = _get_open_positions(conn)
+    open_positions = _get_open_positions(conn, signal_date)
     closed_today = _get_closed_today(conn, signal_date)
     open_signals = _get_today_signals(conn, signal_date)
+
+    # 先清除当日所有记录，确保重跑结果可预期（池子调整、重新计算均干净覆盖）
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM trading_operations WHERE signal_date=%s", (signal_date,))
+    conn.commit()
 
     held_variety_ids = {int(p["variety_id"]) for p in open_positions}
     start_sectors = {p["sector"] for p in open_positions}
@@ -79,6 +86,7 @@ def generate_operations(conn: pymysql.Connection, signal_date: date) -> None:
             "sector": pool[vid]["sector"],
             "signal_type": sig["signal_type"],
             "main_score": score,
+            "signal_id": sig["id"],
         })
 
     if entry_capacity <= 0:
@@ -119,15 +127,12 @@ def generate_operations(conn: pymysql.Connection, signal_date: date) -> None:
             cur.execute(
                 """
                 INSERT INTO trading_operations
-                    (signal_date, variety_id, variety_name, sector, signal_type,
+                    (signal_id, signal_date, variety_id, variety_name, sector, signal_type,
                      main_score, is_selected, reject_reason, extra_json)
-                VALUES (%s,%s,%s,%s,%s,%s,1,NULL,%s)
-                ON DUPLICATE KEY UPDATE
-                    variety_name=VALUES(variety_name), sector=VALUES(sector),
-                    main_score=VALUES(main_score), is_selected=1, reject_reason=NULL,
-                    extra_json=VALUES(extra_json)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,1,NULL,%s)
                 """,
                 (
+                    c["signal_id"],
                     signal_date,
                     c["variety_id"],
                     c["variety_name"],
@@ -141,15 +146,12 @@ def generate_operations(conn: pymysql.Connection, signal_date: date) -> None:
             cur.execute(
                 """
                 INSERT INTO trading_operations
-                    (signal_date, variety_id, variety_name, sector, signal_type,
+                    (signal_id, signal_date, variety_id, variety_name, sector, signal_type,
                      main_score, is_selected, reject_reason, extra_json)
-                VALUES (%s,%s,%s,%s,%s,%s,0,%s,%s)
-                ON DUPLICATE KEY UPDATE
-                    variety_name=VALUES(variety_name), sector=VALUES(sector),
-                    main_score=VALUES(main_score), is_selected=0,
-                    reject_reason=VALUES(reject_reason), extra_json=VALUES(extra_json)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,0,%s,%s)
                 """,
                 (
+                    c["signal_id"],
                     signal_date,
                     c["variety_id"],
                     c["variety_name"],
@@ -174,15 +176,12 @@ def _save_all_rejected(
             cur.execute(
                 """
                 INSERT INTO trading_operations
-                    (signal_date, variety_id, variety_name, sector, signal_type,
+                    (signal_id, signal_date, variety_id, variety_name, sector, signal_type,
                      main_score, is_selected, reject_reason, extra_json)
-                VALUES (%s,%s,%s,%s,%s,%s,0,%s,%s)
-                ON DUPLICATE KEY UPDATE
-                    variety_name=VALUES(variety_name), sector=VALUES(sector),
-                    main_score=VALUES(main_score), is_selected=0,
-                    reject_reason=VALUES(reject_reason), extra_json=VALUES(extra_json)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,0,%s,%s)
                 """,
                 (
+                    c["signal_id"],
                     signal_date,
                     c["variety_id"],
                     c["variety_name"],

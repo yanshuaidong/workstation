@@ -51,6 +51,8 @@ def execute_close_signals(conn: pymysql.Connection, signal_date: date) -> set[in
         )
         open_positions = cur.fetchall()
 
+    # 读取阶段：计算所有平仓参数，不写库
+    updates: list[tuple] = []
     closed_today: set[int] = set()
     for pos in open_positions:
         vid = int(pos["variety_id"])
@@ -74,15 +76,20 @@ def execute_close_signals(conn: pymysql.Connection, signal_date: date) -> set[in
         else:
             pnl_pct = (open_price - close_price) / open_price
 
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE trading_positions SET status='closed', close_date=%s, "
-                "close_price=%s, pnl_pct=%s WHERE id=%s",
-                (signal_date, close_price, pnl_pct, pos["id"]),
-            )
-        conn.commit()
+        updates.append((signal_date, close_price, pnl_pct, pos["id"]))
         closed_today.add(vid)
         logger.info("平仓 variety_id=%s direction=%s pnl_pct=%.4f", vid, direction, pnl_pct)
+
+    # 写入阶段：批量提交，保证原子性
+    if updates:
+        with conn.cursor() as cur:
+            for args in updates:
+                cur.execute(
+                    "UPDATE trading_positions SET status='closed', close_date=%s, "
+                    "close_price=%s, pnl_pct=%s WHERE id=%s",
+                    args,
+                )
+        conn.commit()
 
     return closed_today
 
@@ -97,10 +104,23 @@ def execute_open_operations(conn: pymysql.Connection, signal_date: date, closed_
         )
         selected = cur.fetchall()
 
+    # 读取阶段：准备所有开仓参数，不写库
+    inserts: list[tuple] = []
     for op in selected:
         vid = int(op["variety_id"])
         if vid in closed_today:
             continue
+
+        # 幂等保护：该品种当日已有 open 持仓则跳过，防止重跑时重复开仓
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS cnt FROM trading_positions "
+                "WHERE variety_id=%s AND open_date=%s AND status='open'",
+                (vid, signal_date),
+            )
+            if cur.fetchone()["cnt"] > 0:
+                logger.debug("品种 %s 当日已有持仓，跳过重复开仓", vid)
+                continue
 
         close_price = _get_close_price(conn, vid, signal_date)
         if close_price is None:
@@ -108,27 +128,26 @@ def execute_open_operations(conn: pymysql.Connection, signal_date: date, closed_
             continue
 
         direction = "LONG" if op["signal_type"] == "A_OPEN_LONG" else "SHORT"
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO trading_positions
-                    (operation_id, variety_id, variety_name, sector, direction,
-                     open_date, open_price, size_pct, status)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'open')
-                """,
-                (
-                    op["id"],
-                    vid,
-                    op["variety_name"],
-                    op["sector"],
-                    direction,
-                    signal_date,
-                    close_price,
-                    SIZE_PCT,
-                ),
-            )
-        conn.commit()
+        inserts.append((
+            op["id"], vid, op["variety_name"], op["sector"], direction,
+            signal_date, close_price, SIZE_PCT,
+        ))
         logger.info("开仓 variety_id=%s direction=%s price=%.4f", vid, direction, close_price)
+
+    # 写入阶段：批量提交，保证原子性
+    if inserts:
+        with conn.cursor() as cur:
+            for args in inserts:
+                cur.execute(
+                    """
+                    INSERT INTO trading_positions
+                        (operation_id, variety_id, variety_name, sector, direction,
+                         open_date, open_price, size_pct, status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'open')
+                    """,
+                    args,
+                )
+        conn.commit()
 
 
 def update_account_daily(conn: pymysql.Connection, signal_date: date) -> None:

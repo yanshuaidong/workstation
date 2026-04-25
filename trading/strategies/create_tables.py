@@ -49,6 +49,7 @@ CREATE_STMTS = [
     """
     CREATE TABLE IF NOT EXISTS trading_operations (
         id            INT AUTO_INCREMENT PRIMARY KEY,
+        signal_id     INT COMMENT '关联 trading_signals.id，便于追溯原始信号明细',
         signal_date   DATE NOT NULL,
         variety_id    INT NOT NULL,
         variety_name  VARCHAR(20),
@@ -93,6 +94,14 @@ CREATE_STMTS = [
         created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uk_date (record_date)
     ) COMMENT='自动化账户每日净值曲线（单账户）'
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS trading_signal_state (
+        variety_id  INT NOT NULL,
+        state_date  DATE NOT NULL COMMENT '该状态对应的信号日期',
+        state       ENUM('none','long','short') NOT NULL DEFAULT 'none',
+        PRIMARY KEY (variety_id, state_date)
+    ) COMMENT='品种信号状态快照：每次写信号后更新，替代全表扫描实现O(log n)状态查询'
     """,
 ]
 
@@ -140,6 +149,23 @@ def init_account_daily(conn) -> None:
     print(f"trading_account_daily 初始化：equity={INITIAL_CAPITAL}")
 
 
+def run_migrations(conn) -> None:
+    """对已有数据库执行增量迁移，新建库走 CREATE_STMTS 即可，无需重复执行。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='trading_operations' "
+            "AND COLUMN_NAME='signal_id'"
+        )
+        if cur.fetchone()["cnt"] == 0:
+            cur.execute(
+                "ALTER TABLE trading_operations "
+                "ADD COLUMN signal_id INT COMMENT '关联 trading_signals.id' AFTER id"
+            )
+            print("迁移：trading_operations 添加 signal_id 列")
+    conn.commit()
+
+
 def main() -> None:
     conn = get_connection()
     try:
@@ -154,6 +180,7 @@ def main() -> None:
                 print(f"创建表完成")
             conn.commit()
 
+        run_migrations(conn)
         init_pool(conn)
         init_account_daily(conn)
         print("所有表创建完成。")

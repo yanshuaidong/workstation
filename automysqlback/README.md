@@ -1,240 +1,45 @@
-# 期货数据系统后端 (AutoMySQLBack)
+# AutoMySQLBack
 
-## 项目简介
+期货数据系统后端服务，基于 Flask 提供 REST API，负责系统设置、合约与历史行情、财联社新闻、阿里云 OSS、持仓、品种事件和量化交易看板相关能力。
 
-期货数据查询与业务后端服务，提供系统设置、合约与历史数据查询、财联社新闻与 OSS、持仓、品种事件，以及量化策略 `trading` 模块相关 HTTP API。默认通过 MySQL 读取数据；新闻截图等业务使用阿里云 OSS。
+服务默认监听 `7001` 端口，统一以 `/api` 作为接口前缀，数据存储使用 MySQL，新闻截图等对象文件使用阿里云 OSS。
+
+## 功能概览
+
+- 系统设置读取与更新
+- 主连合约列表查询
+- 合约历史行情查询
+- 财联社新闻 CRUD、校验流转、跟踪流转
+- OSS 预签名上传与访问地址生成
+- 期货持仓 CRUD、状态切换、统计
+- 品种事件 CRUD 与近期事件聚合
+- Trading 模块信号、操作建议、持仓、资金曲线、池子配置、市场上下文、K 线数据查询
 
 ## 技术栈
 
-- **后端**：Flask、Flask-CORS
-- **依赖库（见 `requirements.txt`）**：PyMySQL、pandas、numpy、APScheduler、requests、oss2、python-dotenv、`ta`、cryptography
-- **数据**：MySQL（连接信息由环境变量或本地配置提供）
-- **对象存储**：阿里云 OSS（新闻截图、预签名上传等）
-- **部署**：Docker（镜像内监听 7001；`Dockerfile` 含健康检查 `GET /api/settings`）
+- Python 3.10
+- Flask 2.3
+- Flask-CORS
+- PyMySQL
+- APScheduler
+- requests
+- oss2
+- python-dotenv
+- pandas / numpy / ta
 
-## 核心能力模块
+依赖定义见 [requirements.txt](D:/ysd/workstation/automysqlback/requirements.txt)。
 
-- 系统设置（`/api/settings`）
-- 期货合约列表与历史数据（`/api/contracts/*`、`/api/history/data`）
-- 财联社新闻 CRUD、处理与跟踪（`/api/news/*`），以及 OSS 预签名（`/api/oss/*`）
-- 期货持仓 CRUD 与统计（`/api/positions/*`）
-- 品种事件 CRUD 与近期事件（`/api/events/*`）
-- 量化策略：信号面板、操作建议、持仓盈亏、资金曲线、池子 A、市场上下文、品种列表与 K 线（`/api/trading/*`）
+## 项目结构
 
-## 快速启动
-
-### 依赖与入口
-
-```bash
-pip install -r requirements.txt
-python start.py
-```
-
-服务监听 `0.0.0.0:7001`（见 `start.py`）。
-
-### macOS：同目录脚本
-
-```bash
-cd automysqlback
-./mac.devrun.sh
-```
-
-脚本会创建或复用 `.venv`、按 `requirements.txt` 安装/更新依赖（通过时间戳判断）、再执行 `python start.py`。默认开发地址：`http://127.0.0.1:7001`。
-
-### Windows：同目录脚本
-
-```bat
-cd automysqlback
-win.devrun.bat
-```
-
-`win.devrun.bat` 用于 Windows 环境的一键本地启动：会自动创建或复用 `.venv`、按需安装/更新 `requirements.txt` 依赖，然后启动 `start.py`（默认地址：`http://127.0.0.1:7001`）。
-
-### Docker
-
-```bash
-docker build -t automysqlback .
-docker run -d -p 7001:7001 \
-  -e DB_HOST=your_db_host \
-  -e DB_USER=your_db_user \
-  -e DB_PASSWORD=your_db_password \
-  automysqlback
-```
-
-按需传入 `DB_*`、OSS 及 `ENVIRONMENT` 等变量（见下表）。
-
-## 环境变量
-
-| 变量名 | 说明 |
-|--------|------|
-| `DB_HOST` | 数据库主机 |
-| `DB_PORT` | 端口，默认 `3306` |
-| `DB_USER` | 用户名 |
-| `DB_PASSWORD` | 密码 |
-| `DB_NAME` | 库名，默认 `futures` |
-| `ENVIRONMENT` | 运行环境标识，默认 `development`；非开发且缺少关键 `DB_*` 时进程会退出 |
-| `OSS_ENDPOINT` | OSS Endpoint |
-| `OSS_BUCKET` | Bucket 名 |
-| `OSS_ACCESS_KEY_ID` | 访问 Key |
-| `OSS_ACCESS_KEY_SECRET` | 访问 Secret |
-| `OSS_BASE_URL` | 可选，公网访问基 URL |
-
-启动时会校验 `DB_HOST`、`DB_USER`、`DB_PASSWORD`、`DB_NAME` 是否设置；OSS 相关在调用 OSS/新闻截图链路时使用（见 `app.py` 中 `OSS_CONFIG`）。
-
-本地配置：存在时依次加载当前目录下的 `.env`、`env.production`（见 `app.py` 中 `load_env_config`）。
-
----
-
-## API 说明
-
-**公共约定**
-
-- 默认端口：**7001**
-- 统一响应：`{ "code": 0 \| 1, "message": string, "data": object }`（成功为 `0`，失败为 `1`）
-
----
-
-### 一、系统设置（2）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/settings` | 读取系统配置 |
-| POST | `/api/settings` | 更新系统配置并刷新定时任务相关设置 |
-
----
-
-### 二、合约与历史数据（2）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/contracts/list` | 合约列表 |
-| GET | `/api/history/data` | 历史数据（查询参数含 `symbol` 等） |
-
----
-
-### 三、新闻（11）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/news/stats` | 新闻统计 |
-| GET | `/api/news/list` | 分页与筛选列表 |
-| POST | `/api/news/create` | 创建 |
-| GET | `/api/news/detail/<news_id>` | 详情 |
-| PUT | `/api/news/update/<news_id>` | 更新 |
-| DELETE | `/api/news/delete/<news_id>` | 删除（含关联 OSS/跟踪等逻辑，见实现） |
-| GET | `/api/news/process/unreviewed` | 待校验新闻 |
-| POST | `/api/news/process/review` | 标记已校验 |
-| GET | `/api/news/process/tracking-list` | 跟踪列表 |
-| POST | `/api/news/process/update-tracking` | 更新跟踪节点 |
-| POST | `/api/news/process/init-tracking` | 初始化跟踪记录 |
-
-### 四、OSS（2）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/oss/upload-url` | 预签名上传 URL |
-| POST | `/api/oss/access-url` | 预签名访问 URL |
-
----
-
-### 五、持仓（7）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/positions/list` | 列表 |
-| POST | `/api/positions/create` | 创建 |
-| GET | `/api/positions/detail/<position_id>` | 详情 |
-| PUT | `/api/positions/update/<position_id>` | 更新 |
-| DELETE | `/api/positions/delete/<position_id>` | 删除 |
-| GET | `/api/positions/stats` | 统计 |
-| POST | `/api/positions/toggle-status/<position_id>` | 切换有仓/空仓 |
-
----
-
-### 六、品种事件（6）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/events/list` | 列表（需 `symbol` 等，见 `events_routes.py`） |
-| POST | `/api/events/create` | 创建 |
-| GET | `/api/events/detail/<event_id>` | 详情 |
-| PUT | `/api/events/update/<event_id>` | 更新 |
-| DELETE | `/api/events/delete/<event_id>` | 删除 |
-| GET | `/api/events/recent` | 近期事件 |
-
-数据表：`futures_events`（见 `events_routes.py`）。
-
----
-
-### 七、量化策略 Trading（10）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/trading/signals` | 信号面板；可选 `date`、`variety_name`、`signal_type`，默认取 `trading_signals.signal_date` 最新日期 |
-| GET | `/api/trading/operations` | 操作建议；可选 `date`、`variety_name`、`is_selected`，默认取 `trading_operations.signal_date` 最新日期 |
-| GET | `/api/trading/positions` | 当前开放持仓与浮动盈亏 |
-| GET | `/api/trading/positions/history` | 已平仓历史；可选 `limit`（1–500，默认 100） |
-| GET | `/api/trading/account/curve` | 资金曲线；可选 `start_date`、`end_date` |
-| GET | `/api/trading/account/summary` | 账户摘要；可选 `date` |
-| GET | `/api/trading/pool` | 池子 A 品种列表 |
-| GET | `/api/trading/market-context` | 市场上下文；必填 `variety_id`；可选 `days`（3–60，默认 10）、`end_date` |
-| GET | `/api/trading/variety-list` | 含 `contracts_symbol` 的品种列表 |
-| GET | `/api/trading/variety-kline` | 品种 K 线与主力/散户指标；必填 `variety_id`；可选 `start_date`、`end_date`，默认近 60 天 |
-
-相关数据表包括但不限于：`trading_signals`、`trading_operations`、`trading_positions`、`trading_account_daily`、`trading_pool`、`fut_variety`、`fut_strength`、`fut_daily_close`，以及按品种拼表名的 `hist_{contracts_symbol}`（见 `trading_routes.py`）。
-
----
-
-## 接口数量汇总
-
-| 模块 | 数量 |
-|------|------|
-| 系统设置 | 2 |
-| 合约与历史 | 2 |
-| 新闻 | 11 |
-| OSS | 2 |
-| 持仓 | 7 |
-| 事件 | 6 |
-| 量化策略 | 10 |
-| **合计** | **40** |
-
----
-
-## 数据库表（与当前代码的对应关系）
-
-**应用启动时 `init_database()` 会创建的表**（见 `app.py`）
-
-| 表名 | 说明 |
-|------|------|
-| `contracts_main` | 主连合约 |
-| `system_config` | 系统配置 |
-| `contract_list_update_log` | 合约列表更新记录 |
-| `history_update_log` | 主连历史更新日志 |
-| `recommendation_log` | 每日多空推荐记录 |
-| `news_red_telegraph` | 财联社新闻主表 |
-| `news_process_tracking` | 新闻处理跟踪 |
-| `futures_positions` | 期货持仓（业务持仓模块） |
-
-**不在上述初始化中创建、由接口查询使用的表（示例）**
-
-| 表名 | 说明 |
-|------|------|
-| `futures_events` | 品种事件 |
-| `trading_*`、`fut_*` | 量化策略与行情/品种维表 |
-| `hist_{symbol}` | 各品种历史 K 线（表名随品种动态） |
-
----
-
-## 目录结构
-
-```
+```text
 automysqlback/
-├── app.py                 # Flask 应用、系统设置 API、数据库初始化、调度器
-├── start.py               # 启动入口
-├── mac.devrun.sh          # macOS 本地一键启动脚本
-├── win.devrun.bat         # Windows 本地一键启动脚本
-├── requirements.txt
+├── app.py
+├── start.py
 ├── Dockerfile
+├── requirements.txt
+├── mac.devrun.sh
+├── win.devrun.bat
+├── logs/
 ├── routes/
 │   ├── __init__.py
 │   ├── contracts_routes.py
@@ -242,13 +47,283 @@ automysqlback/
 │   ├── positions_routes.py
 │   ├── events_routes.py
 │   └── trading_routes.py
+├── tests/
+│   └── test_assistant_signal_explanations.py
 └── README.md
 ```
 
----
+## 运行方式
 
-## 行为与运维说明（当前实现）
+### 本地启动
 
-- 定时任务是否启用及参数由 `system_config` 决定（默认自动更新关闭，见 `init_database` 插入的默认值）。
-- OSS 对象路径组织方式见 `news_routes` 与 OSS 相关逻辑（如按日期分目录）。
-- 新闻处理包含标签校验与多时点跟踪（如 3/7/14/28 天），与 `news_process_tracking` 字段一致。
+```bash
+cd automysqlback
+pip install -r requirements.txt
+python start.py
+```
+
+启动后服务监听：
+
+```text
+http://127.0.0.1:7001
+```
+
+### macOS 启动脚本
+
+```bash
+cd automysqlback
+./mac.devrun.sh
+```
+
+脚本会创建或复用 `.venv`，按 `requirements.txt` 安装依赖后启动服务。
+
+### Windows 启动脚本
+
+```bat
+cd automysqlback
+win.devrun.bat
+```
+
+脚本会创建或复用 `.venv`，按 `requirements.txt` 安装依赖后启动服务。
+
+### Docker 启动
+
+```bash
+docker build -t automysqlback .
+docker run -d -p 7001:7001 \
+  -e DB_HOST=your_db_host \
+  -e DB_USER=your_db_user \
+  -e DB_PASSWORD=your_db_password \
+  -e DB_NAME=futures \
+  automysqlback
+```
+
+容器镜像定义见 [Dockerfile](D:/ysd/workstation/automysqlback/Dockerfile)，健康检查地址为 `GET /api/settings`。
+
+## 环境变量
+
+### 数据库
+
+| 变量名 | 说明 |
+| --- | --- |
+| `DB_HOST` | MySQL 主机地址 |
+| `DB_PORT` | MySQL 端口，默认 `3306` |
+| `DB_USER` | MySQL 用户名 |
+| `DB_PASSWORD` | MySQL 密码 |
+| `DB_NAME` | 数据库名，默认 `futures` |
+| `ENVIRONMENT` | 运行环境标识，默认 `development` |
+
+### OSS
+
+| 变量名 | 说明 |
+| --- | --- |
+| `OSS_ENDPOINT` | OSS Endpoint |
+| `OSS_BUCKET` | Bucket 名称 |
+| `OSS_ACCESS_KEY_ID` | Access Key ID |
+| `OSS_ACCESS_KEY_SECRET` | Access Key Secret |
+| `OSS_BASE_URL` | 公开访问基础地址 |
+
+生产环境下应显式配置数据库连接参数。涉及新闻截图上传、预签名访问等能力时，需要完整配置 OSS 参数。
+
+## 启动行为
+
+### 配置加载
+
+应用启动时按以下顺序查找环境文件：
+
+1. `.env`
+2. `env.production`
+
+找到第一个存在的文件后即加载并停止继续查找。
+
+### 数据库初始化
+
+`start.py` 启动时会调用 `init_database()`，自动创建以下表：
+
+- `contracts_main`
+- `system_config`
+- `contract_list_update_log`
+- `history_update_log`
+- `recommendation_log`
+- `news_red_telegraph`
+- `news_process_tracking`
+- `futures_positions`
+
+同时会初始化：
+
+- `system_config` 默认配置记录
+- `contract_list_update_log` 默认日志记录
+
+### 定时任务
+
+应用启动后会启动 `BackgroundScheduler`。当 `system_config.auto_update_enabled = 1` 时，系统会按照 `daily_update_time` 触发自动更新任务，并向以下地址发起请求：
+
+```text
+POST http://localhost:7002/api/history/update-all
+```
+
+请求体包含最近 30 天的日期范围。
+
+### 日志目录
+
+启动脚本会确保 [logs](D:/ysd/workstation/automysqlback/logs) 目录存在，用于本地运行时日志输出。
+
+## 接口约定
+
+- 基础前缀：`/api`
+- 默认端口：`7001`
+- 返回格式：
+
+```json
+{
+  "code": 0,
+  "message": "获取成功",
+  "data": {}
+}
+```
+
+约定说明：
+
+- `code = 0` 表示成功
+- `code = 1` 表示失败
+
+## 接口清单
+
+### 系统设置
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/settings` | 获取系统配置 |
+| `POST` | `/api/settings` | 更新系统配置并重载定时任务 |
+
+### 合约与历史行情
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/contracts/list` | 查询已激活主连合约列表 |
+| `GET` | `/api/history/data` | 查询指定合约历史数据，参数：`symbol`、`start_date`、`end_date` |
+
+### 新闻
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/news/stats` | 查询新闻统计信息 |
+| `GET` | `/api/news/list` | 分页查询新闻列表，支持搜索与筛选 |
+| `POST` | `/api/news/create` | 创建新闻，并同步创建跟踪记录 |
+| `GET` | `/api/news/detail/<news_id>` | 查询新闻详情 |
+| `PUT` | `/api/news/update/<news_id>` | 更新新闻 |
+| `DELETE` | `/api/news/delete/<news_id>` | 删除新闻及其关联截图对象 |
+| `GET` | `/api/news/process/unreviewed` | 获取最近 30 天待校验新闻 |
+| `POST` | `/api/news/process/review` | 标记新闻为已校验 |
+| `GET` | `/api/news/process/tracking-list` | 获取 3/7/14/28 天跟踪列表 |
+| `POST` | `/api/news/process/update-tracking` | 更新跟踪节点完成状态 |
+| `POST` | `/api/news/process/init-tracking` | 为未建档新闻补建跟踪记录 |
+
+### OSS
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/oss/upload-url` | 生成预签名上传地址 |
+| `POST` | `/api/oss/access-url` | 生成预签名访问地址 |
+
+截图对象路径按日期组织，格式如下：
+
+```text
+screenshots/YYYY/MM/DD/<filename>
+```
+
+### 持仓
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/positions/list` | 查询持仓列表，支持 `status`、`direction`、`symbol` 筛选 |
+| `POST` | `/api/positions/create` | 创建持仓记录 |
+| `GET` | `/api/positions/detail/<position_id>` | 查询持仓详情 |
+| `PUT` | `/api/positions/update/<position_id>` | 更新持仓记录 |
+| `DELETE` | `/api/positions/delete/<position_id>` | 删除持仓记录 |
+| `GET` | `/api/positions/stats` | 查询持仓统计 |
+| `POST` | `/api/positions/toggle-status/<position_id>` | 切换有仓/空仓状态 |
+
+### 品种事件
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/events/list` | 查询指定品种事件列表，参数：`symbol`、`start_date`、`end_date` |
+| `POST` | `/api/events/create` | 创建事件 |
+| `GET` | `/api/events/detail/<event_id>` | 查询事件详情 |
+| `PUT` | `/api/events/update/<event_id>` | 更新事件 |
+| `DELETE` | `/api/events/delete/<event_id>` | 删除事件 |
+| `GET` | `/api/events/recent` | 查询近期新增事件，参数：`days`、`limit` |
+
+### Trading
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/trading/signals` | 查询信号面板，参数：`date`、`variety_name`、`signal_type` |
+| `GET` | `/api/trading/operations` | 查询操作建议，参数：`date`、`variety_name`、`is_selected` |
+| `GET` | `/api/trading/positions` | 查询当前开放持仓及浮动盈亏 |
+| `GET` | `/api/trading/positions/history` | 查询已平仓历史，参数：`limit` |
+| `GET` | `/api/trading/account/curve` | 查询资金曲线，参数：`start_date`、`end_date` |
+| `GET` | `/api/trading/account/summary` | 查询账户摘要，参数：`date` |
+| `GET` | `/api/trading/pool` | 查询池子 A 品种列表、启用状态、板块列表 |
+| `PATCH` | `/api/trading/pool/variety/<variety_id>` | 更新池子 A 中单个品种的 `sector` 与 `is_active` |
+| `GET` | `/api/trading/market-context` | 查询市场上下文，参数：`variety_id`、`days`、`end_date` |
+| `GET` | `/api/trading/variety-list` | 查询带 `contracts_symbol` 的品种列表 |
+| `GET` | `/api/trading/variety-kline` | 查询品种 K 线与主力/散户序列，参数：`variety_id`、`start_date`、`end_date` |
+
+## 接口数量
+
+| 模块 | 数量 |
+| --- | --- |
+| 系统设置 | 2 |
+| 合约与历史行情 | 2 |
+| 新闻 | 11 |
+| OSS | 2 |
+| 持仓 | 7 |
+| 品种事件 | 6 |
+| Trading | 11 |
+| 合计 | 41 |
+
+## 数据表说明
+
+### 启动时自动初始化的表
+
+| 表名 | 说明 |
+| --- | --- |
+| `contracts_main` | 主连合约列表 |
+| `system_config` | 系统配置 |
+| `contract_list_update_log` | 合约列表更新日志 |
+| `history_update_log` | 历史数据更新日志 |
+| `recommendation_log` | 每日推荐日志 |
+| `news_red_telegraph` | 财联社新闻主表 |
+| `news_process_tracking` | 新闻处理与跟踪表 |
+| `futures_positions` | 业务持仓表 |
+
+### 接口直接依赖的业务表
+
+| 表名 | 说明 |
+| --- | --- |
+| `futures_events` | 品种事件表 |
+| `trading_signals` | 信号面板数据 |
+| `trading_operations` | 操作建议数据 |
+| `trading_positions` | Trading 持仓与历史持仓 |
+| `trading_account_daily` | 账户日度权益曲线 |
+| `trading_pool` | 池子 A 配置 |
+| `fut_variety` | 品种维表 |
+| `fut_strength` | 主力/散户指标序列 |
+| `fut_daily_close` | 日线收盘价序列 |
+| `hist_{symbol}` | 各合约历史行情表，表名按合约代码动态拼接 |
+
+## 开发入口
+
+- 应用入口：[start.py](D:/ysd/workstation/automysqlback/start.py)
+- Flask 应用与初始化逻辑：[app.py](D:/ysd/workstation/automysqlback/app.py)
+- 路由注册入口：[routes/__init__.py](D:/ysd/workstation/automysqlback/routes/__init__.py)
+
+各模块代码位置：
+
+- 合约与历史行情：[routes/contracts_routes.py](D:/ysd/workstation/automysqlback/routes/contracts_routes.py)
+- 新闻与 OSS：[routes/news_routes.py](D:/ysd/workstation/automysqlback/routes/news_routes.py)
+- 持仓：[routes/positions_routes.py](D:/ysd/workstation/automysqlback/routes/positions_routes.py)
+- 品种事件：[routes/events_routes.py](D:/ysd/workstation/automysqlback/routes/events_routes.py)
+- Trading：[routes/trading_routes.py](D:/ysd/workstation/automysqlback/routes/trading_routes.py)

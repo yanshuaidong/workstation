@@ -55,6 +55,15 @@ def _parse_json(value):
     return {}
 
 
+def _normalize_extra(raw: dict) -> dict:
+    """兼容旧数据：确保 extra_json 始终含前端所需字段。"""
+    raw.setdefault("window", [])
+    raw.setdefault("bg", {})
+    raw.setdefault("trigger", {})
+    raw.setdefault("conditions", {})
+    return raw
+
+
 def _latest_date(cursor, table, col):
     cursor.execute(f"SELECT MAX({col}) AS d FROM {table}")
     row = cursor.fetchone()
@@ -110,7 +119,7 @@ def get_trading_signals():
                 "variety_name": r["variety_name"],
                 "signal_type": r["signal_type"],
                 "main_score": float(r["main_score"]) if r["main_score"] is not None else None,
-                "extra_json": _parse_json(r["extra_json"]),
+                "extra_json": _normalize_extra(_parse_json(r["extra_json"])),
                 "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else "",
             }
             for r in rows
@@ -402,25 +411,93 @@ def get_trading_pool():
     cursor = conn.cursor(pymysql.cursors.DictCursor)
     try:
         cursor.execute(
-            "SELECT id, variety_id, variety_name, sector, is_active, created_at "
-            "FROM trading_pool ORDER BY sector, variety_name"
+            """
+            SELECT v.id AS variety_id, v.name AS variety_name,
+                   COALESCE(p.sector, '') AS sector,
+                   COALESCE(p.is_active, 0) AS is_active
+            FROM fut_variety v
+            LEFT JOIN trading_pool p ON v.id = p.variety_id
+            ORDER BY p.id IS NULL, COALESCE(p.sector, ''), v.name
+            """
         )
         rows = cursor.fetchall()
         pool = [
             {
-                "id": r["id"],
                 "variety_id": r["variety_id"],
                 "variety_name": r["variety_name"],
                 "sector": r["sector"],
                 "is_active": int(r["is_active"]),
-                "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else "",
             }
             for r in rows
         ]
-        return _ok({"pool": pool, "total": len(pool)})
+        active = sum(1 for r in pool if r["is_active"])
+
+        cursor.execute(
+            "SELECT DISTINCT sector FROM trading_pool "
+            "WHERE sector IS NOT NULL AND sector != '' ORDER BY sector"
+        )
+        sectors = [r["sector"] for r in cursor.fetchall()]
+
+        return _ok({"pool": pool, "total": len(pool), "active": active, "sectors": sectors})
     except Exception as exc:
         logger.error("获取池子A失败: %s", exc)
         return _err(f"获取失败: {exc}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@trading_bp.route("/trading/pool/variety/<int:variety_id>", methods=["PATCH"])
+def patch_trading_pool_variety(variety_id):
+    """upsert trading_pool：可更新 is_active 和/或 sector；激活时 sector 不能为空"""
+    conn = _get_conn()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    try:
+        body = request.get_json(silent=True) or {}
+        is_active_in = body.get("is_active", None)
+        sector_in = body.get("sector", None)
+        if is_active_in is None and sector_in is None:
+            return _err("缺少 is_active 或 sector 参数")
+
+        cursor.execute("SELECT name FROM fut_variety WHERE id=%s", (variety_id,))
+        variety = cursor.fetchone()
+        if not variety:
+            return _err("品种不存在")
+
+        cursor.execute(
+            "SELECT sector, is_active FROM trading_pool WHERE variety_id=%s",
+            (variety_id,),
+        )
+        existing = cursor.fetchone()
+
+        final_active = (
+            int(bool(is_active_in)) if is_active_in is not None
+            else (int(existing["is_active"]) if existing else 0)
+        )
+        final_sector = (
+            (sector_in or "").strip() if sector_in is not None
+            else (existing["sector"] if existing else "")
+        )
+
+        if final_active == 1 and not final_sector:
+            return _err("请先选择板块再激活")
+
+        cursor.execute(
+            """
+            INSERT INTO trading_pool (variety_id, variety_name, sector, is_active)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE sector=VALUES(sector), is_active=VALUES(is_active)
+            """,
+            (variety_id, variety["name"], final_sector, final_active),
+        )
+        conn.commit()
+        return _ok(
+            {"variety_id": variety_id, "is_active": final_active, "sector": final_sector},
+            "更新成功",
+        )
+    except Exception as exc:
+        logger.error("更新池子失败: %s", exc)
+        return _err(f"更新失败: {exc}")
     finally:
         cursor.close()
         conn.close()

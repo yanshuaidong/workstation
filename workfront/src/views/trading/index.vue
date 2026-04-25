@@ -19,6 +19,7 @@
         <el-tab-pane label="持仓盈亏" name="/trading/positions" />
         <el-tab-pane label="资金曲线" name="/trading/curve" />
         <el-tab-pane label="K线展示" name="/trading/kline" />
+        <el-tab-pane label="池子管理" name="/trading/pool" />
       </el-tabs>
       <router-view />
     </div>
