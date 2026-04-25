@@ -25,7 +25,7 @@ from pathlib import Path
 import requests
 
 # 导入蓝图模块
-from routes import contracts_bp, news_bp, positions_bp, events_bp, assistant_bp, trading_bp
+from routes import contracts_bp, news_bp, positions_bp, events_bp, trading_bp
 
 # 加载环境变量
 # 优先加载本地 .env 文件，支持多环境配置
@@ -129,7 +129,6 @@ app.register_blueprint(contracts_bp, url_prefix='/api')
 app.register_blueprint(news_bp, url_prefix='/api')
 app.register_blueprint(positions_bp, url_prefix='/api')
 app.register_blueprint(events_bp, url_prefix='/api')
-app.register_blueprint(assistant_bp, url_prefix='/api')
 app.register_blueprint(trading_bp, url_prefix='/api')
 
 def init_database():

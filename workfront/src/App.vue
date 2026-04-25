@@ -43,10 +43,6 @@
               <el-icon class="menu-icon"><DataLine /></el-icon>
               <span class="menu-text">期货K线图</span>
             </el-menu-item>
-            <el-menu-item index="/assistant/signals" class="mobile-menu-item">
-              <el-icon class="menu-icon"><DataBoard /></el-icon>
-              <span class="menu-text">辅助决策</span>
-            </el-menu-item>
             <el-menu-item index="/trading/signals" class="mobile-menu-item">
               <el-icon class="menu-icon"><TrendCharts /></el-icon>
               <span class="menu-text">量化策略</span>
@@ -85,10 +81,6 @@
             <el-menu-item index="/futures-chart" class="menu-item">
               <el-icon class="menu-icon"><DataLine /></el-icon>
               <span class="menu-text">期货K线图</span>
-            </el-menu-item>
-            <el-menu-item index="/assistant/signals" class="menu-item">
-              <el-icon class="menu-icon"><DataBoard /></el-icon>
-              <span class="menu-text">辅助决策</span>
             </el-menu-item>
             <el-menu-item index="/trading/signals" class="menu-item">
               <el-icon class="menu-icon"><TrendCharts /></el-icon>
@@ -141,7 +133,7 @@ export default {
   },
   computed: {
     activeMenuPath() {
-      return this.$route.path.startsWith('/assistant') ? '/assistant/signals' : this.$route.path
+      return this.$route.path
     }
   },
   

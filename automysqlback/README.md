@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-期货数据查询与业务后端服务，提供系统设置、合约与历史数据查询、财联社新闻与 OSS、持仓、品种事件，以及辅助决策（信号、操作建议、账户曲线、市场上下文等）相关 HTTP API。默认通过 MySQL 读取数据；新闻截图等业务使用阿里云 OSS。
+期货数据查询与业务后端服务，提供系统设置、合约与历史数据查询、财联社新闻与 OSS、持仓、品种事件，以及量化策略 `trading` 模块相关 HTTP API。默认通过 MySQL 读取数据；新闻截图等业务使用阿里云 OSS。
 
 ## 技术栈
 
@@ -19,7 +19,7 @@
 - 财联社新闻 CRUD、处理与跟踪（`/api/news/*`），以及 OSS 预签名（`/api/oss/*`）
 - 期货持仓 CRUD 与统计（`/api/positions/*`）
 - 品种事件 CRUD 与近期事件（`/api/events/*`）
-- 辅助决策：信号、操作建议、持仓与历史持仓、资金曲线与账户摘要、市场上下文、品种列表与 K 线（`/api/assistant/*`）
+- 量化策略：信号面板、操作建议、持仓盈亏、资金曲线、池子 A、市场上下文、品种列表与 K 线（`/api/trading/*`）
 
 ## 快速启动
 
@@ -166,21 +166,22 @@ docker run -d -p 7001:7001 \
 
 ---
 
-### 七、辅助决策 Assistant（9）
+### 七、量化策略 Trading（10）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/assistant/signals` | 信号列表；查询参数如 `date`、`variety_id`、`variety_name`、`indicator`、`direction` |
-| GET | `/api/assistant/operations` | 操作建议；查询参数如 `date`、`account_type`（默认 `mechanical`）、`variety_id`、`strategy`、`direction` |
-| GET | `/api/assistant/positions` | 当前开放持仓；可选 `account_type` |
-| GET | `/api/assistant/positions/history` | 已平仓历史；可选 `account_type`、`limit`（1–500，默认 100） |
-| GET | `/api/assistant/account/curve` | 资金曲线；可选 `start_date`、`end_date`、`account_type` |
-| GET | `/api/assistant/account/summary` | 账户摘要；可选 `date` |
-| GET | `/api/assistant/market-context` | 市场上下文；必填 `variety_id`；可选 `days`（3–60，默认 10）、`end_date` |
-| GET | `/api/assistant/variety-list` | 含 `contracts_symbol` 的品种列表 |
-| GET | `/api/assistant/variety-kline` | 品种 K 线与主力/散户指标；必填 `variety_id`；可选 `start_date`、`end_date` |
+| GET | `/api/trading/signals` | 信号面板；可选 `date`、`variety_name`、`signal_type`，默认取 `trading_signals.signal_date` 最新日期 |
+| GET | `/api/trading/operations` | 操作建议；可选 `date`、`variety_name`、`is_selected`，默认取 `trading_operations.signal_date` 最新日期 |
+| GET | `/api/trading/positions` | 当前开放持仓与浮动盈亏 |
+| GET | `/api/trading/positions/history` | 已平仓历史；可选 `limit`（1–500，默认 100） |
+| GET | `/api/trading/account/curve` | 资金曲线；可选 `start_date`、`end_date` |
+| GET | `/api/trading/account/summary` | 账户摘要；可选 `date` |
+| GET | `/api/trading/pool` | 池子 A 品种列表 |
+| GET | `/api/trading/market-context` | 市场上下文；必填 `variety_id`；可选 `days`（3–60，默认 10）、`end_date` |
+| GET | `/api/trading/variety-list` | 含 `contracts_symbol` 的品种列表 |
+| GET | `/api/trading/variety-kline` | 品种 K 线与主力/散户指标；必填 `variety_id`；可选 `start_date`、`end_date`，默认近 60 天 |
 
-相关数据表包括但不限于：`assistant_signals`、`assistant_operations`、`assistant_positions`、`assistant_account_daily`、`fut_variety`、`fut_strength`、`fut_daily_close`，以及按品种拼表名的 `hist_{contracts_symbol}`（见 `assistant_routes.py`）。
+相关数据表包括但不限于：`trading_signals`、`trading_operations`、`trading_positions`、`trading_account_daily`、`trading_pool`、`fut_variety`、`fut_strength`、`fut_daily_close`，以及按品种拼表名的 `hist_{contracts_symbol}`（见 `trading_routes.py`）。
 
 ---
 
@@ -194,8 +195,8 @@ docker run -d -p 7001:7001 \
 | OSS | 2 |
 | 持仓 | 7 |
 | 事件 | 6 |
-| 辅助决策 | 9 |
-| **合计** | **39** |
+| 量化策略 | 10 |
+| **合计** | **40** |
 
 ---
 
@@ -219,7 +220,7 @@ docker run -d -p 7001:7001 \
 | 表名 | 说明 |
 |------|------|
 | `futures_events` | 品种事件 |
-| `assistant_*`、`fut_*` | 辅助决策与行情/品种维表 |
+| `trading_*`、`fut_*` | 量化策略与行情/品种维表 |
 | `hist_{symbol}` | 各品种历史 K 线（表名随品种动态） |
 
 ---
@@ -240,7 +241,7 @@ automysqlback/
 │   ├── news_routes.py
 │   ├── positions_routes.py
 │   ├── events_routes.py
-│   └── assistant_routes.py
+│   └── trading_routes.py
 └── README.md
 ```
 
