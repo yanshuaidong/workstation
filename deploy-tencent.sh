@@ -15,6 +15,7 @@ PROJECT_DIR=${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 FRONTEND_DIR="${PROJECT_DIR}/workfront"
 BACKEND_DIR="${PROJECT_DIR}/automysqlback"
 VENV_DIR="${BACKEND_DIR}/.venv"
+FRONTEND_DEPLOY_DIR=${FRONTEND_DEPLOY_DIR:-/var/www/workstation/dist}
 SERVICE_NAME="workstation-backend"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 NGINX_SOURCE="${PROJECT_DIR}/nginx/tencent-nginx.conf"
@@ -104,6 +105,29 @@ build_frontend() {
     print_success "前端构建完成: ${FRONTEND_DIR}/dist"
 }
 
+publish_frontend() {
+    require_root
+
+    if [ ! -f "${FRONTEND_DIR}/dist/index.html" ]; then
+        print_error "未找到前端构建产物，请先执行 npm run build"
+        exit 1
+    fi
+
+    print_info "发布前端静态文件到: ${FRONTEND_DEPLOY_DIR}"
+    rm -rf "${FRONTEND_DEPLOY_DIR}"
+    mkdir -p "${FRONTEND_DEPLOY_DIR}"
+    cp -a "${FRONTEND_DIR}/dist/." "${FRONTEND_DEPLOY_DIR}/"
+
+    find "${FRONTEND_DEPLOY_DIR}" -type d -exec chmod 755 {} \;
+    find "${FRONTEND_DEPLOY_DIR}" -type f -exec chmod 644 {} \;
+
+    if id nginx >/dev/null 2>&1; then
+        chown -R nginx:nginx "$(dirname "${FRONTEND_DEPLOY_DIR}")"
+    fi
+
+    print_success "前端静态文件发布完成"
+}
+
 setup_backend() {
     print_info "准备后端 Python 环境..."
     cd "${BACKEND_DIR}"
@@ -169,7 +193,7 @@ install_nginx() {
     if [ "${PROJECT_DIR}" = "/root/workstation" ]; then
         cp "${NGINX_SOURCE}" "${NGINX_TARGET}"
     else
-        sed "s#/root/workstation#${PROJECT_DIR}#g" "${NGINX_SOURCE}" > "${NGINX_TARGET}"
+        sed "s#/var/www/workstation/dist#${FRONTEND_DEPLOY_DIR}#g" "${NGINX_SOURCE}" > "${NGINX_TARGET}"
     fi
 
     if nginx -t; then
@@ -236,6 +260,7 @@ deploy() {
     check_dependencies
     ensure_env
     build_frontend
+    publish_frontend
     install_service
     install_nginx
     restart_services
@@ -251,7 +276,7 @@ usage() {
     echo ""
     echo "命令:"
     echo "  deploy          构建前端、安装后端服务、安装 Nginx 配置并启动"
-    echo "  build           仅构建前端并安装后端依赖"
+    echo "  build           构建并发布前端，同时安装后端依赖"
     echo "  install-service 安装/更新 systemd 后端服务"
     echo "  install-nginx   安装/更新腾讯云 Nginx 配置"
     echo "  start           启动后端服务并重载 Nginx"
@@ -262,6 +287,7 @@ usage() {
     echo ""
     echo "可选环境变量:"
     echo "  PROJECT_DIR     项目目录，默认脚本所在目录"
+    echo "  FRONTEND_DEPLOY_DIR 前端静态文件发布目录，默认 /var/www/workstation/dist"
     echo "  PIP_INDEX_URL   pip 源，默认清华源"
 }
 
@@ -275,6 +301,7 @@ main() {
             check_dependencies
             ensure_env
             build_frontend
+            publish_frontend
             setup_backend
             ;;
         install-service)
