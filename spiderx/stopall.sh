@@ -22,11 +22,9 @@ SERVICES=(
     "bbgnews"
     "chatgpthelper"
     "clsnewscraper"
-    "doubaohelper"
     "drivehelper"
     "eastfutuscraper"
     "futurestop10"
-    "geminihelper"
     "gthtposiscraper"
     "rtrsnews"
 )
@@ -47,8 +45,8 @@ for SERVICE in "${SERVICES[@]}"; do
     
     echo "⏹️  停止 [$SERVICE]..."
     
-    # 检查停止脚本（geminihelper/chatgpthelper/doubaohelper 使用 stop_server.sh，其他使用 stop_scheduler.sh）
-    if [ "$SERVICE" = "geminihelper" ] || [ "$SERVICE" = "chatgpthelper" ] || [ "$SERVICE" = "doubaohelper" ]; then
+    # 检查停止脚本（chatgpthelper 使用 stop_server.sh，其他使用 stop_scheduler.sh）
+    if [ "$SERVICE" = "chatgpthelper" ]; then
         STOP_SCRIPT="$SERVICE_DIR/stop_server.sh"
     else
         STOP_SCRIPT="$SERVICE_DIR/stop_scheduler.sh"
@@ -89,4 +87,3 @@ echo "   - 启动所有服务: ./runall.sh"
 echo "╔═══════════════════════════════════════════════╗"
 echo "║        🎉 停止流程完成                        ║"
 echo "╚═══════════════════════════════════════════════╝"
-
