@@ -7,16 +7,17 @@ import json
 from datetime import datetime
 from typing import Dict, List, Any
 import pymysql
+import sys
+from pathlib import Path
 
-# 数据库配置
-DB_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
+SPIDERX_DIR = Path(__file__).resolve().parent.parent
+if str(SPIDERX_DIR) not in sys.path:
+    sys.path.insert(0, str(SPIDERX_DIR))
+
+from db.mysql_config import get_mysql_config
+
+# 数据库配置（从仓库根目录 .env 读取）
+DB_CONFIG = get_mysql_config()
 
 
 def fetch_today_positions():

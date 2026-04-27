@@ -31,6 +31,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import logging
 
+SPIDERX_DIR = Path(__file__).resolve().parent.parent
+if str(SPIDERX_DIR) not in sys.path:
+    sys.path.insert(0, str(SPIDERX_DIR))
+
+from db.mysql_config import get_mysql_config
+
 # ==================== 配置部分 ====================
 
 # Flask应用配置
@@ -65,15 +71,8 @@ REUTERS_URL_PREFIX = "https://www.reuters.com"
 # 服务端口
 SERVICE_PORT = 1125
 
-# MySQL数据库配置
-MYSQL_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
+# MySQL数据库配置（从仓库根目录 .env 读取）
+MYSQL_CONFIG = get_mysql_config()
 
 # ==================== 数据库操作 ====================
 

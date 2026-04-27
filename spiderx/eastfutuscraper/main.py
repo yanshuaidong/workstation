@@ -4,7 +4,9 @@ import re
 import random
 import requests
 import os
+import sys
 import traceback
+from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -12,6 +14,12 @@ import logging
 import pymysql
 import pandas as pd
 from datetime import datetime
+
+SPIDERX_DIR = Path(__file__).resolve().parent.parent
+if str(SPIDERX_DIR) not in sys.path:
+    sys.path.insert(0, str(SPIDERX_DIR))
+
+from db.mysql_config import get_mysql_config
 
 try:
     import akshare as ak
@@ -28,15 +36,8 @@ if not logger.handlers:
     console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(console_handler)
 
-# 数据库配置
-DB_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
+# 数据库配置（从仓库根目录 .env 读取）
+DB_CONFIG = get_mysql_config()
 
 def get_db_connection():
     """获取数据库连接"""

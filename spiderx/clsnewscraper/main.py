@@ -39,12 +39,19 @@ import re
 import requests
 import aiohttp
 import pymysql
+from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+SPIDERX_DIR = Path(__file__).resolve().parent.parent
+if str(SPIDERX_DIR) not in sys.path:
+    sys.path.insert(0, str(SPIDERX_DIR))
+
+from db.mysql_config import get_mysql_config
 
 # 配置日志
 logging.basicConfig(
@@ -55,15 +62,8 @@ logger = logging.getLogger(__name__)
 
 # ==================== 配置参数 ====================
 
-# 数据库配置
-DB_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
+# 数据库配置（从仓库根目录 .env 读取）
+DB_CONFIG = get_mysql_config()
 
 # AI API 配置
 AI_API_KEY = "sk-qVU4OZNspU5cSTPONFBFD000t2Oy8Tq9U8h74Wm5Phnl8tsB"

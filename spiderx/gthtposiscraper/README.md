@@ -11,16 +11,6 @@
 1、将获取到的3个增仓比例最大的“进攻”品种的json，存储到news_red_telegraph表中。
 2、同时给news_process_tracking表添加一条记录。
 
-链接数据库直接写在py文件代码里面。
-# 数据库配置
-DB_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
 
 
 3个增仓比例最大的“进攻”品种的json格式如下。

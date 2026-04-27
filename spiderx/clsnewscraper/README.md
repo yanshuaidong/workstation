@@ -80,18 +80,7 @@ spiderx/
 
 ## 配置说明
 
-### 数据库配置
-数据库配置在 `main.py` 中，默认连接到阿里云RDS MySQL：
-```python
-DB_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
-```
+
 
 ### AI API配置
 AI分析功能使用的是PoloAI的GPT-4o-mini模型，配置在 `main.py` 中。

@@ -13,10 +13,18 @@ from flask_cors import CORS
 import pymysql
 import sqlite3
 import os
+import sys
 import time
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
+from pathlib import Path
+
+SPIDERX_DIR = Path(__file__).resolve().parent.parent
+if str(SPIDERX_DIR) not in sys.path:
+    sys.path.insert(0, str(SPIDERX_DIR))
+
+from db.mysql_config import get_mysql_config
 
 # ==================== 日志配置 ====================
 
@@ -60,15 +68,8 @@ CORS(app)  # 允许跨域请求
 # 本地数据库路径（crawler.db）
 LOCAL_DB_PATH = os.path.join(os.path.dirname(__file__), '../db/crawler.db')
 
-# 数据库配置（阿里云）
-DB_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
+# 数据库配置（从仓库根目录 .env 读取）
+DB_CONFIG = get_mysql_config()
 
 
 # ==================== 数据库操作 ====================

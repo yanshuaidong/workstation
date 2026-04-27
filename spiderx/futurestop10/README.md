@@ -133,19 +133,6 @@ chmod +x stop_scheduler.sh
 
 ### 数据库配置（双数据库）
 
-#### MySQL配置（阿里云）
-位于 `main.py` 中的 `MYSQL_CONFIG`：
-
-```python
-MYSQL_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
-```
 
 #### SQLite配置（本地）
 位于 `main.py` 中的 `SQLITE_DB_PATH`：

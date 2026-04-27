@@ -19,6 +19,12 @@ import sqlite3
 import logging
 from pathlib import Path
 
+SPIDERX_DIR = Path(__file__).resolve().parent.parent
+if str(SPIDERX_DIR) not in sys.path:
+    sys.path.insert(0, str(SPIDERX_DIR))
+
+from db.mysql_config import get_mysql_config
+
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
@@ -26,15 +32,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 阿里云MySQL数据库配置（news_red_telegraph、news_process_tracking）
-MYSQL_CONFIG = {
-    'host': 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com',
-    'port': 3306,
-    'user': 'ysd',
-    'password': 'Yan1234567',
-    'database': 'futures',
-    'charset': 'utf8mb4'
-}
+# MySQL数据库配置（从仓库根目录 .env 读取）
+MYSQL_CONFIG = get_mysql_config()
 
 # 本地SQLite数据库路径（analysis_task）
 SQLITE_DB_PATH = Path(__file__).parent.parent / "db" / "crawler.db"
