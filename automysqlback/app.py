@@ -28,21 +28,24 @@ import requests
 from routes import contracts_bp, news_bp, positions_bp, events_bp, trading_bp
 
 # 加载环境变量
-# 优先加载本地 .env 文件，支持多环境配置
+# 优先加载项目根目录 .env，确保后端与 trading 策略脚本使用同一套数据库配置
 
 def load_env_config():
     """智能加载环境配置"""
+    app_dir = Path(__file__).resolve().parent
+    project_root = app_dir.parent
     env_files = [
-        '.env',  # 本地配置文件
-        'env.production',  # 生产环境配置
+        project_root / '.env',
+        project_root / 'env.production',
+        app_dir / '.env',
+        app_dir / 'env.production',
     ]
     
     for env_file in env_files:
-        env_path = Path(env_file)
-        if env_path.exists():
-            load_dotenv(env_path)
+        if env_file.exists():
+            load_dotenv(env_file)
             print(f"已加载环境配置: {env_file}")
-            return env_file
+            return str(env_file)
     
     print("未找到环境配置文件，使用默认配置")
     return None
@@ -93,10 +96,10 @@ scheduler = BackgroundScheduler()
 
 # 数据库配置
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com'),
+    'host': os.getenv('DB_HOST', ''),
     'port': int(os.getenv('DB_PORT', 3306)),
-    'user': os.getenv('DB_USER', 'ysd'),
-    'password': os.getenv('DB_PASSWORD', 'Yan1234567'),
+    'user': os.getenv('DB_USER', ''),
+    'password': os.getenv('DB_PASSWORD', ''),
     'database': os.getenv('DB_NAME', 'futures'),
     'charset': 'utf8mb4'
 }
