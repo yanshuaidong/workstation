@@ -39,14 +39,16 @@ def _get_prev_close(conn: pymysql.Connection, variety_id: int, trade_date: date)
 def execute_close_signals(conn: pymysql.Connection, signal_date: date) -> set[int]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT variety_id, signal_type FROM trading_signals "
-            "WHERE signal_date=%s AND signal_type IN ('A_CLOSE_LONG','A_CLOSE_SHORT')",
+            "SELECT id, variety_id, direction, signal_type, cycle_id FROM trading_signals "
+            "WHERE signal_date=%s AND signal_role='close'",
             (signal_date,),
         )
-        close_signals = {int(r["variety_id"]): r["signal_type"] for r in cur.fetchall()}
+        close_signals: dict[tuple[int, str, str | None], dict] = {}
+        for r in cur.fetchall():
+            close_signals[(int(r["variety_id"]), r["direction"], r["cycle_id"])] = r
 
         cur.execute(
-            "SELECT id, variety_id, direction, open_price "
+            "SELECT id, variety_id, direction, open_price, theory_cycle_id "
             "FROM trading_positions WHERE status='open'"
         )
         open_positions = cur.fetchall()
@@ -56,13 +58,10 @@ def execute_close_signals(conn: pymysql.Connection, signal_date: date) -> set[in
     closed_today: set[int] = set()
     for pos in open_positions:
         vid = int(pos["variety_id"])
-        if vid not in close_signals:
-            continue
-        sig_type = close_signals[vid]
         direction = pos["direction"]
-        if direction == "LONG" and sig_type != "A_CLOSE_LONG":
-            continue
-        if direction == "SHORT" and sig_type != "A_CLOSE_SHORT":
+        cycle_id = pos.get("theory_cycle_id")
+        close_signal = close_signals.get((vid, direction, cycle_id))
+        if close_signal is None:
             continue
 
         close_price = _get_close_price(conn, vid, signal_date)
@@ -76,7 +75,7 @@ def execute_close_signals(conn: pymysql.Connection, signal_date: date) -> set[in
         else:
             pnl_pct = (open_price - close_price) / open_price
 
-        updates.append((signal_date, close_price, pnl_pct, pos["id"]))
+        updates.append((signal_date, close_price, pnl_pct, close_signal["id"], pos["id"]))
         closed_today.add(vid)
         logger.info("平仓 variety_id=%s direction=%s pnl_pct=%.4f", vid, direction, pnl_pct)
 
@@ -86,7 +85,7 @@ def execute_close_signals(conn: pymysql.Connection, signal_date: date) -> set[in
             for args in updates:
                 cur.execute(
                     "UPDATE trading_positions SET status='closed', close_date=%s, "
-                    "close_price=%s, pnl_pct=%s WHERE id=%s",
+                    "close_price=%s, pnl_pct=%s, close_signal_id=%s WHERE id=%s",
                     args,
                 )
         conn.commit()
@@ -97,7 +96,8 @@ def execute_close_signals(conn: pymysql.Connection, signal_date: date) -> set[in
 def execute_open_operations(conn: pymysql.Connection, signal_date: date, closed_today: set[int]) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, variety_id, variety_name, sector, signal_type "
+            "SELECT id, signal_id, variety_id, variety_name, sector, signal_type, "
+            "direction, signal_cycle_id "
             "FROM trading_operations "
             "WHERE signal_date=%s AND is_selected=1",
             (signal_date,),
@@ -114,11 +114,18 @@ def execute_open_operations(conn: pymysql.Connection, signal_date: date, closed_
         # 幂等保护：该品种当日已有 open 持仓则跳过，防止重跑时重复开仓
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT COUNT(*) AS cnt FROM trading_positions "
+                "SELECT id FROM trading_positions "
                 "WHERE variety_id=%s AND open_date=%s AND status='open'",
                 (vid, signal_date),
             )
-            if cur.fetchone()["cnt"] > 0:
+            existing = cur.fetchone()
+            if existing:
+                cur.execute(
+                    "UPDATE trading_positions SET operation_id=%s, open_operation_id=%s, "
+                    "open_signal_id=%s, theory_cycle_id=%s WHERE id=%s",
+                    (op["id"], op["id"], op["signal_id"], op["signal_cycle_id"], existing["id"]),
+                )
+                conn.commit()
                 logger.debug("品种 %s 当日已有持仓，跳过重复开仓", vid)
                 continue
 
@@ -127,9 +134,10 @@ def execute_open_operations(conn: pymysql.Connection, signal_date: date, closed_
             logger.warning("品种 %s 当日无收盘价，跳过开仓", vid)
             continue
 
-        direction = "LONG" if op["signal_type"] == "A_OPEN_LONG" else "SHORT"
+        direction = op["direction"] or ("LONG" if op["signal_type"] == "A_OPEN_LONG" else "SHORT")
         inserts.append((
-            op["id"], vid, op["variety_name"], op["sector"], direction,
+            op["id"], op["id"], op["signal_id"], op["signal_cycle_id"],
+            vid, op["variety_name"], op["sector"], direction,
             signal_date, close_price, SIZE_PCT,
         ))
         logger.info("开仓 variety_id=%s direction=%s price=%.4f", vid, direction, close_price)
@@ -141,9 +149,10 @@ def execute_open_operations(conn: pymysql.Connection, signal_date: date, closed_
                 cur.execute(
                     """
                     INSERT INTO trading_positions
-                        (operation_id, variety_id, variety_name, sector, direction,
+                        (operation_id, open_operation_id, open_signal_id, theory_cycle_id,
+                         variety_id, variety_name, sector, direction,
                          open_date, open_price, size_pct, status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'open')
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'open')
                     """,
                     args,
                 )

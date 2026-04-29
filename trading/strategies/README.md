@@ -4,8 +4,8 @@
 
 1. 从 MySQL 读取品种维表、主力/散户强度和收盘价
 2. 对全市场品种计算 A 通道信号
-3. 对池子 A 品种生成操作建议
-4. 按信号执行自动账户的平仓和开仓
+3. 对池子 A 品种生成独立的建议操作
+4. 按建议操作执行真实开仓，并按真实持仓匹配理论平仓信号
 5. 更新账户资金曲线
 
 模块不提供 HTTP 接口，只负责写入策略结果表；对外查询由后端接口读取这些表。
@@ -30,9 +30,9 @@ trading/strategies/
 
 - `db.py`：从项目根目录的 `.env` 或 `env.production` 读取数据库配置，返回 PyMySQL 连接
 - `data_loader.py`：读取 `fut_variety`、`fut_strength`、`fut_daily_close`，并做当日数据完整性检查
-- `signals.py`：计算 A 通道开平仓信号、动量分位分，并写入 `trading_signals`
-- `operations.py`：根据池子 A、仓位上限和板块约束生成操作建议，写入 `trading_operations`
-- `account.py`：执行平仓、开仓并更新 `trading_account_daily` 和 `trading_positions`
+- `signals.py`：计算理论 A 通道开平仓信号、理论周期和动量分位分，并写入 `trading_signals`
+- `operations.py`：根据池子 A、仓位上限和板块约束生成建议操作，写入 `trading_operations`
+- `account.py`：执行真实账户开平仓并更新 `trading_account_daily` 和 `trading_positions`
 - `create_tables.py`：创建策略相关数据表、初始化池子 A 和账户起始记录，并暴露 `sync_pool_with_varieties`
 - `backfill_pool_sectors.py`：一次性迁移脚本，回填老库 `trading_pool` 空 sector 并补齐全品种镜像
 - `daily_run.py`：每日批处理入口，按固定顺序串联全部步骤
@@ -146,12 +146,20 @@ MOMENTUM_LOOKBACK = 30
 - `A_CLOSE_LONG`：`cont3 = True` 且 `m3 < 0`
 - `A_CLOSE_SHORT`：`cont3 = True` 且 `m3 > 0`
 
-随后会经过两层状态过滤：
+随后会经过信号层理论状态机过滤：
 
-1. `compute_signals()` 内部先用状态机过滤，只在本品种此前出现过对应开仓信号的情况下保留平仓信号
-2. `save_signals()` 写库前再读取 `trading_signal_state` 中该品种在当日前的最新状态；如果数据库快照里没有对应方向的激活状态，则不会把该平仓信号写入 `trading_signals`
+1. `compute_signals()` 内部用状态机过滤，只在本品种此前出现过对应开仓信号的情况下保留平仓信号
+2. `save_signals()` 只负责把理论信号写入 `trading_signals`，不会读取真实持仓，也不会用数据库状态快照拦截平仓信号
 
-信号写入完成后，`save_signals()` 会同步更新 `trading_signal_state`，把该品种在当日结束后的状态写成 `none / long / short`。
+`trading_signals` 是理论信号表。每条开仓 / 平仓信号会写入：
+
+- `signal_role`：`open` / `close`
+- `direction`：`LONG` / `SHORT`
+- `cycle_id`：同一轮理论开仓和平仓的周期 ID
+- `related_open_signal_id` / `related_open_date`：理论平仓关联的理论开仓
+- `theory_state_before` / `theory_state_after`：理论状态变化
+
+`trading_signal_state` 不再作为业务事实源，代码不再依赖它判断能否平仓。真实账户是否持仓只看 `trading_positions`。
 
 ### 动量分位分 `main_score`
 
@@ -184,7 +192,7 @@ MOMENTUM_LOOKBACK = 30
 
 `generate_operations(conn, signal_date)` 的输入来自三部分：
 
-- 当日 `trading_signals` 中的开仓信号
+- 当日 `trading_signals` 中 `signal_role='open'` 的理论开仓信号
 - `trading_pool` 中 `is_active = 1` 的池子 A 品种
 - `trading_positions` 中的历史持仓状态
 
@@ -193,23 +201,22 @@ MOMENTUM_LOOKBACK = 30
 1. 删除 `trading_operations` 当日全部旧记录，保证重跑时结果覆盖
 2. 读取在 `signal_date` 之前已经开仓且仍为 `open` 的持仓，作为当前占用槽位
 3. 读取当日已经平仓的品种集合，避免同日反手
-4. 从当日开仓信号里筛出候选，候选必须同时满足：
-   - 品种在 `trading_pool` 且 `is_active = 1`
-   - 品种当前没有历史开放持仓
-   - 品种不在 `closed_today`
-5. 计算可开仓槽位：`entry_capacity = MAX_SLOTS - 当前开放持仓数`
-6. 先排除与当前持仓板块重复的候选，这部分写入 `reject_reason='sector_conflict'`
-7. 对剩余候选按 `main_score` 排序，依次选入：
+4. 从当日理论开仓信号里筛出候选；品种必须在 `trading_pool` 且 `is_active = 1`
+5. 已有真实开放持仓的候选写入 `reject_reason='already_holding'`
+6. 当日刚真实平仓的候选写入 `reject_reason='closed_today'`
+7. 计算可开仓槽位：`entry_capacity = MAX_SLOTS - 当前开放持仓数`
+8. 先排除与当前持仓板块重复的候选，这部分写入 `reject_reason='sector_conflict'`
+9. 对剩余候选按 `main_score` 排序，写入 `selection_rank`，并依次选入：
    - 已用过的板块不可重复
    - 超过剩余槽位的候选写入 `reject_reason='capacity_full'`
    - 同板块后续候选写入 `reject_reason='sector_conflict'`
-8. 将选中和落选结果统一写入 `trading_operations`
+10. 将选中和落选结果统一写入 `trading_operations`
 
 需要注意：
 
 - 非池子 A 品种不会进入 `trading_operations`
-- 已持仓品种不会写入 `trading_operations`
-- 当日刚平仓的品种不会写入 `trading_operations`
+- 已真实持仓品种会进入 `trading_operations`，但标记为 `already_holding`
+- 当日刚真实平仓的品种会进入 `trading_operations`，但标记为 `closed_today`
 - 当可用槽位 `<= 0` 时，当前候选会全部写成 `capacity_full`
 
 ## 账户执行逻辑
@@ -224,10 +231,11 @@ MOMENTUM_LOOKBACK = 30
 
 `execute_close_signals()` 会：
 
-- 读取当日 `trading_signals` 中的 `A_CLOSE_LONG / A_CLOSE_SHORT`
-- 查找当前全部 `status='open'` 的持仓
-- 方向匹配时，使用当日 `fut_daily_close.close_price` 平仓
-- 将持仓更新为 `status='closed'`，同时写入 `close_date`、`close_price`、`pnl_pct`
+- 读取当日 `trading_signals` 中 `signal_role='close'` 的理论平仓信号
+- 查找当前全部 `status='open'` 的真实持仓
+- 只有 `variety_id`、`direction`、`theory_cycle_id` 都匹配时才执行真实平仓
+- 使用当日 `fut_daily_close.close_price` 平仓
+- 将持仓更新为 `status='closed'`，同时写入 `close_signal_id`、`close_date`、`close_price`、`pnl_pct`
 
 `pnl_pct` 为不带杠杆的收益率：
 
@@ -243,8 +251,8 @@ MOMENTUM_LOOKBACK = 30
 - 当日已平仓的品种直接跳过
 - 若同一品种在同一开仓日已经存在 `status='open'` 的记录，则跳过，避免重跑时重复开仓
 - 使用当日 `fut_daily_close.close_price` 作为开仓价
-- `signal_type = A_OPEN_LONG` 时开多，否则开空
-- 新持仓写入 `trading_positions`，`size_pct` 固定为 `SIZE_PCT`
+- `direction` 来自建议表，`signal_type = A_OPEN_LONG` 时为多，否则为空
+- 新持仓写入 `trading_positions`，同时记录 `open_operation_id`、`open_signal_id`、`theory_cycle_id`，`size_pct` 固定为 `SIZE_PCT`
 
 ### 资金曲线
 
@@ -284,11 +292,11 @@ MOMENTUM_LOOKBACK = 30
 | 表名 | 作用 |
 |------|------|
 | `trading_pool` | 池子 A 品种配置 |
-| `trading_signals` | 每日全品种信号 |
-| `trading_operations` | 每日操作建议与落选原因 |
-| `trading_positions` | 自动账户持仓与已平仓记录 |
+| `trading_signals` | 理论信号表：理论开仓、理论平仓、理论周期 |
+| `trading_operations` | 建议表：理论开仓经过池子和组合约束后的建议结果 |
+| `trading_positions` | 真实交易表：账户实际开仓、平仓与盈亏 |
 | `trading_account_daily` | 每日账户权益、现金、持仓市值、日盈亏 |
-| `trading_signal_state` | 每个品种的信号状态快照 |
+| `trading_signal_state` | 旧状态缓存表，不再作为业务事实源 |
 
 其中：
 
@@ -296,7 +304,8 @@ MOMENTUM_LOOKBACK = 30
 - `sync_pool_with_varieties(conn)` 是补齐逻辑的独立入口，`daily_run.py` 每次启动时也会调用一次，保证 `fut_pulse` 新增品种下次批处理就自动纳入可管理列表；新品种 sector 取 `VARIETY_SECTORS`，未覆盖时回退为 `DEFAULT_SECTOR='未分类'`
 - `backfill_pool_sectors.py` 是一次性迁移脚本，用于把老库里已有但 sector 为空的 `trading_pool` 行回填标准板块，同时补齐缺失品种；脚本可重复运行
 - `trading_account_daily` 首次初始化时写入一条起始记录，日期为执行初始化脚本当天
-- `trading_signal_state` 以 `(variety_id, state_date)` 为主键，供信号层快速确认历史状态
+- `reset_strategy_results(conn)` 只清空 `trading_signals`、`trading_operations`、`trading_positions`、`trading_account_daily`、`trading_signal_state`，保留独立配置表 `trading_pool`
+- `trading_signal_state` 不再作为真实账户或理论信号的事实源，后续逻辑以 `trading_signals` 的理论周期字段和 `trading_positions` 的真实持仓字段为准
 
 ## 初始化与运行
 

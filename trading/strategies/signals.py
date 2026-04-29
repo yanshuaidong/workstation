@@ -23,7 +23,12 @@ def _mark_breakpoints(dates: pd.Series) -> pd.Series:
     return diffs.le(7)
 
 
-def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
+def _make_cycle_id(variety_id: int | None, direction: str, open_date: date) -> str:
+    prefix = f"{variety_id}-" if variety_id is not None else ""
+    return f"{prefix}{direction}-{open_date.isoformat()}"
+
+
+def compute_signals(df: pd.DataFrame, variety_id: int | None = None) -> pd.DataFrame:
     out = df.copy()
     out["date_cont"] = _mark_breakpoints(out["trade_date"])
     out["main_diff"] = out["main_force"].diff()
@@ -66,33 +71,87 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
     out["A_CLOSE_LONG"] = cont3 & out["m3"].lt(0)
     out["A_CLOSE_SHORT"] = cont3 & out["m3"].gt(0)
 
-    # 状态机过滤：平仓信号仅在对应开仓信号激活后才生效
-    in_long = False
-    in_short = False
+    # 理论状态机：平仓信号只依赖理论开仓周期，不依赖真实账户持仓。
+    current_state = "none"
+    current_cycle_id: str | None = None
+    current_open_date: date | None = None
     close_long_filtered: list[bool] = []
     close_short_filtered: list[bool] = []
+    signal_roles: list[str | None] = []
+    directions: list[str | None] = []
+    cycle_ids: list[str | None] = []
+    related_open_dates: list[date | None] = []
+    theory_state_before: list[str] = []
+    theory_state_after: list[str] = []
+    signal_states: list[str] = []
 
     for i in range(len(out)):
         open_long  = bool(out["A_OPEN_LONG"].iloc[i])
         open_short = bool(out["A_OPEN_SHORT"].iloc[i])
         close_long = bool(out["A_CLOSE_LONG"].iloc[i])
         close_short = bool(out["A_CLOSE_SHORT"].iloc[i])
+        trade_date = out["trade_date"].iloc[i].date()
 
-        if open_long:
-            in_long, in_short = True, False
+        state_before = current_state
+        role: str | None = None
+        direction: str | None = None
+        row_cycle_id: str | None = None
+        row_open_date: date | None = None
+        close_long_allowed = False
+        close_short_allowed = False
+
+        if close_long and current_state == "long":
+            role = "close"
+            direction = "LONG"
+            row_cycle_id = current_cycle_id
+            row_open_date = current_open_date
+            close_long_allowed = True
+            current_state = "none"
+            current_cycle_id = None
+            current_open_date = None
+        elif close_short and current_state == "short":
+            role = "close"
+            direction = "SHORT"
+            row_cycle_id = current_cycle_id
+            row_open_date = current_open_date
+            close_short_allowed = True
+            current_state = "none"
+            current_cycle_id = None
+            current_open_date = None
+        elif open_long:
+            role = "open"
+            direction = "LONG"
+            row_cycle_id = _make_cycle_id(variety_id, direction, trade_date)
+            current_state = "long"
+            current_cycle_id = row_cycle_id
+            current_open_date = trade_date
         elif open_short:
-            in_long, in_short = False, True
+            role = "open"
+            direction = "SHORT"
+            row_cycle_id = _make_cycle_id(variety_id, direction, trade_date)
+            current_state = "short"
+            current_cycle_id = row_cycle_id
+            current_open_date = trade_date
 
-        close_long_filtered.append(close_long and in_long)
-        close_short_filtered.append(close_short and in_short)
-
-        if close_long and in_long:
-            in_long = False
-        if close_short and in_short:
-            in_short = False
+        close_long_filtered.append(close_long_allowed)
+        close_short_filtered.append(close_short_allowed)
+        signal_roles.append(role)
+        directions.append(direction)
+        cycle_ids.append(row_cycle_id)
+        related_open_dates.append(row_open_date)
+        theory_state_before.append(state_before)
+        theory_state_after.append(current_state)
+        signal_states.append(current_state)
 
     out["A_CLOSE_LONG"] = close_long_filtered
     out["A_CLOSE_SHORT"] = close_short_filtered
+    out["signal_role"] = signal_roles
+    out["direction"] = directions
+    out["cycle_id"] = cycle_ids
+    out["related_open_date"] = related_open_dates
+    out["theory_state_before"] = theory_state_before
+    out["theory_state_after"] = theory_state_after
+    out["signal_state"] = signal_states
 
     scores: list[float] = []
     abs_m3 = out["m3"].abs()
@@ -148,6 +207,12 @@ def _make_extra_json(signal_df: pd.DataFrame, idx_pos: int, signal_type: str) ->
         "main_force": _fv(r["main_force"]),
         "retail": _fv(r["retail"]),
         "m3": m3,
+        "signal_role": r.get("signal_role"),
+        "direction": r.get("direction"),
+        "cycle_id": r.get("cycle_id"),
+        "related_open_date": r.get("related_open_date").isoformat() if r.get("related_open_date") else None,
+        "theory_state_before": r.get("theory_state_before"),
+        "theory_state_after": r.get("theory_state_after"),
         "window": window,
     }
 
@@ -211,53 +276,19 @@ def _make_extra_json(signal_df: pd.DataFrame, idx_pos: int, signal_type: str) ->
     return json.dumps(data, ensure_ascii=False)
 
 
-def _get_db_state(conn: pymysql.Connection, variety_id: int, before_date: date) -> tuple[bool, bool]:
-    """从 trading_signal_state 快照表读取该品种在 before_date 之前的最新持仓状态，O(log n)。"""
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT state FROM trading_signal_state "
-            "WHERE variety_id=%s AND state_date<%s "
-            "ORDER BY state_date DESC LIMIT 1",
-            (variety_id, before_date),
-        )
-        row = cur.fetchone()
-    if row is None:
-        return False, False
-    state = row["state"] if isinstance(row, dict) else row[0]
-    return state == "long", state == "short"
-
-
-def _update_signal_state(
-    cur,
-    signal_date: date,
-    variety_id: int,
-    db_in_long: bool,
-    db_in_short: bool,
-    saved_types: set[str],
-) -> None:
-    """根据本次写入的信号类型更新状态快照，与信号写入在同一事务内。"""
-    in_long = db_in_long
-    in_short = db_in_short
-
-    if "A_OPEN_LONG" in saved_types:
-        in_long, in_short = True, False
-    elif "A_OPEN_SHORT" in saved_types:
-        in_long, in_short = False, True
-
-    if "A_CLOSE_LONG" in saved_types:
-        in_long = False
-    if "A_CLOSE_SHORT" in saved_types:
-        in_short = False
-
-    new_state = "long" if in_long else ("short" if in_short else "none")
+def _find_related_open_signal_id(cur, variety_id: int, cycle_id: str | None) -> int | None:
+    if not cycle_id:
+        return None
     cur.execute(
         """
-        INSERT INTO trading_signal_state (variety_id, state_date, state)
-        VALUES (%s, %s, %s)
-        ON DUPLICATE KEY UPDATE state=VALUES(state)
+        SELECT id FROM trading_signals
+        WHERE variety_id=%s AND cycle_id=%s AND signal_role='open'
+        ORDER BY signal_date DESC, id DESC LIMIT 1
         """,
-        (variety_id, signal_date, new_state),
+        (variety_id, cycle_id),
     )
+    row = cur.fetchone()
+    return int(row["id"]) if row else None
 
 
 def save_signals(
@@ -283,10 +314,6 @@ def save_signals(
     ]
     main_score = float(r["main_score"]) if pd.notna(r.get("main_score")) else None
 
-    # 查数据库确认该品种的实际持仓状态，防止保存孤立平仓信号
-    db_in_long, db_in_short = _get_db_state(conn, variety_id, signal_date)
-
-    saved_types: set[str] = set()
     inserted = 0
     with conn.cursor() as cur:
         # 先清除该品种该日期的全部旧信号，确保重跑时不留残留记录
@@ -297,27 +324,30 @@ def save_signals(
         for col, stype in signal_types:
             if not bool(r.get(col, False)):
                 continue
-            # 平仓信号必须有数据库中对应的未平开仓记录才写入
-            if stype == "A_CLOSE_LONG" and not db_in_long:
-                logger.debug("品种 %s %s 平多信号被过滤：数据库无对应开多记录", variety_id, signal_date)
-                continue
-            if stype == "A_CLOSE_SHORT" and not db_in_short:
-                logger.debug("品种 %s %s 平空信号被过滤：数据库无对应开空记录", variety_id, signal_date)
-                continue
             score = main_score if stype in ("A_OPEN_LONG", "A_OPEN_SHORT") else None
             extra = _make_extra_json(signal_df, idx_pos, stype)
+            signal_role = str(r.get("signal_role") or ("open" if stype in ("A_OPEN_LONG", "A_OPEN_SHORT") else "close"))
+            direction = str(r.get("direction") or ("LONG" if stype.endswith("LONG") else "SHORT"))
+            cycle_id = r.get("cycle_id")
+            related_open_date = r.get("related_open_date") if signal_role == "close" else None
+            related_open_signal_id = _find_related_open_signal_id(cur, variety_id, cycle_id) if signal_role == "close" else None
+            state_before = str(r.get("theory_state_before") or "none")
+            state_after = str(r.get("theory_state_after") or "none")
             cur.execute(
                 """
                 INSERT INTO trading_signals
-                    (signal_date, variety_id, variety_name, signal_type, main_score, extra_json)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                    (signal_date, variety_id, variety_name, signal_type, signal_role,
+                     direction, cycle_id, related_open_signal_id, related_open_date,
+                     theory_state_before, theory_state_after, main_score, extra_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (signal_date, variety_id, variety_name, stype, score, extra),
+                (
+                    signal_date, variety_id, variety_name, stype, signal_role,
+                    direction, cycle_id, related_open_signal_id, related_open_date,
+                    state_before, state_after, score, extra,
+                ),
             )
-            saved_types.add(stype)
             inserted += 1
-        # 与信号写入同一事务更新状态快照
-        _update_signal_state(cur, signal_date, variety_id, db_in_long, db_in_short, saved_types)
     conn.commit()
     return inserted
 
@@ -337,7 +367,7 @@ def run_signals_for_all(conn: pymysql.Connection, signal_date: date) -> dict[str
         if df.empty or df["trade_date"].dt.date.max() < signal_date:
             continue
         try:
-            sig_df = compute_signals(df)
+            sig_df = compute_signals(df, vid)
             save_signals(conn, signal_date, vid, vname, sig_df)
             mask = sig_df["trade_date"].dt.date == signal_date
             row = sig_df[mask]

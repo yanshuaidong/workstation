@@ -105,8 +105,10 @@ def get_trading_signals():
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         cursor.execute(
-            f"SELECT id, signal_date, variety_id, variety_name, signal_type, main_score, "
-            f"extra_json, created_at FROM trading_signals {where} "
+            f"SELECT id, signal_date, variety_id, variety_name, signal_type, signal_role, "
+            f"direction, cycle_id, related_open_signal_id, related_open_date, "
+            f"theory_state_before, theory_state_after, main_score, extra_json, created_at "
+            f"FROM trading_signals {where} "
             f"ORDER BY signal_date DESC, signal_type, variety_name",
             params,
         )
@@ -118,6 +120,13 @@ def get_trading_signals():
                 "variety_id": r["variety_id"],
                 "variety_name": r["variety_name"],
                 "signal_type": r["signal_type"],
+                "signal_role": r["signal_role"],
+                "direction": r["direction"],
+                "cycle_id": r["cycle_id"],
+                "related_open_signal_id": r["related_open_signal_id"],
+                "related_open_date": _date_str(r["related_open_date"]),
+                "theory_state_before": r["theory_state_before"],
+                "theory_state_after": r["theory_state_after"],
                 "main_score": float(r["main_score"]) if r["main_score"] is not None else None,
                 "extra_json": _normalize_extra(_parse_json(r["extra_json"])),
                 "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else "",
@@ -161,7 +170,8 @@ def get_trading_operations():
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         cursor.execute(
             f"SELECT id, signal_date, variety_id, variety_name, sector, signal_type, "
-            f"main_score, is_selected, reject_reason, extra_json, created_at "
+            f"operation_type, direction, signal_cycle_id, main_score, is_selected, "
+            f"reject_reason, selection_rank, extra_json, created_at "
             f"FROM trading_operations {where} "
             f"ORDER BY is_selected DESC, main_score DESC, variety_name",
             params,
@@ -175,9 +185,13 @@ def get_trading_operations():
                 "variety_name": r["variety_name"],
                 "sector": r["sector"],
                 "signal_type": r["signal_type"],
+                "operation_type": r["operation_type"],
+                "direction": r["direction"],
+                "signal_cycle_id": r["signal_cycle_id"],
                 "main_score": float(r["main_score"]) if r["main_score"] is not None else None,
                 "is_selected": int(r["is_selected"] or 0),
                 "reject_reason": r["reject_reason"],
+                "selection_rank": r["selection_rank"],
                 "extra_json": _parse_json(r["extra_json"]),
                 "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else "",
             }
@@ -204,7 +218,8 @@ def get_trading_positions():
         cursor.execute(
             """
             SELECT
-                p.id, p.operation_id, p.variety_id, p.variety_name, p.sector,
+                p.id, p.operation_id, p.open_operation_id, p.open_signal_id,
+                p.close_signal_id, p.theory_cycle_id, p.variety_id, p.variety_name, p.sector,
                 p.direction, p.open_date, p.open_price, p.size_pct,
                 latest.trade_date AS latest_trade_date,
                 latest.close_price AS current_price,
@@ -240,6 +255,10 @@ def get_trading_positions():
             positions.append({
                 "id": r["id"],
                 "operation_id": r["operation_id"],
+                "open_operation_id": r["open_operation_id"],
+                "open_signal_id": r["open_signal_id"],
+                "close_signal_id": r["close_signal_id"],
+                "theory_cycle_id": r["theory_cycle_id"],
                 "variety_id": r["variety_id"],
                 "variety_name": r["variety_name"],
                 "sector": r["sector"],
@@ -270,7 +289,8 @@ def get_trading_positions_history():
     try:
         limit = min(max(int(request.args.get("limit", 100)), 1), 500)
         cursor.execute(
-            "SELECT id, operation_id, variety_id, variety_name, sector, direction, "
+            "SELECT id, operation_id, open_operation_id, open_signal_id, close_signal_id, "
+            "theory_cycle_id, variety_id, variety_name, sector, direction, "
             "open_date, open_price, close_date, close_price, size_pct, pnl_pct, created_at "
             "FROM trading_positions WHERE status='closed' "
             "ORDER BY close_date DESC, id DESC LIMIT %s",
@@ -281,6 +301,10 @@ def get_trading_positions_history():
             {
                 "id": r["id"],
                 "operation_id": r["operation_id"],
+                "open_operation_id": r["open_operation_id"],
+                "open_signal_id": r["open_signal_id"],
+                "close_signal_id": r["close_signal_id"],
+                "theory_cycle_id": r["theory_cycle_id"],
                 "variety_id": r["variety_id"],
                 "variety_name": r["variety_name"],
                 "sector": r["sector"],

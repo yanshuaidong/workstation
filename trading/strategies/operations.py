@@ -9,10 +9,9 @@ import json
 import logging
 from datetime import date
 
-import numpy as np
 import pymysql
 
-from .settings import MAX_SLOTS, SECTOR_BY_VARIETY
+from .settings import MAX_SLOTS
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +39,9 @@ def _get_pool_varieties(conn: pymysql.Connection) -> dict[int, dict]:
 def _get_today_signals(conn: pymysql.Connection, signal_date: date) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, variety_id, variety_name, signal_type, main_score "
+            "SELECT id, variety_id, variety_name, signal_type, direction, cycle_id, main_score "
             "FROM trading_signals WHERE signal_date=%s "
-            "AND signal_type IN ('A_OPEN_LONG','A_OPEN_SHORT')",
+            "AND signal_role='open'",
             (signal_date,),
         )
         return list(cur.fetchall())
@@ -73,24 +72,34 @@ def generate_operations(conn: pymysql.Connection, signal_date: date) -> None:
     entry_capacity = MAX_SLOTS - len(held_variety_ids)
 
     candidates: list[dict] = []
+    rejected: list[dict] = []
     for sig in open_signals:
         vid = int(sig["variety_id"])
         if vid not in pool:
             continue
-        if vid in held_variety_ids or vid in closed_today:
-            continue
-        score = float(sig["main_score"]) if sig["main_score"] is not None else np.nan
-        candidates.append({
+        score = float(sig["main_score"]) if sig["main_score"] is not None else float("nan")
+        candidate = {
             "variety_id": vid,
             "variety_name": sig["variety_name"],
             "sector": pool[vid]["sector"],
             "signal_type": sig["signal_type"],
+            "operation_type": "OPEN",
+            "direction": sig["direction"],
+            "signal_cycle_id": sig["cycle_id"],
             "main_score": score,
             "signal_id": sig["id"],
-        })
+            "selection_rank": None,
+        }
+        if vid in held_variety_ids:
+            rejected.append({**candidate, "reject_reason": "already_holding"})
+            continue
+        if vid in closed_today:
+            rejected.append({**candidate, "reject_reason": "closed_today"})
+            continue
+        candidates.append(candidate)
 
     if entry_capacity <= 0:
-        _save_all_rejected(conn, signal_date, candidates, "capacity_full")
+        _save_all_rejected(conn, signal_date, rejected + candidates, "capacity_full")
         return
 
     sector_filtered: list[dict] = []
@@ -103,11 +112,13 @@ def generate_operations(conn: pymysql.Connection, signal_date: date) -> None:
 
     sector_filtered.sort(
         key=lambda x: (
-            bool(np.isnan(x["main_score"])),
-            -(x["main_score"] if not np.isnan(x["main_score"]) else 0.0),
+            x["main_score"] != x["main_score"],
+            -(x["main_score"] if x["main_score"] == x["main_score"] else 0.0),
             x["variety_name"],
         )
     )
+    for rank, c in enumerate(sector_filtered, start=1):
+        c["selection_rank"] = rank
 
     selected: list[dict] = []
     used_sectors: set[str] = set(start_sectors)
@@ -128,8 +139,9 @@ def generate_operations(conn: pymysql.Connection, signal_date: date) -> None:
                 """
                 INSERT INTO trading_operations
                     (signal_id, signal_date, variety_id, variety_name, sector, signal_type,
-                     main_score, is_selected, reject_reason, extra_json)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,1,NULL,%s)
+                     operation_type, direction, signal_cycle_id, main_score, is_selected,
+                     reject_reason, selection_rank, extra_json)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,NULL,%s,%s)
                 """,
                 (
                     c["signal_id"],
@@ -138,17 +150,22 @@ def generate_operations(conn: pymysql.Connection, signal_date: date) -> None:
                     c["variety_name"],
                     c["sector"],
                     c["signal_type"],
-                    None if np.isnan(c["main_score"]) else c["main_score"],
-                    json.dumps({"rank_note": "selected"}, ensure_ascii=False),
+                    c["operation_type"],
+                    c["direction"],
+                    c["signal_cycle_id"],
+                    None if c["main_score"] != c["main_score"] else c["main_score"],
+                    c["selection_rank"],
+                    json.dumps({"rank_note": "selected", "selection_rank": c["selection_rank"]}, ensure_ascii=False),
                 ),
             )
-        for c in sector_rejected + remaining_rejected:
+        for c in rejected + sector_rejected + remaining_rejected:
             cur.execute(
                 """
                 INSERT INTO trading_operations
                     (signal_id, signal_date, variety_id, variety_name, sector, signal_type,
-                     main_score, is_selected, reject_reason, extra_json)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,0,%s,%s)
+                     operation_type, direction, signal_cycle_id, main_score, is_selected,
+                     reject_reason, selection_rank, extra_json)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s,%s,%s)
                 """,
                 (
                     c["signal_id"],
@@ -157,8 +174,12 @@ def generate_operations(conn: pymysql.Connection, signal_date: date) -> None:
                     c["variety_name"],
                     c["sector"],
                     c["signal_type"],
-                    None if np.isnan(c["main_score"]) else c["main_score"],
+                    c["operation_type"],
+                    c["direction"],
+                    c["signal_cycle_id"],
+                    None if c["main_score"] != c["main_score"] else c["main_score"],
                     c["reject_reason"],
+                    c["selection_rank"],
                     json.dumps({"rank_note": c["reject_reason"]}, ensure_ascii=False),
                 ),
             )
@@ -177,8 +198,9 @@ def _save_all_rejected(
                 """
                 INSERT INTO trading_operations
                     (signal_id, signal_date, variety_id, variety_name, sector, signal_type,
-                     main_score, is_selected, reject_reason, extra_json)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,0,%s,%s)
+                     operation_type, direction, signal_cycle_id, main_score, is_selected,
+                     reject_reason, selection_rank, extra_json)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s,%s,%s)
                 """,
                 (
                     c["signal_id"],
@@ -187,9 +209,13 @@ def _save_all_rejected(
                     c["variety_name"],
                     c["sector"],
                     c["signal_type"],
-                    None if np.isnan(c["main_score"]) else c["main_score"],
-                    reason,
-                    json.dumps({"rank_note": reason}, ensure_ascii=False),
+                    c["operation_type"],
+                    c["direction"],
+                    c["signal_cycle_id"],
+                    None if c["main_score"] != c["main_score"] else c["main_score"],
+                    c.get("reject_reason", reason),
+                    c.get("selection_rank"),
+                    json.dumps({"rank_note": c.get("reject_reason", reason)}, ensure_ascii=False),
                 ),
             )
     conn.commit()

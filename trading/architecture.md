@@ -11,7 +11,7 @@
 database/fut_pulse        采集主力散户强度 + 日收盘价
         │  (fut_variety / fut_strength / fut_daily_close)
         ▼
-trading/strategies        每日批处理：信号 → 操作建议 → 自动账户
+trading/strategies        每日批处理：理论信号 → 建议操作 → 真实交易
         │  (trading_signals / trading_operations / trading_positions /
         │   trading_account_daily / trading_pool / trading_signal_state)
         ▼
@@ -39,12 +39,12 @@ workfront                 Vue 3 前端，通过 /api-a 经 Nginx 反代访问后
 
 | 表名 | 作用 |
 |------|------|
-| `trading_pool` | 池子 A 品种配置（全市场品种镜像，默认 12 个激活 + 板块 + `is_active`） |
-| `trading_signals` | 每日全品种信号（开仓 / 平仓 / `main_score` / `extra_json`） |
-| `trading_operations` | 每日操作建议与落选原因（`is_selected`、`reject_reason`） |
-| `trading_positions` | 自动账户持仓与已平仓记录（`status='open'/'closed'`、`pnl_pct`） |
+| `trading_pool` | 独立配置表：池子 A 品种配置（全市场品种镜像，默认 12 个激活 + 板块 + `is_active`） |
+| `trading_signals` | 理论信号表：理论开仓 / 理论平仓 / 理论周期 / `main_score` / `extra_json` |
+| `trading_operations` | 建议表：理论开仓经过池子、槽位、板块约束后的建议结果与落选原因 |
+| `trading_positions` | 真实交易表：自动账户实际开仓、平仓、来源理论周期与盈亏 |
 | `trading_account_daily` | 每日账户权益、现金、持仓市值、日盈亏 |
-| `trading_signal_state` | 每个品种的信号状态快照，主键 `(variety_id, state_date)` |
+| `trading_signal_state` | 旧状态缓存表，不再作为业务事实源 |
 
 ### 1.3 后端业务表（与策略链路并存）
 
@@ -94,9 +94,9 @@ workfront                 Vue 3 前端，通过 /api-a 经 Nginx 反代访问后
 trading/strategies/
 ├── db.py                     数据库连接
 ├── data_loader.py            读取 fut_variety / fut_strength / fut_daily_close + 完整性检查
-├── signals.py                计算 A 通道开平仓信号 + main_score，写 trading_signals / trading_signal_state
-├── operations.py             生成池子 A 操作建议，写 trading_operations
-├── account.py                自动账户平仓 → 开仓 → 资金曲线
+├── signals.py                计算理论 A 通道开平仓信号 + main_score + 理论周期，写 trading_signals
+├── operations.py             生成池子 A 建议操作，写 trading_operations
+├── account.py                执行真实账户平仓 → 开仓 → 资金曲线
 ├── settings.py               策略常量、默认池子 A、VARIETY_SECTORS 全品种板块映射
 ├── create_tables.py          建表、初始化池子、sync_pool_with_varieties 同步入口
 ├── backfill_pool_sectors.py  一次性迁移脚本：回填老库空 sector、补齐全品种镜像
@@ -123,29 +123,32 @@ MOMENTUM_LOOKBACK = 30
 ```text
 daily_run.py
   ├── check_data_completeness   池子 A 当日 fut_strength 必须齐全，否则终止
-  ├── run_signals_for_all       全品种计算 A_OPEN_LONG/SHORT、A_CLOSE_LONG/SHORT
-  ├── generate_operations       基于池子 A、MAX_SLOTS、板块约束筛选开仓候选
-  ├── execute_close_signals     按当日收盘价平仓，更新 pnl_pct 并返回 closed_today
-  ├── execute_open_operations   按 is_selected 开仓，跳过 closed_today 与已开放持仓
+  ├── run_signals_for_all       全品种计算理论 A_OPEN_LONG/SHORT、A_CLOSE_LONG/SHORT
+  ├── generate_operations       基于池子 A、MAX_SLOTS、板块约束筛选理论开仓候选
+  ├── execute_close_signals     用理论平仓信号匹配真实持仓并平仓
+  ├── execute_open_operations   按 is_selected 的建议操作真实开仓
   └── update_account_daily      逐持仓累计日盈亏，写入资金曲线
 ```
 
 ### 3.4 信号要点
 
 - 开仓信号要求 `cont7=True`、背景窗口 `bg1~bg5` 全部同号且 `bg5` 严格突出，并要求 `main_force` 与 `retail` 在触发窗口连续两日反向变化
-- 平仓信号基于 `m3 = main_force[t] - main_force[t-2]`，并经过 `compute_signals` 内部状态机 + `trading_signal_state` 数据库快照两层过滤
+- 平仓信号基于 `m3 = main_force[t] - main_force[t-2]`，并经过 `compute_signals` 内部理论状态机过滤；理论开仓和平仓通过 `cycle_id`、`related_open_signal_id`、`related_open_date` 关联
+- `trading_signal_state` 不再参与任何业务判断，真实持仓只以 `trading_positions` 为准
 - `main_score` 是 `abs(m3)` 在该品种最近 30 条记录中的分位数，仅用于开仓候选排序，平仓信号不写入 `main_score`
 
 ### 3.5 操作建议筛选规则
 
 1. 候选必须在 `trading_pool` 且 `is_active = 1`
-2. 已有开放持仓的品种、当日已平仓品种直接排除
+2. 已有真实开放持仓的品种写入 `already_holding`，当日真实平仓品种写入 `closed_today`
 3. 与当前持仓板块冲突的候选写入 `reject_reason='sector_conflict'`
 4. 剩余候选按 `main_score` 排序，超过 `MAX_SLOTS - 当前持仓数` 的写入 `capacity_full`，同板块后续候选写入 `sector_conflict`
 
 ### 3.6 账户执行
 
 - 平仓价 / 开仓价均使用当日 `fut_daily_close.close_price`
+- 真实开仓记录 `open_operation_id`、`open_signal_id`、`theory_cycle_id`
+- 真实平仓只匹配同 `variety_id`、`direction`、`theory_cycle_id` 的开放持仓，并记录 `close_signal_id`
 - `pnl_pct` 不带杠杆，资金曲线计算时再乘 `LEVERAGE`
 - 每日权益按 `prev_equity` 为基准累计：`daily_pnl += prev_equity * size_pct * daily_ret * LEVERAGE`
 - 当日已存在 `trading_account_daily` 记录时覆盖更新，保证脚本可重跑

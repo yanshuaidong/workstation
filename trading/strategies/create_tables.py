@@ -39,12 +39,20 @@ CREATE_STMTS = [
         variety_id   INT NOT NULL,
         variety_name VARCHAR(20),
         signal_type  VARCHAR(20) NOT NULL COMMENT 'A_OPEN_LONG/A_OPEN_SHORT/A_CLOSE_LONG/A_CLOSE_SHORT',
+        signal_role  VARCHAR(10) NOT NULL DEFAULT 'open' COMMENT '理论信号角色：open/close',
+        direction    VARCHAR(10) COMMENT '理论方向：LONG/SHORT',
+        cycle_id     VARCHAR(64) COMMENT '理论开平仓周期ID',
+        related_open_signal_id INT COMMENT '平仓信号关联的理论开仓信号ID',
+        related_open_date DATE COMMENT '平仓信号关联的理论开仓日期',
+        theory_state_before VARCHAR(10) COMMENT '理论状态变化前：none/long/short',
+        theory_state_after  VARCHAR(10) COMMENT '理论状态变化后：none/long/short',
         main_score   FLOAT COMMENT '动量分位分（仅 OPEN 信号有值）',
         extra_json   JSON COMMENT '计算明细',
         created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uk_date_variety_signal (signal_date, variety_id, signal_type),
-        KEY idx_date_variety (signal_date, variety_id)
-    ) COMMENT='每日A通道信号记录（全品种）'
+        KEY idx_date_variety (signal_date, variety_id),
+        KEY idx_cycle (variety_id, cycle_id)
+    ) COMMENT='理论信号记录（全品种，含理论开平仓周期）'
     """,
     """
     CREATE TABLE IF NOT EXISTS trading_operations (
@@ -55,9 +63,13 @@ CREATE_STMTS = [
         variety_name  VARCHAR(20),
         sector        VARCHAR(20) COMMENT '板块',
         signal_type   VARCHAR(20) NOT NULL COMMENT 'A_OPEN_LONG/A_OPEN_SHORT',
+        operation_type VARCHAR(10) NOT NULL DEFAULT 'OPEN' COMMENT '建议类型：OPEN',
+        direction     VARCHAR(10) COMMENT '建议方向：LONG/SHORT',
+        signal_cycle_id VARCHAR(64) COMMENT '来源理论信号周期ID',
         main_score    FLOAT COMMENT '动量分位分，决定优先级',
         is_selected   TINYINT(1) DEFAULT 0 COMMENT '是否通过组合约束被选中执行',
         reject_reason VARCHAR(30) COMMENT 'capacity_full/sector_conflict/null（已选中）',
+        selection_rank INT COMMENT '同日开仓候选排序',
         extra_json    JSON,
         created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uk_date_variety_signal (signal_date, variety_id, signal_type),
@@ -68,6 +80,10 @@ CREATE_STMTS = [
     CREATE TABLE IF NOT EXISTS trading_positions (
         id           INT AUTO_INCREMENT PRIMARY KEY,
         operation_id INT COMMENT '关联 trading_operations.id',
+        open_operation_id INT COMMENT '真实开仓来源建议ID',
+        open_signal_id INT COMMENT '真实开仓来源理论信号ID',
+        close_signal_id INT COMMENT '真实平仓来源理论信号ID',
+        theory_cycle_id VARCHAR(64) COMMENT '真实交易对应的理论信号周期ID',
         variety_id   INT NOT NULL,
         variety_name VARCHAR(20),
         sector       VARCHAR(20) COMMENT '板块',
@@ -101,7 +117,7 @@ CREATE_STMTS = [
         state_date  DATE NOT NULL COMMENT '该状态对应的信号日期',
         state       ENUM('none','long','short') NOT NULL DEFAULT 'none',
         PRIMARY KEY (variety_id, state_date)
-    ) COMMENT='品种信号状态快照：每次写信号后更新，替代全表扫描实现O(log n)状态查询'
+    ) COMMENT='旧理论状态快照缓存（不作为业务事实源）'
     """,
 ]
 
@@ -185,21 +201,83 @@ def init_account_daily(conn) -> None:
     print(f"trading_account_daily 初始化：equity={INITIAL_CAPITAL}")
 
 
+def _column_exists(cur, table_name: str, column_name: str) -> bool:
+    cur.execute(
+        "SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND COLUMN_NAME=%s",
+        (table_name, column_name),
+    )
+    return int(cur.fetchone()["cnt"]) > 0
+
+
+def _index_exists(cur, table_name: str, index_name: str) -> bool:
+    cur.execute(
+        "SELECT COUNT(*) AS cnt FROM information_schema.STATISTICS "
+        "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND INDEX_NAME=%s",
+        (table_name, index_name),
+    )
+    return int(cur.fetchone()["cnt"]) > 0
+
+
+def _add_column_if_missing(cur, table_name: str, column_name: str, ddl: str) -> None:
+    if _column_exists(cur, table_name, column_name):
+        return
+    cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {ddl}")
+    print(f"迁移：{table_name} 添加 {column_name} 列")
+
+
+def _add_index_if_missing(cur, table_name: str, index_name: str, ddl: str) -> None:
+    if _index_exists(cur, table_name, index_name):
+        return
+    cur.execute(f"ALTER TABLE {table_name} ADD INDEX {ddl}")
+    print(f"迁移：{table_name} 添加 {index_name} 索引")
+
+
 def run_migrations(conn) -> None:
     """对已有数据库执行增量迁移，新建库走 CREATE_STMTS 即可，无需重复执行。"""
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS "
-            "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='trading_operations' "
-            "AND COLUMN_NAME='signal_id'"
+        _add_column_if_missing(
+            cur,
+            "trading_signals",
+            "signal_role",
+            "signal_role VARCHAR(10) NOT NULL DEFAULT 'open' COMMENT '理论信号角色：open/close' AFTER signal_type",
         )
-        if cur.fetchone()["cnt"] == 0:
-            cur.execute(
-                "ALTER TABLE trading_operations "
-                "ADD COLUMN signal_id INT COMMENT '关联 trading_signals.id' AFTER id"
-            )
-            print("迁移：trading_operations 添加 signal_id 列")
+        _add_column_if_missing(cur, "trading_signals", "direction", "direction VARCHAR(10) COMMENT '理论方向：LONG/SHORT' AFTER signal_role")
+        _add_column_if_missing(cur, "trading_signals", "cycle_id", "cycle_id VARCHAR(64) COMMENT '理论开平仓周期ID' AFTER direction")
+        _add_column_if_missing(cur, "trading_signals", "related_open_signal_id", "related_open_signal_id INT COMMENT '平仓信号关联的理论开仓信号ID' AFTER cycle_id")
+        _add_column_if_missing(cur, "trading_signals", "related_open_date", "related_open_date DATE COMMENT '平仓信号关联的理论开仓日期' AFTER related_open_signal_id")
+        _add_column_if_missing(cur, "trading_signals", "theory_state_before", "theory_state_before VARCHAR(10) COMMENT '理论状态变化前：none/long/short' AFTER related_open_date")
+        _add_column_if_missing(cur, "trading_signals", "theory_state_after", "theory_state_after VARCHAR(10) COMMENT '理论状态变化后：none/long/short' AFTER theory_state_before")
+        _add_index_if_missing(cur, "trading_signals", "idx_cycle", "idx_cycle (variety_id, cycle_id)")
+
+        _add_column_if_missing(cur, "trading_operations", "signal_id", "signal_id INT COMMENT '关联 trading_signals.id' AFTER id")
+        _add_column_if_missing(cur, "trading_operations", "operation_type", "operation_type VARCHAR(10) NOT NULL DEFAULT 'OPEN' COMMENT '建议类型：OPEN' AFTER signal_type")
+        _add_column_if_missing(cur, "trading_operations", "direction", "direction VARCHAR(10) COMMENT '建议方向：LONG/SHORT' AFTER operation_type")
+        _add_column_if_missing(cur, "trading_operations", "signal_cycle_id", "signal_cycle_id VARCHAR(64) COMMENT '来源理论信号周期ID' AFTER direction")
+        _add_column_if_missing(cur, "trading_operations", "selection_rank", "selection_rank INT COMMENT '同日开仓候选排序' AFTER reject_reason")
+
+        _add_column_if_missing(cur, "trading_positions", "open_operation_id", "open_operation_id INT COMMENT '真实开仓来源建议ID' AFTER operation_id")
+        _add_column_if_missing(cur, "trading_positions", "open_signal_id", "open_signal_id INT COMMENT '真实开仓来源理论信号ID' AFTER open_operation_id")
+        _add_column_if_missing(cur, "trading_positions", "close_signal_id", "close_signal_id INT COMMENT '真实平仓来源理论信号ID' AFTER open_signal_id")
+        _add_column_if_missing(cur, "trading_positions", "theory_cycle_id", "theory_cycle_id VARCHAR(64) COMMENT '真实交易对应的理论信号周期ID' AFTER close_signal_id")
     conn.commit()
+
+
+def reset_strategy_results(conn) -> None:
+    """清空策略运行结果，保留 trading_pool 与 fut_* 基础数据。"""
+    tables = [
+        "trading_operations",
+        "trading_positions",
+        "trading_account_daily",
+        "trading_signals",
+        "trading_signal_state",
+    ]
+    with conn.cursor() as cur:
+        for table in tables:
+            cur.execute(f"DELETE FROM {table}")
+            print(f"清空策略结果表：{table}")
+    conn.commit()
+    init_account_daily(conn)
 
 
 def main() -> None:

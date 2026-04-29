@@ -259,10 +259,10 @@ screenshots/YYYY/MM/DD/<filename>
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/trading/signals` | 查询信号面板，参数：`date`、`variety_name`、`signal_type` |
-| `GET` | `/api/trading/operations` | 查询操作建议，参数：`date`、`variety_name`、`is_selected` |
-| `GET` | `/api/trading/positions` | 查询当前开放持仓及浮动盈亏 |
-| `GET` | `/api/trading/positions/history` | 查询已平仓历史，参数：`limit` |
+| `GET` | `/api/trading/signals` | 查询理论信号面板，参数：`date`、`variety_name`、`signal_type`，返回理论方向、周期和开平仓关联字段 |
+| `GET` | `/api/trading/operations` | 查询建议操作，参数：`date`、`variety_name`、`is_selected`，返回建议方向、来源理论周期、排序和落选原因 |
+| `GET` | `/api/trading/positions` | 查询当前真实开放持仓及浮动盈亏，返回真实开仓来源理论信号和建议操作 |
+| `GET` | `/api/trading/positions/history` | 查询真实已平仓历史，参数：`limit`，返回真实平仓来源理论信号 |
 | `GET` | `/api/trading/account/curve` | 查询资金曲线，参数：`start_date`、`end_date` |
 | `GET` | `/api/trading/account/summary` | 查询账户摘要，参数：`date` |
 | `GET` | `/api/trading/pool` | 查询池子 A 品种列表、启用状态、板块列表 |
@@ -304,9 +304,9 @@ screenshots/YYYY/MM/DD/<filename>
 | 表名 | 说明 |
 | --- | --- |
 | `futures_events` | 品种事件表 |
-| `trading_signals` | 信号面板数据 |
-| `trading_operations` | 操作建议数据 |
-| `trading_positions` | Trading 持仓与历史持仓 |
+| `trading_signals` | 理论信号数据：理论开仓、理论平仓、理论周期和关联开仓 |
+| `trading_operations` | 建议操作数据：理论开仓经过池子、槽位、板块约束后的建议结果 |
+| `trading_positions` | 真实交易数据：自动账户实际开仓、平仓、来源理论周期与盈亏 |
 | `trading_account_daily` | 账户日度权益曲线 |
 | `trading_pool` | 池子 A 配置 |
 | `fut_variety` | 品种维表 |
