@@ -121,6 +121,9 @@
                 <el-button type="success" @click="markAsReviewed">
                   校验完成
                 </el-button>
+                <el-button type="warning" @click="markAsSoftAndReviewed" :loading="softReviewLoading">
+                  转软并校验
+                </el-button>
                 <el-button @click="loadUnreviewedNews">
                   刷新
                 </el-button>
@@ -503,6 +506,7 @@ export default {
       // 编辑对话框
       editDialogVisible: false,
       editLoading: false,
+      softReviewLoading: false,
       editForm: {
         id: null,
         title: '',
@@ -587,6 +591,42 @@ export default {
         }
       } catch (error) {
         this.$message.error('标记校验失败：' + error.message)
+      }
+    },
+
+    // 转为软消息并完成校验
+    async markAsSoftAndReviewed() {
+      const currentNews = this.unreviewedData.current_news
+      if (!currentNews) {
+        this.$message.warning('没有待校验的新闻')
+        return
+      }
+
+      this.softReviewLoading = true
+      try {
+        const updateResponse = await request.put(updateNewsApi + '/' + currentNews.id, {
+          message_label: 'soft'
+        })
+
+        if (updateResponse.code !== 0) {
+          this.$message.error(updateResponse.message)
+          return
+        }
+
+        const reviewResponse = await request.post(markNewsReviewedApi, {
+          tracking_id: currentNews.tracking_id
+        })
+
+        if (reviewResponse.code === 0) {
+          this.$message.success('已转为软消息并校验完成')
+          await this.loadUnreviewedNews()
+        } else {
+          this.$message.error(reviewResponse.message)
+        }
+      } catch (error) {
+        this.$message.error('转软并校验失败：' + error.message)
+      } finally {
+        this.softReviewLoading = false
       }
     },
     
