@@ -1,5 +1,6 @@
-const DEFAULT_UP_COLOR = '#ef5350'
-const DEFAULT_DOWN_COLOR = '#26a69a'
+/** 国内配色：阳柱（收≥开）红，阴柱绿 */
+const DEFAULT_UP_COLOR = '#c62828'
+const DEFAULT_DOWN_COLOR = '#2e7d32'
 const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
 function normalizeNumber(value) {
@@ -130,7 +131,7 @@ export function buildAssistantKlineOption({
   const zoomRange = getZoomRange(dates.length)
 
   return {
-    title: { text: `${title} K线`, left: 12, top: 8, textStyle: { fontSize: 13, color: '#3c5168' } },
+    title: { text: `${title} K线`, left: 12, top: 8, textStyle: { fontSize: 13, color: '#1a1a1a', fontWeight: 600 } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, formatter: buildKlineTooltipFormatter },
     axisPointer: { link: [{ xAxisIndex: [0, 1] }] },
     grid: [
@@ -142,7 +143,7 @@ export function buildAssistantKlineOption({
       { type: 'category', data: dates, gridIndex: 1, axisLabel: { fontSize: 11 } }
     ],
     yAxis: [
-      { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#f0f4f8' } } },
+      { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#eeeeee' } } },
       { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { formatter: (value) => `${(value / 10000).toFixed(0)}w` } }
     ],
     dataZoom: [
@@ -171,7 +172,7 @@ export function buildAssistantKlineOption({
         sampling: false,
         coordinateSystem: 'cartesian2d',
         data: volumes,
-        itemStyle: { color: '#b0bec5' }
+        itemStyle: { color: '#bdbdbd' }
       }
     ]
   }
@@ -186,11 +187,11 @@ export function buildAssistantIndexOption({
   const zoomRange = getZoomRange(dates.length)
 
   return {
-    title: { text: title, left: 12, top: 6, textStyle: { fontSize: 13, color: '#3c5168' } },
+    title: { text: title, left: 12, top: 6, textStyle: { fontSize: 13, color: '#1a1a1a', fontWeight: 600 } },
     tooltip: { trigger: 'axis', formatter: buildIndexTooltipFormatter },
     grid: { left: 60, right: 16, top: 36, bottom: 28 },
     xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 11 } },
-    yAxis: { scale: true, splitLine: { lineStyle: { color: '#f0f4f8' } } },
+    yAxis: { scale: true, splitLine: { lineStyle: { color: '#eeeeee' } } },
     dataZoom: [{ type: 'inside', start: zoomRange.start, end: zoomRange.end }],
     series: [{
       name: title,

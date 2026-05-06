@@ -1,12 +1,7 @@
 <template>
   <div class="trading-page">
-    <div class="info-bar">
-      <el-alert
-        title="操作建议仅展示池子A（12个品种）的信号，并已应用组合约束（最多3槽、板块互斥、main_score降序）。落选记录说明了具体原因。"
-        type="info"
-        :closable="false"
-        show-icon
-      />
+    <div class="note-bar">
+      操作建议仅展示池子 A（12 个品种）的信号，并已应用组合约束（最多 3 槽、板块互斥、main_score 降序）。落选记录说明了具体原因。
     </div>
 
     <div class="toolbar">
@@ -22,19 +17,19 @@
         <el-option label="落选" value="0" />
       </el-select>
       <el-input v-model="filters.variety_name" clearable placeholder="品种筛选" class="tool-item" />
-      <el-button type="primary" :loading="loading" @click="fetchOperations">查询</el-button>
+      <el-button :loading="loading" @click="fetchOperations">查询</el-button>
     </div>
 
     <div class="dual-pane" v-if="operations.length || loading">
       <div class="list-pane">
         <div class="pane-header">
-          <div>
+          <div class="pane-header-main">
             <div class="pane-title">建议列表</div>
-            <div class="pane-subtitle">绿色=已选中执行，灰色=落选</div>
+            <div class="pane-subtitle">浅底加左边线=当前聚焦；与「开多/开空」颜色无关</div>
           </div>
           <div class="count-tags">
-            <el-tag type="success" size="small">选中 {{ selectedCount }}</el-tag>
-            <el-tag type="info" size="small">落选 {{ rejectedCount }}</el-tag>
+            <span class="count-pill">选中 {{ selectedCount }}</span>
+            <span class="count-pill count-pill-muted">落选 {{ rejectedCount }}</span>
           </div>
         </div>
 
@@ -49,18 +44,18 @@
           >
             <div class="op-top">
               <span class="op-variety">{{ op.variety_name }}</span>
-              <el-tag
-                size="small"
-                :type="op.signal_type === 'A_OPEN_LONG' ? 'success' : 'danger'"
+              <span
+                class="op-dir"
+                :class="op.signal_type === 'A_OPEN_LONG' ? 'dir-long' : 'dir-short'"
               >
                 {{ op.signal_type === 'A_OPEN_LONG' ? '开多' : '开空' }}
-              </el-tag>
+              </span>
             </div>
             <div class="op-sector">{{ op.sector }}</div>
             <div class="op-bottom">
-              <el-tag :type="op.is_selected ? 'success' : 'info'" size="small" effect="plain">
-                {{ op.is_selected ? '✓ 已选中' : ('✗ ' + rejectLabel(op.reject_reason)) }}
-              </el-tag>
+              <span class="op-status" :class="op.is_selected ? 'status-on' : 'status-off'">
+                {{ op.is_selected ? '已选中执行' : ('落选：' + rejectLabel(op.reject_reason)) }}
+              </span>
               <span class="op-score">
                 {{ op.main_score !== null && op.main_score !== undefined
                   ? `分位 ${(op.main_score * 100).toFixed(1)}%`
@@ -75,11 +70,12 @@
         <template v-if="activeOp">
           <div class="detail-header">
             <div class="detail-title">{{ activeOp.variety_name }}</div>
-            <el-tag
-              :type="activeOp.signal_type === 'A_OPEN_LONG' ? 'success' : 'danger'"
+            <span
+              class="detail-dir"
+              :class="activeOp.signal_type === 'A_OPEN_LONG' ? 'dir-long' : 'dir-short'"
             >
               {{ activeOp.signal_type === 'A_OPEN_LONG' ? 'A-开多' : 'A-开空' }}
-            </el-tag>
+            </span>
           </div>
 
           <div class="detail-grid">
@@ -101,8 +97,8 @@
             </div>
             <div class="detail-item">
               <div class="detail-label">执行状态</div>
-              <div class="detail-value" :class="activeOp.is_selected ? 'text-green' : 'text-gray'">
-                {{ activeOp.is_selected ? '✓ 已选中执行' : ('✗ 落选：' + rejectLabel(activeOp.reject_reason)) }}
+              <div class="detail-value" :class="activeOp.is_selected ? 'state-ok' : 'state-muted'">
+                {{ activeOp.is_selected ? '已选中执行' : ('落选：' + rejectLabel(activeOp.reject_reason)) }}
               </div>
             </div>
           </div>
@@ -218,12 +214,21 @@ export default {
   gap: 16px;
 }
 
-.info-bar,
+.note-bar {
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #5c5c5c;
+}
+
 .empty-card {
   padding: 14px 18px;
-  border-radius: 14px;
-  border: 1px solid #e7edf4;
-  background: #fbfdff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
 }
 
 .toolbar {
@@ -246,8 +251,8 @@ export default {
 
 .list-pane,
 .detail-pane {
-  border: 1px solid #e7edf4;
-  border-radius: 20px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
   background: #fff;
 }
 
@@ -265,24 +270,49 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 20px;
   margin-bottom: 14px;
 }
 
+.pane-header-main {
+  flex: 1;
+  min-width: 0;
+}
+
 .pane-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #16324a;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
 }
 
 .pane-subtitle {
   margin-top: 4px;
   font-size: 12px;
-  color: #7f90a3;
+  color: #8a8a8a;
+  line-height: 1.5;
 }
 
 .count-tags {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 6px;
+  flex-shrink: 0;
+}
+
+.count-pill {
+  font-size: 12px;
+  color: #1a1a1a;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  white-space: nowrap;
+}
+
+.count-pill-muted {
+  color: #8a8a8a;
+  background: #fff;
 }
 
 .op-list {
@@ -294,24 +324,27 @@ export default {
 .op-card {
   width: 100%;
   padding: 14px;
-  border: 1px solid #e7edf4;
-  border-radius: 14px;
-  background: #f8fafc;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fafafa;
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .op-card.selected {
-  background: linear-gradient(180deg, #f0fbf5 0%, #fff 100%);
-  border-color: #6ac48a;
+  background: #f0f0f0;
+  border-color: #bdbdbd;
 }
 
-.op-card.active,
+.op-card.active {
+  border-left: 3px solid #1a1a1a;
+  padding-left: 11px;
+  background: #fff;
+}
+
 .op-card:hover {
-  border-color: #7aa7d9;
-  box-shadow: 0 6px 18px rgba(57, 103, 159, 0.12);
-  transform: translateY(-1px);
+  border-color: #bdbdbd;
 }
 
 .op-top {
@@ -321,15 +354,28 @@ export default {
 }
 
 .op-variety {
-  font-size: 17px;
-  font-weight: 700;
-  color: #17324b;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.op-dir {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.op-dir.dir-long {
+  color: #c62828;
+}
+
+.op-dir.dir-short {
+  color: #2e7d32;
 }
 
 .op-sector {
   margin-top: 5px;
   font-size: 12px;
-  color: #688095;
+  color: #8a8a8a;
 }
 
 .op-bottom {
@@ -339,10 +385,23 @@ export default {
   margin-top: 10px;
 }
 
+.op-status {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.op-status.status-on {
+  color: #1a1a1a;
+}
+
+.op-status.status-off {
+  color: #8a8a8a;
+}
+
 .op-score {
   font-size: 12px;
-  color: #1e5077;
-  font-weight: 600;
+  color: #5c5c5c;
+  font-weight: 500;
 }
 
 .detail-header {
@@ -353,9 +412,22 @@ export default {
 }
 
 .detail-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #16324a;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.detail-dir {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.detail-dir.dir-long {
+  color: #c62828;
+}
+
+.detail-dir.dir-short {
+  color: #2e7d32;
 }
 
 .detail-grid {
@@ -367,50 +439,51 @@ export default {
 
 .detail-item {
   padding: 14px 16px;
-  border-radius: 14px;
-  background: #f7fbff;
-  border: 1px solid #e6eef7;
+  border-radius: 8px;
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
 }
 
 .detail-label {
   font-size: 12px;
-  color: #74879a;
+  color: #8a8a8a;
   font-weight: 600;
 }
 
 .detail-value {
   margin-top: 8px;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: #16324a;
+  color: #1a1a1a;
 }
 
-.text-green {
-  color: #1e8e5a;
+.state-ok {
+  color: #1a1a1a;
 }
 
-.text-gray {
-  color: #8a99aa;
+.state-muted {
+  color: #8a8a8a;
 }
 
 .detail-section {
   padding: 16px;
-  border-radius: 14px;
-  border: 1px solid #e8eef5;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
   margin-bottom: 12px;
+  background: #fff;
 }
 
 .section-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #243447;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
   margin-bottom: 10px;
 }
 
 .reject-note,
 .score-note {
   font-size: 13px;
-  color: #52667c;
+  color: #5c5c5c;
   line-height: 1.75;
 }
 

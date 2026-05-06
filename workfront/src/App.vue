@@ -4,7 +4,6 @@
       <!-- 固定顶部 -->
       <el-header class="app-header">
         <div class="header-content">
-          <!-- 移动端菜单切换按钮 -->
           <el-button 
             v-if="isMobileDevice"
             class="mobile-menu-toggle"
@@ -55,20 +54,17 @@
         <!-- PC端固定左侧菜单 -->
         <el-aside 
           v-if="!isMobileDevice" 
-          width="250px" 
+          width="232px" 
           class="app-aside"
         >
           <el-menu
             :default-active="activeMenuPath"
             router
             class="side-menu"
-            background-color="#001529"
-            text-color="#fff"
-            active-text-color="#1890ff"
           >
             <el-menu-item index="/news-analysis" class="menu-item">
               <el-icon class="menu-icon"><ChatDotRound /></el-icon>
-              <span class="menu-text">消息面分析</span>
+              <span class="menu-text">消息分析</span>
             </el-menu-item>
             <el-menu-item index="/news-tracking" class="menu-item">
               <el-icon class="menu-icon"><TrendCharts /></el-icon>
@@ -80,7 +76,7 @@
             </el-menu-item>
             <el-menu-item index="/futures-chart" class="menu-item">
               <el-icon class="menu-icon"><DataLine /></el-icon>
-              <span class="menu-text">期货K线图</span>
+              <span class="menu-text">期货K线</span>
             </el-menu-item>
             <el-menu-item index="/trading/signals" class="menu-item">
               <el-icon class="menu-icon"><TrendCharts /></el-icon>
@@ -215,10 +211,22 @@ export default {
 }
 
 #app {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Helvetica Neue',
+    Helvetica,
+    Arial,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #2c3e50;
+  color: #1a1a1a;
   height: 100vh;
   overflow: hidden;
 }
@@ -227,13 +235,13 @@ export default {
   height: 100vh;
 }
 
-/* 固定顶部样式 */
+/* 固定顶部样式 — 灰阶极简 */
 .app-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  height: 60px !important;
+  background: #ffffff;
+  color: #1a1a1a;
+  height: 56px !important;
   padding: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid #e0e0e0;
   position: relative;
   z-index: 1000;
 }
@@ -248,32 +256,38 @@ export default {
 
 .header-title {
   margin: 0;
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 600;
-  color: white;
+  color: #1a1a1a;
+  letter-spacing: -0.02em;
   margin-left: 8px;
 }
 
 /* 主容器 */
 .main-container {
-  height: calc(100vh - 60px);
+  height: calc(100vh - 56px);
   overflow: hidden;
 }
 
-/* 固定左侧菜单 */
+/* 左侧边栏 — 浅灰背景 */
 .app-aside {
-  background-color: #001529;
-  border-right: 1px solid #e8e8e8;
+  background-color: #f5f5f5;
+  border-right: 1px solid #e0e0e0;
   overflow: hidden;
   position: relative;
   z-index: 999;
+  padding: 10px 10px 14px;
+  display: flex;
+  flex-direction: column;
 }
 
 .side-menu {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   border-right: none;
-  background-color: #001529;
-  overflow: hidden;
+  background-color: transparent !important;
+  overflow: hidden auto;
+  padding-right: 2px;
 }
 
 /* 隐藏左侧菜单的滚动条 */
@@ -286,58 +300,57 @@ export default {
   scrollbar-width: none;  /* Firefox */
 }
 
-.menu-item {
-  height: 50px;
-  line-height: 50px;
-  margin: 4px 0;
-  border-radius: 0;
-  transition: all 0.3s ease;
+.app-aside .side-menu .menu-item {
+  height: 42px;
+  line-height: 42px;
+  margin: 2px 0;
+  border-radius: 8px;
+  color: #1a1a1a !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.menu-item:hover {
-  background-color: #1890ff !important;
-  color: white !important;
+.app-aside .side-menu .menu-item:hover {
+  background-color: #ebebeb !important;
+  color: #1a1a1a !important;
 }
 
-.menu-item.is-active {
-  background-color: #1890ff !important;
-  color: white !important;
-  border-right: 3px solid #52c41a;
-  position: relative;
+.app-aside .side-menu .menu-item.is-active {
+  background-color: #e8e8e8 !important;
+  color: #1a1a1a !important;
+  font-weight: 600;
 }
 
-.menu-item.is-active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background-color: #52c41a;
+.app-aside .side-menu .menu-item .el-icon {
+  color: #5c5c5c;
+}
+
+.app-aside .side-menu .menu-item.is-active .el-icon {
+  color: #1a1a1a;
 }
 
 .menu-icon {
-  margin-right: 12px;
-  font-size: 16px;
+  margin-right: 10px;
+  font-size: 17px;
 }
 
 .menu-text {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
 }
 
 /* 可滚动的内容区域 */
 .app-main {
   padding: 0;
-  background-color: #f0f2f5;
+  background-color: #ffffff;
   overflow: hidden;
 }
 
 .content-wrapper {
   height: 100%;
-  padding: 24px;
+  padding: 28px 32px;
   overflow-y: auto;
   overflow-x: hidden;
+  background-color: #ffffff;
 }
 
 /* 自定义滚动条 */
@@ -361,27 +374,26 @@ export default {
 
 /* 移动端菜单切换按钮 */
 .mobile-menu-toggle {
-  color: white !important;
+  color: #1a1a1a !important;
   margin-right: 15px;
   padding: 8px !important;
 }
 
 .mobile-menu-toggle:hover {
-  background-color: rgba(255, 255, 255, 0.1) !important;
+  background-color: #f0f0f0 !important;
 }
 
 /* 移动端折叠菜单面板 */
 .mobile-menu-panel {
-  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
-  border-bottom: 1px solid #e8e8e8;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  box-shadow: none;
   position: relative;
   z-index: 998;
   overflow: hidden;
   animation: slideDown 0.3s ease-out;
-  backdrop-filter: blur(10px);
   min-height: auto;
-  padding-bottom: 16px;
+  padding-bottom: 12px;
 }
 
 @keyframes slideDown {
@@ -404,51 +416,42 @@ export default {
 }
 
 .mobile-menu-item {
-  height: 56px;
-  line-height: 56px;
-  padding: 0 24px !important;
-  margin: 8px 16px;
-  border-radius: 12px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(24, 144, 255, 0.1);
-  backdrop-filter: blur(8px);
+  height: 48px;
+  line-height: 48px;
+  padding: 0 18px !important;
+  margin: 4px 12px;
+  border-radius: 8px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  color: #1a1a1a !important;
 }
 
 .mobile-menu-item:hover {
-  background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%) !important;
-  color: #1890ff !important;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.2);
-  border-color: rgba(24, 144, 255, 0.3);
+  background: #ebebeb !important;
+  color: #1a1a1a !important;
 }
 
 .mobile-menu-item.is-active {
-  background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%) !important;
-  color: white !important;
-  border: none;
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.4);
-  transform: translateY(-1px);
+  background: #e8e8e8 !important;
+  color: #1a1a1a !important;
+  border-color: #d0d0d0;
+  font-weight: 600;
 }
 
 .mobile-menu-item .menu-icon {
-  margin-right: 16px;
-  font-size: 18px;
-  transition: transform 0.3s ease;
-}
-
-.mobile-menu-item:hover .menu-icon {
-  transform: scale(1.1);
+  margin-right: 12px;
+  font-size: 17px;
+  color: #5c5c5c;
 }
 
 .mobile-menu-item.is-active .menu-icon {
-  color: white;
+  color: #1a1a1a;
 }
 
 .mobile-menu-item .menu-text {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
-  letter-spacing: 0.5px;
 }
 
 /* 移动端菜单遮罩层 */
@@ -458,7 +461,7 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(26, 26, 26, 0.25);
   z-index: 997;
   transition: opacity 0.3s ease;
 }
@@ -484,9 +487,9 @@ export default {
     padding: 16px 10px;
   }
   
-  /* 移动端主容器调整 */
+  /* 移动端主容器：仅占顶栏下方剩余高度 */
   .main-container {
-    height: calc(100vh - 200px);
+    height: calc(100vh - 56px);
   }
   
   /* 移动端菜单按钮优化 */
@@ -524,50 +527,53 @@ export default {
   }
 }
 
-/* Element Plus 组件样式优化 */
+/* Element Plus：去掉菜单默认右边框（避免与 aside 分界线叠成双线） */
+#app .el-menu.side-menu,
+#app .el-menu.mobile-menu {
+  border-right: none !important;
+  border-right-width: 0 !important;
+  box-shadow: none;
+}
+
+/* 变量写法（部分版本的主题用 border-color 绘制） */
+#app .app-aside .el-menu.side-menu {
+  --el-menu-border-color: transparent;
+}
+
+#app .mobile-menu-panel .el-menu.mobile-menu {
+  --el-menu-border-color: transparent;
+}
+
+/* Element Plus：仅侧边栏内菜单继承灰阶语义 */
 .el-menu {
   border-right: none;
-  overflow: hidden;
 }
 
-.el-menu-item {
-  padding-left: 24px !important;
+.app-aside .side-menu.el-menu .el-menu-item {
+  padding-left: 14px !important;
 }
 
-.el-menu-item:hover {
-  background-color: #1890ff !important;
+.app-aside .side-menu.el-menu--vertical:not(.el-menu--collapse):not(.el-menu--popup-container) .el-menu-item {
+  padding-left: 14px !important;
 }
 
-.el-menu-item.is-active {
-  background-color: #1890ff !important;
+/* 确保侧栏菜单在窄宽度下不出现横向滚动条 */
+.app-aside .el-menu--vertical {
+  overflow-x: hidden;
 }
 
-/* 确保菜单容器不会产生滚动条 */
-.el-menu--vertical,
-.el-menu--horizontal {
-  overflow: hidden;
-}
-
-/* 添加一些动画效果 */
-.menu-item {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.menu-item:hover {
-  transform: translateX(4px);
-}
-
-/* 内容区域卡片样式 */
+/* 内容区域卡片样式 — 细边框、浅阴影 */
 .content-wrapper .el-card {
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e0e0e0;
+  box-shadow: none;
   margin-bottom: 16px;
 }
 
 .content-wrapper .el-card__header {
   background-color: #fafafa;
-  border-bottom: 1px solid #f0f0f0;
-  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 14px 20px;
 }
 
 .content-wrapper .el-card__body {

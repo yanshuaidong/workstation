@@ -4,15 +4,15 @@
     <el-card class="header-card">
       <template #header>
         <div class="card-header">
-          <span>财联社新闻管理系统</span>
-          <el-tag type="success">运行中</el-tag>
+          <span class="card-header-title">财联社新闻管理系统</span>
+          <el-tag effect="plain" type="info" class="na-status-tag">运行中</el-tag>
         </div>
       </template>
 
       <!-- 统计信息展示 -->
       <el-row :gutter="20" class="stats-row">
         <el-col :span="6">
-          <el-card shadow="hover" class="stat-card">
+          <el-card class="na-stat-card">
             <div class="stat-content">
               <div class="stat-value">{{ stats.total }}</div>
               <div class="stat-label">总新闻数</div>
@@ -20,15 +20,15 @@
           </el-card>
         </el-col>
         <el-col :span="6">
-          <el-card shadow="hover" class="stat-card">
+          <el-card class="na-stat-card">
             <div class="stat-content">
-              <div class="stat-value success">{{ stats.today_count }}</div>
+              <div class="stat-value">{{ stats.today_count }}</div>
               <div class="stat-label">今日新增</div>
             </div>
           </el-card>
         </el-col>
         <el-col :span="6">
-          <el-card shadow="hover" class="stat-card">
+          <el-card class="na-stat-card">
             <div class="stat-content">
               <div class="stat-value">{{ stats.latest_time || '暂无数据' }}</div>
               <div class="stat-label">最新时间</div>
@@ -36,7 +36,7 @@
           </el-card>
         </el-col>
         <el-col :span="6">
-          <el-card shadow="hover" class="stat-card">
+          <el-card class="na-stat-card">
             <div class="stat-content">
               <div class="stat-value">{{ stats.earliest_time || '暂无数据' }}</div>
               <div class="stat-label">最早时间</div>
@@ -89,7 +89,7 @@
           </el-select>
         </el-col>
         <el-col :span="4">
-          <el-button type="success" @click="showCreateDialog" icon="Plus">
+          <el-button type="primary" @click="showCreateDialog" icon="Plus">
             新增消息
           </el-button>
         </el-col>
@@ -135,10 +135,9 @@
     <el-card class="news-list-card">
       <template #header>
         <div class="card-header">
-          <span>新闻列表</span>
+          <span class="card-header-title">新闻列表</span>
           <div class="header-controls">
             <el-button
-              type="warning"
               size="small"
               @click="copyCurrentPage"
               :loading="copyLoading"
@@ -148,7 +147,6 @@
               复制当前页
             </el-button>
             <el-button
-              type="info"
               size="small"
               @click="loadStats"
               :loading="statsLoading"
@@ -181,10 +179,10 @@
         <!-- 新闻列表表格 -->
         <el-table
           v-else
+          class="na-table"
           :data="newsList"
           v-loading="newsLoading"
           stripe
-          border
           style="width: 100%"
           max-height="600"
           empty-text="暂无新闻数据"
@@ -229,13 +227,13 @@
                 style="width: 100px"
               >
                 <el-option label="硬消息" value="hard">
-                  <el-tag type="success" size="small">硬消息</el-tag>
+                  <el-tag effect="plain" type="info" size="small" class="na-cell-tag">硬消息</el-tag>
                 </el-option>
                 <el-option label="软消息" value="soft">
-                  <el-tag type="info" size="small">软消息</el-tag>
+                  <el-tag effect="plain" type="info" size="small" class="na-cell-tag">软消息</el-tag>
                 </el-option>
                 <el-option label="未知" value="unknown">
-                  <el-tag type="warning" size="small">未知</el-tag>
+                  <el-tag effect="plain" type="info" size="small" class="na-cell-tag">未知</el-tag>
                 </el-option>
               </el-select>
             </template>
@@ -258,7 +256,7 @@
           <!-- 第6列：消息类型 -->
           <el-table-column label="消息类型" width="140">
             <template #default="scope">
-              <el-tag v-if="scope.row.message_type" type="primary" size="small">
+              <el-tag v-if="scope.row.message_type" effect="plain" type="info" size="small" class="na-cell-tag">
                 {{ scope.row.message_type }}
               </el-tag>
               <span v-else class="text-gray">未分类</span>
@@ -286,9 +284,9 @@
               <el-badge
                 v-if="scope.row.screenshots && scope.row.screenshots.length > 0"
                 :value="scope.row.screenshots.length"
-                type="primary"
+                type="info"
               >
-                <el-icon size="20" color="#409eff">
+                <el-icon class="na-screenshot-icon" :size="20">
                   <Picture />
                 </el-icon>
               </el-badge>
@@ -329,7 +327,6 @@
             layout="total, sizes, prev, pager, next, jumper"
             @size-change="handleSizeChange"
             @current-change="handleCurrentChange"
-            background
           />
         </div>
       </div>
@@ -340,6 +337,7 @@
       v-model="dialogVisible"
       :title="dialogMode === 'create' ? '新增消息' : '编辑消息'"
       width="80%"
+      class="na-dialog"
       :before-close="handleCloseDialog"
     >
       <!-- 编辑模式下的导航栏 -->
@@ -443,16 +441,10 @@
           </el-col>
           <el-col :span="8">
             <el-form-item label="消息标签">
-              <el-radio-group v-model="newsForm.message_label">
-                <el-radio-button label="hard">
-                  <el-tag type="success" size="small">硬消息</el-tag>
-                </el-radio-button>
-                <el-radio-button label="soft">
-                  <el-tag type="info" size="small">软消息</el-tag>
-                </el-radio-button>
-                <el-radio-button label="unknown">
-                  <el-tag type="warning" size="small">未知</el-tag>
-                </el-radio-button>
+              <el-radio-group v-model="newsForm.message_label" class="na-label-radio">
+                <el-radio-button label="hard">硬消息</el-radio-button>
+                <el-radio-button label="soft">软消息</el-radio-button>
+                <el-radio-button label="unknown">未知</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -1280,39 +1272,100 @@ export default {
 
 <style scoped>
 .news-analysis {
-  padding: 20px;
+  --na-text: #1a1a1a;
+  --na-muted: #707070;
+  --na-border: #e0e0e0;
+  --na-bg-subtle: #f5f5f5;
+  --na-bg-hover: #ebebeb;
+  --na-accent: #1a1a1a;
+  padding: 0;
+  color: var(--na-text);
 }
 
 .header-card,
 .filter-card,
 .news-list-card {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-weight: bold;
+  gap: 12px;
+}
+
+.card-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--na-text);
+  letter-spacing: -0.02em;
 }
 
 .header-controls {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
-/* 统计信息样式 */
+.news-analysis :deep(.el-button--primary) {
+  --el-button-bg-color: #1a1a1a;
+  --el-button-border-color: #1a1a1a;
+  --el-button-hover-bg-color: #333333;
+  --el-button-hover-border-color: #333333;
+  --el-button-active-bg-color: #1a1a1a;
+  --el-button-active-border-color: #1a1a1a;
+}
+
+.news-analysis :deep(.el-button--default) {
+  --el-button-border-color: var(--na-border);
+  --el-button-text-color: var(--na-text);
+  --el-button-bg-color: #ffffff;
+  --el-button-hover-bg-color: var(--na-bg-hover);
+  --el-button-hover-text-color: var(--na-text);
+  --el-button-hover-border-color: #d0d0d0;
+}
+
+.news-analysis :deep(.na-status-tag.el-tag) {
+  --el-tag-bg-color: #fafafa;
+  --el-tag-border-color: var(--na-border);
+  --el-tag-text-color: var(--na-text);
+}
+
+.news-analysis :deep(.na-cell-tag.el-tag.el-tag--plain) {
+  --el-tag-bg-color: #fafafa;
+  --el-tag-border-color: var(--na-border);
+  --el-tag-text-color: var(--na-text);
+}
+
+.news-analysis :deep(.el-slider__button) {
+  border-color: #1a1a1a;
+}
+
+.news-analysis :deep(.el-slider__bar) {
+  background-color: #1a1a1a;
+}
+
+.na-screenshot-icon {
+  color: #5c5c5c;
+}
+
+.news-analysis :deep(.el-badge__content) {
+  background-color: #5c5c5c;
+  border: 1px solid #ffffff;
+}
+
 .stats-row {
   margin-bottom: 0;
 }
 
-.stat-card {
-  height: 100%;
-  transition: all 0.3s ease;
+.na-stat-card {
+  transition: none;
 }
 
-.stat-card :deep(.el-card__body) {
-  padding: 20px;
+.na-stat-card :deep(.el-card__body) {
+  padding: 18px 16px;
 }
 
 .stat-content {
@@ -1320,31 +1373,41 @@ export default {
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: 23px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
-  margin-bottom: 8px;
-  line-height: 1.2;
-}
-
-.stat-value.success {
-  color: var(--el-color-success);
+  color: var(--na-text);
+  margin-bottom: 6px;
+  line-height: 1.25;
 }
 
 .stat-label {
-  font-size: 14px;
-  color: var(--el-text-color-secondary);
-}
-
-.stat-time {
   font-size: 13px;
+  color: var(--na-muted);
   font-weight: 500;
-  opacity: 0.9;
 }
 
-/* 表格样式 */
 .news-table-container {
   min-height: 400px;
+}
+
+.news-analysis :deep(.na-table.el-table) {
+  --el-table-border-color: var(--na-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.news-analysis :deep(.na-table .el-table__header th.el-table__cell) {
+  background: var(--na-bg-subtle);
+  color: var(--na-text);
+  font-weight: 600;
+}
+
+.news-analysis :deep(.na-table td.el-table__cell) {
+  border-color: var(--na-border);
+}
+
+.news-analysis :deep(.na-table th.el-table__cell) {
+  border-color: var(--na-border);
 }
 
 .title-cell {
@@ -1355,64 +1418,80 @@ export default {
 }
 
 .market-react-text {
-  color: #606266;
-  line-height: 1.6;
+  color: #5c5c5c;
+  line-height: 1.55;
   font-size: 14px;
 }
 
 .text-gray {
-  color: #909399;
-  font-style: italic;
+  color: var(--na-muted);
+  font-style: normal;
 }
 
-/* 分页器样式 */
 .pagination-container {
   display: flex;
   justify-content: center;
-  margin-top: 30px;
-  padding: 20px 0;
+  margin-top: 20px;
+  padding: 12px 0 4px;
 }
 
-/* 对话框样式 */
+.news-analysis :deep(.el-pagination) {
+  --el-pagination-hover-color: #1a1a1a;
+  --el-text-color-regular: var(--na-muted);
+  font-weight: 500;
+}
+
+.news-analysis :deep(.el-pagination .el-select .el-select__wrapper) {
+  border-color: var(--na-border);
+}
+
+.news-analysis :deep(.el-pagination button.is-disabled) {
+  opacity: 0.45;
+}
+
 .dialog-footer {
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
-/* 新增/编辑对话框导航栏样式 */
 .edit-navigation {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding: 10px 20px;
-  background-color: #f5f7fa;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  background-color: var(--na-bg-subtle);
+  border: 1px solid var(--na-border);
   border-radius: 8px;
 }
 
 .nav-info {
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: #606266;
-  font-size: 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--na-muted);
+  font-size: 13px;
 }
 
 .nav-position {
-  font-weight: bold;
-  color: #303133;
+  font-weight: 600;
+  color: var(--na-text);
 }
 
 .nav-tips {
   font-size: 12px;
-  color: #909399;
+  color: var(--na-muted);
 }
 
 .nav-controls {
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
-/* 上传区域样式 */
 .upload-area {
   display: flex;
   align-items: flex-start;
@@ -1420,7 +1499,7 @@ export default {
 }
 
 .upload-tip {
-  color: #909399;
+  color: var(--na-muted);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1429,17 +1508,17 @@ export default {
   margin: 0;
 }
 
-/* 现有截图样式 */
 .existing-screenshots {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid #ebeef5;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--na-border);
 }
 
 .existing-screenshots h4 {
-  margin: 0 0 15px 0;
+  margin: 0 0 12px;
   font-size: 14px;
-  color: #606266;
+  font-weight: 600;
+  color: var(--na-text);
 }
 
 .screenshot-grid {
@@ -1457,81 +1536,133 @@ export default {
 .screenshot-image {
   width: 100%;
   height: 100%;
-  border-radius: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--na-border);
 }
 
 .screenshot-actions {
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 4px;
+  right: 4px;
 }
 
-/* 筛选区域样式 */
 .filter-row {
-  margin-bottom: 15px;
+  margin-bottom: 14px;
 }
 
 .filter-row:last-child {
   margin-bottom: 0;
 }
 
-/* 响应式布局 */
+.news-analysis :deep(.na-label-radio .el-radio-button__inner) {
+  border-color: var(--na-border);
+  color: var(--na-text);
+  background: #ffffff;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.news-analysis :deep(.na-label-radio .el-radio-button:first-child .el-radio-button__inner) {
+  border-left-color: var(--na-border);
+}
+
+.news-analysis :deep(.na-label-radio .el-radio-button.is-active .el-radio-button__inner) {
+  background-color: #e8e8e8;
+  border-color: #d0d0d0;
+  color: var(--na-text);
+  box-shadow: none;
+}
+
+.news-analysis :deep(.el-upload--picture-card) {
+  --el-upload-picture-card-size: 100px;
+  border-color: var(--na-border);
+  background: #fafafa;
+}
+
+.news-analysis :deep(.el-upload--picture-card:hover) {
+  border-color: #c8c8c8;
+  color: var(--na-text);
+}
+
 @media (max-width: 1200px) {
   .stats-row .el-col {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
-  
+
   .filter-row .el-col {
     margin-bottom: 10px;
   }
 }
 
 @media (max-width: 768px) {
-  .news-analysis {
-    padding: 10px;
-  }
-  
   .card-header {
     flex-direction: column;
-    gap: 10px;
+    align-items: flex-start;
   }
-  
+
   .header-controls {
-    justify-content: center;
+    justify-content: flex-start;
+    width: 100%;
   }
-  
-  .stat-card {
-    margin-bottom: 15px;
-  }
-  
+
   .stat-value {
     font-size: 20px;
   }
 }
 
-/* 加载状态动画 */
-.el-loading-mask {
+.news-analysis :deep(.el-loading-mask) {
   border-radius: 8px;
 }
 
-/* 空状态样式 */
-.el-empty {
-  padding: 40px 20px;
+.news-analysis :deep(.el-empty) {
+  padding: 36px 16px;
 }
 
-/* 内容复制区域样式 */
-:deep(.content-with-copy) {
+.news-analysis :deep(.content-with-copy) {
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 100%;
 }
 
-:deep(.content-with-copy .el-textarea) {
+.news-analysis :deep(.content-with-copy .el-textarea) {
   width: 100%;
 }
 
-:deep(.content-with-copy .el-textarea__inner) {
+.news-analysis :deep(.content-with-copy .el-textarea__inner) {
   width: 100%;
+}
+</style>
+
+<style>
+.na-dialog.el-dialog {
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1);
+}
+
+.na-dialog .el-dialog__header {
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 16px;
+}
+
+.na-dialog .el-dialog__title {
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: -0.02em;
+}
+
+.na-dialog.el-dialog .el-button--primary {
+  --el-button-bg-color: #1a1a1a;
+  --el-button-border-color: #1a1a1a;
+  --el-button-hover-bg-color: #333333;
+  --el-button-hover-border-color: #333333;
+}
+
+.na-dialog.el-dialog .el-button--danger {
+  --el-button-bg-color: #ffffff;
+  --el-button-border-color: #e0e0e0;
+  --el-button-text-color: #1a1a1a;
+  --el-button-hover-bg-color: #ebebeb;
 }
 </style>

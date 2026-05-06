@@ -10,7 +10,7 @@
         end-placeholder="结束日期"
         clearable
       />
-      <el-button type="primary" :loading="loading" @click="fetchCurve">刷新曲线</el-button>
+      <el-button :loading="loading" @click="fetchCurve">刷新曲线</el-button>
     </div>
 
     <div class="chart-card">
@@ -109,14 +109,14 @@ export default {
       const dailyPnls = this.curve.map(r => r.daily_pnl)
 
       this.chart.setOption({
-        color: ['#2f7cff', '#db7c26'],
+        color: ['#424242', '#9e9e9e'],
         tooltip: { trigger: 'axis' },
-        legend: { top: 0, data: ['账户净值', '当日盈亏'] },
+        legend: { top: 0, data: ['账户净值', '当日盈亏'], textStyle: { color: '#5c5c5c' } },
         grid: { left: 60, right: 24, top: 40, bottom: 40 },
-        xAxis: { type: 'category', data: dates, boundaryGap: false },
+        xAxis: { type: 'category', data: dates, boundaryGap: false, axisLabel: { color: '#5c5c5c' } },
         yAxis: [
-          { type: 'value', name: '净值（元）', scale: true },
-          { type: 'value', name: '当日盈亏', scale: true, splitLine: { show: false } }
+          { type: 'value', name: '净值（元）', scale: true, nameTextStyle: { color: '#5c5c5c' }, axisLabel: { color: '#5c5c5c' }, splitLine: { lineStyle: { color: '#eeeeee' } } },
+          { type: 'value', name: '当日盈亏', scale: true, nameTextStyle: { color: '#5c5c5c' }, axisLabel: { color: '#5c5c5c' }, splitLine: { show: false } }
         ],
         series: [
           {
@@ -125,8 +125,9 @@ export default {
             smooth: true,
             symbolSize: 5,
             data: equities,
-            lineStyle: { width: 3 },
-            areaStyle: { opacity: 0.1 },
+            lineStyle: { width: 2, color: '#424242' },
+            itemStyle: { color: '#424242' },
+            areaStyle: { color: 'rgba(0,0,0,0.04)' },
             yAxisIndex: 0
           },
           {
@@ -135,8 +136,8 @@ export default {
             data: dailyPnls,
             yAxisIndex: 1,
             itemStyle: {
-              color: params => params.value >= 0 ? '#52c41a' : '#ff4d4f',
-              opacity: 0.7
+              color: params => params.value >= 0 ? '#c62828' : '#2e7d32',
+              opacity: 0.85
             }
           }
         ]
@@ -161,10 +162,11 @@ export default {
 }
 
 .chart-card {
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, #f7fbff 0%, #ffffff 100%);
-  border: 1px solid #e6eef7;
+  padding: 16px 18px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  box-shadow: none;
 }
 
 .curve-chart {
@@ -177,6 +179,6 @@ export default {
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  color: #8a98a8;
+  color: #8a8a8a;
 }
 </style>

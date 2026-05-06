@@ -90,33 +90,34 @@ export default {
 .trading-layout {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 }
 
 .summary-card {
-  padding: 20px 24px;
-  border-radius: 18px;
-  background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 100%);
-  border: 1px solid #d6e8f8;
-  box-shadow: 0 12px 30px rgba(15, 36, 63, 0.06);
+  padding: 20px 22px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  box-shadow: none;
 }
 
 .summary-label {
-  color: #5a7896;
+  color: #5c5c5c;
   font-size: 13px;
   font-weight: 600;
 }
 
 .summary-equity {
   margin-top: 10px;
-  color: #18324a;
-  font-size: 32px;
+  color: #1a1a1a;
+  font-size: 28px;
   font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .summary-meta {
   margin-top: 6px;
-  color: #91a1b2;
+  color: #8a8a8a;
   font-size: 12px;
 }
 
@@ -124,22 +125,50 @@ export default {
   display: flex;
   gap: 20px;
   margin-top: 14px;
-  color: #3c5168;
+  color: #1a1a1a;
   font-size: 13px;
 }
 
+/* 盈亏：国内期货常见着色（盈红亏绿） */
 .pnl-pos {
-  color: #1e8e5a;
+  color: #c62828;
+  font-weight: 600;
 }
 
 .pnl-neg {
-  color: #d14343;
+  color: #2e7d32;
+  font-weight: 600;
 }
 
 .tabs-panel {
-  padding: 20px 22px 24px;
-  border-radius: 20px;
-  background: #fff;
-  border: 1px solid #e7edf5;
+  padding: 12px 0 0;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+}
+
+.tabs-panel :deep(.el-tabs__header) {
+  margin: 0 0 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.tabs-panel :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.tabs-panel :deep(.el-tabs__item) {
+  color: #5c5c5c;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.tabs-panel :deep(.el-tabs__item.is-active) {
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.tabs-panel :deep(.el-tabs__active-bar) {
+  background-color: #1a1a1a;
+  height: 2px;
 }
 </style>

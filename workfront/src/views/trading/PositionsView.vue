@@ -1,7 +1,7 @@
 <template>
   <div class="trading-page">
     <div class="toolbar">
-      <el-button type="primary" :loading="loading || histLoading" @click="fetchAll">刷新</el-button>
+      <el-button :loading="loading || histLoading" @click="fetchAll">刷新</el-button>
     </div>
 
     <div class="section-title">当前持仓（最多3槽）</div>
@@ -10,9 +10,9 @@
       <el-table-column prop="sector" label="板块" min-width="100" />
       <el-table-column label="方向" width="90">
         <template #default="{ row }">
-          <el-tag :type="row.direction === 'LONG' ? 'success' : 'danger'" size="small">
-            {{ row.direction }}
-          </el-tag>
+          <span :class="row.direction === 'LONG' ? 'dir-long' : 'dir-short'">
+            {{ directionLabel(row.direction) }}
+          </span>
         </template>
       </el-table-column>
       <el-table-column prop="open_date" label="开仓日" width="115" />
@@ -48,9 +48,9 @@
       <el-table-column prop="sector" label="板块" min-width="100" />
       <el-table-column label="方向" width="90">
         <template #default="{ row }">
-          <el-tag :type="row.direction === 'LONG' ? 'success' : 'danger'" size="small">
-            {{ row.direction }}
-          </el-tag>
+          <span :class="row.direction === 'LONG' ? 'dir-long' : 'dir-short'">
+            {{ directionLabel(row.direction) }}
+          </span>
         </template>
       </el-table-column>
       <el-table-column prop="open_date" label="开仓日" width="115" />
@@ -117,6 +117,11 @@ export default {
     formatSigned(value) {
       const num = Number(value || 0)
       return `${num >= 0 ? '+' : ''}${num.toFixed(2)}`
+    },
+    directionLabel(direction) {
+      if (direction === 'LONG') return '多'
+      if (direction === 'SHORT') return '空'
+      return direction ?? '--'
     }
   }
 }
@@ -136,9 +141,9 @@ export default {
 }
 
 .section-title {
-  color: #243447;
-  font-size: 15px;
-  font-weight: 700;
+  color: #1a1a1a;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .data-table {
@@ -147,29 +152,42 @@ export default {
 
 .empty-hint {
   padding: 20px 0;
-  color: #91a1b2;
+  color: #8a8a8a;
   font-size: 13px;
 }
 
+.dir-long {
+  color: #c62828;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.dir-short {
+  color: #2e7d32;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+/* 浮盈与主力指数：红正绿负（涨/多方向为正时用红） */
 .pnl-pos {
-  color: #1e8e5a;
+  color: #c62828;
   font-weight: 600;
 }
 
 .pnl-neg {
-  color: #d14343;
+  color: #2e7d32;
   font-weight: 600;
 }
 
 .pos {
-  color: #1e8e5a;
+  color: #c62828;
 }
 
 .neg {
-  color: #d14343;
+  color: #2e7d32;
 }
 
 .dim {
-  color: #bbb;
+  color: #b0b0b0;
 }
 </style>

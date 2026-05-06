@@ -8,21 +8,40 @@
         placeholder="选择日期"
         clearable
       />
-      <el-select v-model="filters.signal_type" clearable placeholder="信号类型" class="tool-item">
-        <el-option label="A_OPEN_LONG（开多）" value="A_OPEN_LONG" />
-        <el-option label="A_OPEN_SHORT（开空）" value="A_OPEN_SHORT" />
-        <el-option label="A_CLOSE_LONG（平多）" value="A_CLOSE_LONG" />
-        <el-option label="A_CLOSE_SHORT（平空）" value="A_CLOSE_SHORT" />
+      <el-select
+        v-model="filters.signal_type"
+        clearable
+        placeholder="信号类型"
+        class="tool-item signal-type-filter"
+        :class="filters.signal_type ? signalPillClass(filters.signal_type) : ''"
+      >
+        <el-option label="A_OPEN_LONG（开多）" value="A_OPEN_LONG">
+          <span class="signal-pill" :class="signalPillClass('A_OPEN_LONG')">A_OPEN_LONG（开多）</span>
+        </el-option>
+        <el-option label="A_OPEN_SHORT（开空）" value="A_OPEN_SHORT">
+          <span class="signal-pill" :class="signalPillClass('A_OPEN_SHORT')">A_OPEN_SHORT（开空）</span>
+        </el-option>
+        <el-option label="A_CLOSE_LONG（平多）" value="A_CLOSE_LONG">
+          <span class="signal-pill" :class="signalPillClass('A_CLOSE_LONG')">A_CLOSE_LONG（平多）</span>
+        </el-option>
+        <el-option label="A_CLOSE_SHORT（平空）" value="A_CLOSE_SHORT">
+          <span class="signal-pill" :class="signalPillClass('A_CLOSE_SHORT')">A_CLOSE_SHORT（平空）</span>
+        </el-option>
       </el-select>
       <el-input v-model="filters.variety_name" clearable placeholder="品种筛选" class="tool-item" />
-      <el-button type="primary" :loading="loading" @click="fetchSignals">查询</el-button>
+      <el-button :loading="loading" @click="fetchSignals">查询</el-button>
     </div>
 
     <div class="stats-row" v-if="!loading && signals.length">
-      <el-tag type="success">开多 {{ countByType('A_OPEN_LONG') }}</el-tag>
-      <el-tag type="danger">开空 {{ countByType('A_OPEN_SHORT') }}</el-tag>
-      <el-tag type="warning">平多 {{ countByType('A_CLOSE_LONG') }}</el-tag>
-      <el-tag>平空 {{ countByType('A_CLOSE_SHORT') }}</el-tag>
+      <span class="stat-line">
+        <span class="sig-long">开多</span> {{ countByType('A_OPEN_LONG') }}
+        <span class="stat-sep">·</span>
+        <span class="sig-short">开空</span> {{ countByType('A_OPEN_SHORT') }}
+        <span class="stat-sep">·</span>
+        <span class="sig-long">平多</span> {{ countByType('A_CLOSE_LONG') }}
+        <span class="stat-sep">·</span>
+        <span class="sig-short">平空</span> {{ countByType('A_CLOSE_SHORT') }}
+      </span>
       <span class="total-hint">共 {{ signals.length }} 条 · 点击行展开计算过程</span>
     </div>
 
@@ -115,9 +134,9 @@
       <el-table-column prop="variety_name" label="品种" min-width="100" />
       <el-table-column label="信号类型" min-width="150">
         <template #default="{ row }">
-          <el-tag :type="getSignalTagType(row.signal_type)" size="small">
+          <span class="signal-pill" :class="signalPillClass(row.signal_type)">
             {{ getSignalLabel(row.signal_type) }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column label="动量分位分" width="130">
@@ -144,10 +163,10 @@ import request from '@/utils/request'
 import { getTradingSignalsApi } from '@/api'
 
 const SIGNAL_META = {
-  A_OPEN_LONG:  { label: 'A-开多', type: 'success' },
-  A_OPEN_SHORT: { label: 'A-开空', type: 'danger' },
-  A_CLOSE_LONG: { label: 'A-平多', type: 'warning' },
-  A_CLOSE_SHORT:{ label: 'A-平空', type: 'info' },
+  A_OPEN_LONG:  { label: 'A-开多' },
+  A_OPEN_SHORT: { label: 'A-开空' },
+  A_CLOSE_LONG: { label: 'A-平多' },
+  A_CLOSE_SHORT:{ label: 'A-平空' },
 }
 
 const COND_LABELS = {
@@ -270,7 +289,7 @@ export default {
       // 主力线：触发期两点放大标注
       const mainSeriesData = mainData.map((v, i) => {
         if (isOpenSig && win.length === 7 && i >= 5) {
-          return { value: v, symbolSize: 10, itemStyle: { color: '#e6413a', borderColor: '#fff', borderWidth: 2 } }
+          return { value: v, symbolSize: 10, itemStyle: { color: '#616161', borderColor: '#fff', borderWidth: 2 } }
         }
         return v
       })
@@ -281,8 +300,8 @@ export default {
         data: mainSeriesData,
         symbol: 'circle',
         symbolSize: 5,
-        lineStyle: { color: '#e6413a', width: 2.5 },
-        itemStyle: { color: '#e6413a' },
+        lineStyle: { color: '#616161', width: 2 },
+        itemStyle: { color: '#616161' },
         // y=0 参考线
         markLine: {
           silent: true,
@@ -300,8 +319,8 @@ export default {
               {
                 name: '背景期',
                 xAxis: dates[0],
-                itemStyle: { color: 'rgba(180,180,180,0.10)' },
-                label: { color: '#aaa', fontSize: 10, position: 'insideTopLeft' },
+                itemStyle: { color: 'rgba(0,0,0,0.06)' },
+                label: { color: '#8a8a8a', fontSize: 10, position: 'insideTopLeft' },
               },
               { xAxis: dates[4] },
             ],
@@ -309,8 +328,8 @@ export default {
               {
                 name: '触发期',
                 xAxis: dates[5],
-                itemStyle: { color: 'rgba(103,194,58,0.12)' },
-                label: { color: '#67c23a', fontSize: 10, position: 'insideTopLeft' },
+                itemStyle: { color: 'rgba(0,0,0,0.08)' },
+                label: { color: '#5c5c5c', fontSize: 10, position: 'insideTopLeft' },
               },
               { xAxis: dates[6] },
             ],
@@ -324,8 +343,8 @@ export default {
         data: retailData,
         symbol: 'circle',
         symbolSize: 5,
-        lineStyle: { color: '#409eff', width: 2.5 },
-        itemStyle: { color: '#409eff' },
+        lineStyle: { color: '#9e9e9e', width: 2 },
+        itemStyle: { color: '#9e9e9e' },
       }
 
       return {
@@ -347,8 +366,8 @@ export default {
           type: 'category',
           data: dates,
           axisLabel: { fontSize: 11 },
-          axisLine: { lineStyle: { color: '#d0d7e3' } },
-          axisTick: { lineStyle: { color: '#d0d7e3' } },
+          axisLine: { lineStyle: { color: '#e0e0e0' } },
+          axisTick: { lineStyle: { color: '#e0e0e0' } },
         },
         yAxis: {
           type: 'value',
@@ -360,7 +379,11 @@ export default {
     },
 
     getSignalLabel(type)    { return SIGNAL_META[type]?.label || type },
-    getSignalTagType(type)  { return SIGNAL_META[type]?.type  || 'info' },
+    signalPillClass(type) {
+      if (type === 'A_OPEN_LONG' || type === 'A_CLOSE_LONG') return 'pill-long'
+      if (type === 'A_OPEN_SHORT' || type === 'A_CLOSE_SHORT') return 'pill-short'
+      return 'pill-neutral'
+    },
     countByType(type)       { return this.signals.filter(s => s.signal_type === type).length },
     isOpen(type)            { return type === 'A_OPEN_LONG' || type === 'A_OPEN_SHORT' },
     getCondLabel(key, type) { return COND_LABELS[type]?.[key] || key },
@@ -393,6 +416,14 @@ export default {
 
 .tool-item { width: 200px; }
 
+/* 选中项与表格 pill 同色（Element Plus 2 选中文本节点在 .el-select__selected-item 内） */
+.signal-type-filter.pill-long :deep(.el-select__selected-item) {
+  color: #c62828;
+}
+.signal-type-filter.pill-short :deep(.el-select__selected-item) {
+  color: #2e7d32;
+}
+
 .stats-row {
   display: flex;
   gap: 10px;
@@ -400,13 +431,52 @@ export default {
   flex-wrap: wrap;
 }
 
-.total-hint { color: #8a98a8; font-size: 13px; }
+.total-hint { color: #8a8a8a; font-size: 13px; }
+
+.stat-line {
+  font-size: 13px;
+  color: #1a1a1a;
+}
+
+.stat-sep {
+  margin: 0 8px;
+  color: #d0d0d0;
+}
+
+.sig-long {
+  color: #c62828;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.sig-short {
+  color: #2e7d32;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.signal-pill {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.signal-pill.pill-long {
+  color: #c62828;
+}
+
+.signal-pill.pill-short {
+  color: #2e7d32;
+}
+
+.signal-pill.pill-neutral {
+  color: #1a1a1a;
+}
 
 .empty-card {
   padding: 18px 20px;
-  border-radius: 16px;
-  border: 1px solid #e7edf4;
-  background: #fbfdff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
 }
 
 .data-table { width: 100%; }
@@ -415,7 +485,8 @@ export default {
 /* ── 展开区域 ── */
 .sig-detail {
   padding: 16px 20px 18px;
-  background: #f7f9fc;
+  background: #fafafa;
+  border-top: 1px solid #e0e0e0;
 }
 
 /* ECharts 容器 */
@@ -442,7 +513,7 @@ export default {
 .section-label {
   font-size: 11px;
   font-weight: 600;
-  color: #8a98a8;
+  color: #8a8a8a;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   margin-right: 2px;
@@ -454,15 +525,15 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #eef1f7;
+  background: #f0f0f0;
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 12px;
 }
 
-.kv-name { color: #8a98a8; }
+.kv-name { color: #8a8a8a; }
 
-/* 条件 chip */
+/* 条件 chip — 灰阶，避免与涨跌语义色冲突 */
 .cond-chip {
   display: inline-flex;
   align-items: center;
@@ -473,24 +544,25 @@ export default {
   font-weight: 500;
 }
 
-.cond-pass { background: #f0faf0; color: #52a94e; }
-.cond-fail { background: #fff5f5; color: #e05252; }
+.cond-pass { background: #f5f5f5; color: #1a1a1a; border: 1px solid #e0e0e0; }
+.cond-fail { background: #fafafa; color: #9e9e9e; border: 1px dashed #e0e0e0; }
 
-/* 数值着色（期货惯例：红涨绿跌） */
-.pos { color: #e6413a; font-weight: 600; }
-.neg { color: #2e9e5e; font-weight: 600; }
+/* 数值着色（红涨绿跌） */
+.pos { color: #c62828; font-weight: 600; }
+.neg { color: #2e7d32; font-weight: 600; }
 
 .no-detail {
-  color: #9aa5b4;
+  color: #8a8a8a;
   font-size: 13px;
   padding: 8px 0;
 }
 
 .no-detail code {
-  background: #eef1f5;
+  background: #f0f0f0;
   padding: 1px 5px;
   border-radius: 3px;
   font-size: 12px;
+  color: #1a1a1a;
 }
 
 @media (max-width: 768px) {

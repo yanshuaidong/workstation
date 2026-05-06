@@ -132,8 +132,8 @@ export default {
         return
       }
       this.renderKline(dates, ohlcv, volumes, varietyName)
-      this.renderIndex(this.$refs.mainForceChart, 'mainForceInstance', dates, mainForce, `${varietyName} 主力指数`, '#2f7cff')
-      this.renderIndex(this.$refs.retailChart, 'retailInstance', dates, retail, `${varietyName} 散户指数`, '#db7c26')
+      this.renderIndex(this.$refs.mainForceChart, 'mainForceInstance', dates, mainForce, `${varietyName} 主力指数`, '#616161')
+      this.renderIndex(this.$refs.retailChart, 'retailInstance', dates, retail, `${varietyName} 散户指数`, '#9e9e9e')
     },
     renderKline(dates, ohlcv, volumes, title) {
       if (!this.$refs.klineChart) return
@@ -183,22 +183,22 @@ export default {
 .empty-hint {
   padding: 60px 0;
   text-align: center;
-  color: #91a1b2;
+  color: #8a8a8a;
   font-size: 14px;
 }
 
 .chart-kline {
   width: 100%;
   height: 360px;
-  border-radius: 12px;
-  border: 1px solid #edf2f7;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
 }
 
 .chart-index {
   width: 100%;
   height: 180px;
-  border-radius: 12px;
-  border: 1px solid #edf2f7;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
   margin-top: 12px;
 }
 </style>

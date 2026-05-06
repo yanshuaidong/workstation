@@ -1,15 +1,18 @@
 <template>
   <div class="news-tracking">
-    <el-container>
+    <el-container class="nt-shell">
       <!-- 标题栏 -->
-      <el-header height="60px" class="header">
-        <h1>新闻消息处理系统</h1>
+      <el-header height="auto" class="nt-page-header">
+        <div class="nt-page-header__inner">
+          <h1 class="nt-page-title">新闻消息处理系统</h1>
+          <p class="nt-page-desc">标签校验与市场反应跟踪</p>
+        </div>
       </el-header>
       
       <!-- 主内容区 -->
-      <el-main>
+      <el-main class="nt-main">
         <!-- 步骤导航 -->
-        <el-steps :active="currentStep" finish-status="success" align-center style="margin-bottom: 30px;">
+        <el-steps :active="currentStep" finish-status="success" align-center class="nt-steps">
           <el-step title="标签校验" description="对新闻消息进行标签审核"></el-step>
           <el-step title="后续跟踪" description="定期跟踪新闻市场反应"></el-step>
         </el-steps>
@@ -20,10 +23,10 @@
             <template #header>
               <div class="card-header">
                 <span>标签校验流程</span>
-                <el-tag v-if="unreviewedData.total_unreviewed > 0" type="warning" size="large">
+                <el-tag v-if="unreviewedData.total_unreviewed > 0" effect="plain" class="nt-pill-tag nt-pill-tag--pending" size="large">
                   剩余校验 {{ unreviewedData.total_unreviewed }} 条
                 </el-tag>
-                <el-tag v-else type="success" size="large">
+                <el-tag v-else effect="plain" class="nt-pill-tag nt-pill-tag--done" size="large">
                   校验完成
                 </el-tag>
               </div>
@@ -41,50 +44,69 @@
                 <div v-if="isPositionReport(unreviewedData.current_news.title)">
                   <div class="position-report">
                     <h4>国泰君安持仓TOP3变化</h4>
-                    <el-table :data="parsePositionData(unreviewedData.current_news.content)" stripe style="width: 100%">
+                    <el-table :data="parsePositionData(unreviewedData.current_news.content)" stripe class="nt-table" style="width: 100%">
                       <el-table-column prop="name" label="品种" width="100" align="center"></el-table-column>
                       <el-table-column prop="family" label="品类" width="80" align="center"></el-table-column>
                       <el-table-column prop="total_buy" label="多头持仓" width="100" align="center">
                         <template #default="scope">
-                          <span style="color: #f56c6c; font-weight: bold;">{{ scope.row.total_buy }}</span>
+                          <span class="nt-metric nt-metric--emphasis">{{ scope.row.total_buy }}</span>
                         </template>
                       </el-table-column>
                       <el-table-column prop="total_ss" label="空头持仓" width="100" align="center">
                         <template #default="scope">
-                          <span style="color: #67c23a; font-weight: bold;">{{ scope.row.total_ss }}</span>
+                          <span class="nt-metric nt-metric--muted">{{ scope.row.total_ss }}</span>
                         </template>
                       </el-table-column>
                       <el-table-column prop="net_position" label="净持仓" width="100" align="center">
                         <template #default="scope">
-                          <span :style="{color: scope.row.net_position > 0 ? '#f56c6c' : '#67c23a', fontWeight: 'bold'}">
+                          <span
+                            :class="[
+                              'nt-metric',
+                              scope.row.net_position > 0 ? 'nt-metric--emphasis' : 'nt-metric--muted'
+                            ]"
+                          >
                             {{ scope.row.net_position }}
                           </span>
                         </template>
                       </el-table-column>
                       <el-table-column prop="net_change" label="持仓变化" width="100" align="center">
                         <template #default="scope">
-                          <span :style="{color: scope.row.net_change > 0 ? '#f56c6c' : '#67c23a', fontWeight: 'bold'}">
+                          <span
+                            :class="[
+                              'nt-metric',
+                              scope.row.net_change > 0 ? 'nt-metric--emphasis' : 'nt-metric--muted'
+                            ]"
+                          >
                             {{ scope.row.net_change > 0 ? '+' : '' }}{{ scope.row.net_change }}
                           </span>
                         </template>
                       </el-table-column>
                       <el-table-column prop="change_ratio" label="变化比例" width="100" align="center">
                         <template #default="scope">
-                          <span :style="{color: scope.row.change_ratio > 0 ? '#f56c6c' : '#67c23a', fontWeight: 'bold'}">
+                          <span
+                            :class="[
+                              'nt-metric',
+                              scope.row.change_ratio > 0 ? 'nt-metric--emphasis' : 'nt-metric--muted'
+                            ]"
+                          >
                             {{ scope.row.change_ratio > 0 ? '+' : '' }}{{ scope.row.change_ratio.toFixed(2) }}%
                           </span>
                         </template>
                       </el-table-column>
                       <el-table-column label="方向" width="80" align="center">
                         <template #default="scope">
-                          <el-tag :type="scope.row.is_net_long ? 'danger' : 'success'" size="small">
+                          <el-tag size="small" effect="plain" class="nt-pill-tag">
                             {{ scope.row.is_net_long ? '净多' : '净空' }}
                           </el-tag>
                         </template>
                       </el-table-column>
                       <el-table-column label="趋势" width="80" align="center">
                         <template #default="scope">
-                          <el-icon :style="{color: scope.row.is_increasing ? '#f56c6c' : '#67c23a', fontSize: '20px'}">
+                          <el-icon
+                            class="nt-trend-icon"
+                            :class="scope.row.is_increasing ? 'nt-trend-icon--emphasis' : 'nt-trend-icon--muted'"
+                            :size="20"
+                          >
                             <component :is="scope.row.is_increasing ? 'CaretTop' : 'CaretBottom'" />
                           </el-icon>
                         </template>
@@ -103,9 +125,12 @@
                   <span v-if="unreviewedData.current_news.message_score">
                     <strong>评分：</strong>{{ unreviewedData.current_news.message_score }}
                   </span>
-                  <el-tag v-if="unreviewedData.current_news.message_label" 
-                          :type="getLabelType(unreviewedData.current_news.message_label)"
-                          style="margin-left: 10px;">
+                  <el-tag
+                    v-if="unreviewedData.current_news.message_label"
+                    effect="plain"
+                    class="nt-pill-tag"
+                    style="margin-left: 10px;"
+                  >
                     {{ getLabelText(unreviewedData.current_news.message_label) }}
                   </el-tag>
                   <span v-if="unreviewedData.current_news.message_type" style="margin-left: 10px;">
@@ -176,15 +201,15 @@
             <el-tabs v-model="activeTrackingTab" type="card">
               <el-tab-pane name="day3">
                 <template #label>
-                  3天跟踪 <el-badge :value="trackingSummary.day3_count" :hidden="trackingSummary.day3_count === 0" type="warning" />
+                  3天跟踪 <el-badge :value="trackingSummary.day3_count" :hidden="trackingSummary.day3_count === 0" class="nt-badge" />
                 </template>
                 <div v-if="trackingData.day3_list && trackingData.day3_list.length > 0">
-                  <el-table :data="trackingData.day3_list" stripe style="width: 100%">
+                  <el-table :data="trackingData.day3_list" stripe class="nt-table" style="width: 100%">
                     <el-table-column prop="time" label="时间" width="180"></el-table-column>
                     <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip></el-table-column>
                     <el-table-column prop="message_label" label="标签" width="80">
                       <template #default="scope">
-                        <el-tag :type="getLabelType(scope.row.message_label)" size="small">
+                        <el-tag effect="plain" class="nt-pill-tag" size="small">
                           {{ getLabelText(scope.row.message_label) }}
                         </el-tag>
                       </template>
@@ -213,15 +238,15 @@
               
               <el-tab-pane name="day7">
                 <template #label>
-                  7天跟踪 <el-badge :value="trackingSummary.day7_count" :hidden="trackingSummary.day7_count === 0" type="warning" />
+                  7天跟踪 <el-badge :value="trackingSummary.day7_count" :hidden="trackingSummary.day7_count === 0" class="nt-badge" />
                 </template>
                 <div v-if="trackingData.day7_list && trackingData.day7_list.length > 0">
-                  <el-table :data="trackingData.day7_list" stripe style="width: 100%">
+                  <el-table :data="trackingData.day7_list" stripe class="nt-table" style="width: 100%">
                     <el-table-column prop="time" label="时间" width="180"></el-table-column>
                     <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip></el-table-column>
                     <el-table-column prop="message_label" label="标签" width="80">
                       <template #default="scope">
-                        <el-tag :type="getLabelType(scope.row.message_label)" size="small">
+                        <el-tag effect="plain" class="nt-pill-tag" size="small">
                           {{ getLabelText(scope.row.message_label) }}
                         </el-tag>
                       </template>
@@ -250,15 +275,15 @@
               
               <el-tab-pane name="day14">
                 <template #label>
-                  14天跟踪 <el-badge :value="trackingSummary.day14_count" :hidden="trackingSummary.day14_count === 0" type="warning" />
+                  14天跟踪 <el-badge :value="trackingSummary.day14_count" :hidden="trackingSummary.day14_count === 0" class="nt-badge" />
                 </template>
                 <div v-if="trackingData.day14_list && trackingData.day14_list.length > 0">
-                  <el-table :data="trackingData.day14_list" stripe style="width: 100%">
+                  <el-table :data="trackingData.day14_list" stripe class="nt-table" style="width: 100%">
                     <el-table-column prop="time" label="时间" width="180"></el-table-column>
                     <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip></el-table-column>
                     <el-table-column prop="message_label" label="标签" width="80">
                       <template #default="scope">
-                        <el-tag :type="getLabelType(scope.row.message_label)" size="small">
+                        <el-tag effect="plain" class="nt-pill-tag" size="small">
                           {{ getLabelText(scope.row.message_label) }}
                         </el-tag>
                       </template>
@@ -287,15 +312,15 @@
               
               <el-tab-pane name="day28">
                 <template #label>
-                  28天跟踪 <el-badge :value="trackingSummary.day28_count" :hidden="trackingSummary.day28_count === 0" type="warning" />
+                  28天跟踪 <el-badge :value="trackingSummary.day28_count" :hidden="trackingSummary.day28_count === 0" class="nt-badge" />
                 </template>
                 <div v-if="trackingData.day28_list && trackingData.day28_list.length > 0">
-                  <el-table :data="trackingData.day28_list" stripe style="width: 100%">
+                  <el-table :data="trackingData.day28_list" stripe class="nt-table" style="width: 100%">
                     <el-table-column prop="time" label="时间" width="180"></el-table-column>
                     <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip></el-table-column>
                     <el-table-column prop="message_label" label="标签" width="80">
                       <template #default="scope">
-                        <el-tag :type="getLabelType(scope.row.message_label)" size="small">
+                        <el-tag effect="plain" class="nt-pill-tag" size="small">
                           {{ getLabelText(scope.row.message_label) }}
                         </el-tag>
                       </template>
@@ -328,7 +353,7 @@
     </el-container>
     
     <!-- 编辑新闻对话框 -->
-    <el-dialog v-model="editDialogVisible" title="编辑新闻" width="60%" :before-close="handleEditClose">
+    <el-dialog v-model="editDialogVisible" title="编辑新闻" width="60%" class="nt-dialog" :before-close="handleEditClose">
       <el-form :model="editForm" label-width="100px" v-loading="editLoading">
         <el-form-item label="标题">
           <el-input v-model="editForm.title" type="textarea" :rows="2"></el-input>
@@ -368,7 +393,7 @@
     </el-dialog>
     
     <!-- 跟踪编辑对话框 -->
-    <el-dialog v-model="trackingEditDialogVisible" title="跟踪编辑" width="60%" :before-close="handleTrackingEditClose">
+    <el-dialog v-model="trackingEditDialogVisible" title="跟踪编辑" width="60%" class="nt-dialog" :before-close="handleTrackingEditClose">
       <el-form :model="trackingEditForm" label-width="100px" v-loading="trackingEditLoading">
         <!-- 只读字段 -->
         <el-form-item label="标题">
@@ -406,7 +431,7 @@
                   />
                   <div class="screenshot-actions">
                     <el-button
-                      type="danger"
+                      class="nt-icon-btn"
                       size="small"
                       icon="Delete"
                       circle
@@ -841,16 +866,6 @@ export default {
         .catch(() => {})
     },
     
-    // 获取标签类型
-    getLabelType(label) {
-      const types = {
-        'hard': 'danger',
-        'soft': 'warning', 
-        'unknown': 'info'
-      }
-      return types[label] || 'info'
-    },
-    
     // 获取标签文本
     getLabelText(label) {
       const texts = {
@@ -1051,23 +1066,133 @@ export default {
 </script>
 
 <style scoped>
+/* ===== 新闻消息处理 · 灰阶界面（与 App 壳层一致）===== */
 .news-tracking {
-  min-height: 100vh;
-  background-color: #f5f7fa;
+  --nt-text: #1a1a1a;
+  --nt-muted: #707070;
+  --nt-border: #e0e0e0;
+  --nt-bg-page: #ffffff;
+  --nt-bg-subtle: #f5f5f5;
+  --nt-bg-hover: #ebebeb;
+  --nt-accent: #1a1a1a;
+
+  min-height: auto;
+  background-color: transparent;
+  color: var(--nt-text);
 }
 
-.header {
-  background-color: #409eff;
-  color: white;
+.nt-shell {
+  min-height: 100%;
+  background: transparent;
+}
+
+.nt-shell :deep(.el-container) {
+  background: transparent;
+}
+
+.nt-page-header {
+  height: auto !important;
+  padding: 0 0 20px !important;
+  margin-bottom: 8px;
+  background: transparent !important;
+  border-bottom: 1px solid var(--nt-border);
+}
+
+.nt-page-header__inner {
   display: flex;
-  align-items: center;
-  padding: 0 20px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 2px;
 }
 
-.header h1 {
+.nt-page-title {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--nt-text);
+}
+
+.nt-page-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--nt-muted);
+}
+
+.nt-main {
+  padding: 24px 0 8px !important;
+  overflow: visible;
+  background: transparent !important;
+}
+
+.nt-steps {
+  max-width: 640px;
+  margin: 0 auto 28px;
+}
+
+.news-tracking :deep(.nt-steps .el-step__title) {
+  font-size: 13px;
   font-weight: 500;
+  color: var(--nt-muted);
+}
+
+.news-tracking :deep(.nt-steps .el-step__title.is-process) {
+  color: var(--nt-text);
+  font-weight: 600;
+}
+
+.news-tracking :deep(.nt-steps .el-step__description) {
+  font-size: 12px;
+  color: var(--nt-muted);
+}
+
+.news-tracking :deep(.nt-steps .el-step__head.is-process .el-step__icon) {
+  color: var(--nt-text);
+  border-color: var(--nt-text);
+}
+
+.news-tracking :deep(.nt-steps .el-step__head.is-finish .el-step__line-inner),
+.news-tracking :deep(.nt-steps .el-step__head.is-process .el-step__line) {
+  border-color: #b8b8b8;
+}
+
+.news-tracking :deep(.nt-steps .el-step__head.is-success .el-step__line) {
+  border-color: #b8b8b8;
+}
+
+.news-tracking :deep(.nt-steps .el-step__head.is-success .el-step__icon.is-text) {
+  color: var(--nt-text);
+  border-color: #b8b8b8;
+}
+
+.news-tracking :deep(.nt-steps .el-step__title.is-success),
+.news-tracking :deep(.nt-steps .el-step__title.is-finish) {
+  color: var(--nt-text);
+}
+
+.news-tracking :deep(.nt-steps .el-step__head.is-wait .el-step__icon.is-text) {
+  color: var(--nt-muted);
+  border-color: var(--nt-border);
+}
+
+.news-tracking :deep(.el-button--primary) {
+  --el-button-bg-color: var(--nt-accent);
+  --el-button-border-color: var(--nt-accent);
+  --el-button-hover-bg-color: #333333;
+  --el-button-hover-border-color: #333333;
+  --el-button-active-bg-color: #000000;
+  --el-button-active-border-color: #000000;
+}
+
+.news-tracking :deep(.el-button--success),
+.news-tracking :deep(.el-button--warning),
+.news-tracking :deep(.el-button--info) {
+  --el-button-bg-color: #ffffff;
+  --el-button-border-color: var(--nt-border);
+  --el-button-text-color: var(--nt-text);
+  --el-button-hover-bg-color: var(--nt-bg-hover);
+  --el-button-hover-border-color: #c8c8c8;
+  --el-button-hover-text-color: var(--nt-text);
 }
 
 .step-content {
@@ -1080,35 +1205,94 @@ export default {
   margin: 0 auto;
 }
 
+.news-tracking :deep(.review-card.el-card) {
+  border: 1px solid var(--nt-border);
+  box-shadow: none;
+  border-radius: 8px;
+}
+
+.news-tracking :deep(.review-card .el-card__header) {
+  background: var(--nt-bg-subtle);
+  border-bottom: 1px solid var(--nt-border);
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-weight: 600;
+  color: var(--nt-text);
+}
+
+.nt-pill-tag {
+  border-color: #d0d0d0 !important;
+  background: #ffffff !important;
+  color: var(--nt-text) !important;
+}
+
+.nt-pill-tag--pending {
+  background: var(--nt-bg-subtle) !important;
+}
+
+.nt-pill-tag--done {
+  background: #e8e8e8 !important;
+  border-color: #c8c8c8 !important;
+}
+
+.nt-badge :deep(.el-badge__content) {
+  background-color: #555555;
+  border-color: #555555;
+  color: #fff;
+}
+
+.nt-metric {
+  font-weight: 600;
+}
+
+.nt-metric--emphasis {
+  color: var(--nt-text);
+}
+
+.nt-metric--muted {
+  color: var(--nt-muted);
+}
+
+.nt-trend-icon--emphasis {
+  color: var(--nt-text);
+}
+
+.nt-trend-icon--muted {
+  color: var(--nt-muted);
 }
 
 .news-item {
-  padding: 20px 0;
+  padding: 16px 0 0;
 }
 
 .news-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 15px;
-  border-bottom: 1px solid #ebeef5;
-  padding-bottom: 10px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--nt-border);
+  padding-bottom: 12px;
 }
 
 .news-header h3 {
   margin: 0;
   flex: 1;
-  color: #303133;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--nt-text);
 }
 
 .news-time {
-  color: #909399;
-  font-size: 14px;
+  color: var(--nt-muted);
+  font-size: 13px;
   margin-left: 20px;
+  white-space: nowrap;
 }
 
 .news-content {
@@ -1117,78 +1301,167 @@ export default {
 
 .news-content p {
   margin: 10px 0;
-  line-height: 1.6;
-  color: #606266;
+  line-height: 1.65;
+  color: #3d3d3d;
   white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-all;
 }
 
 .news-tags {
-  margin-top: 15px;
+  margin-top: 16px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
+  color: #3d3d3d;
 }
 
 .news-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   justify-content: center;
+  padding-top: 8px;
 }
 
 .no-news {
-  padding: 60px 0;
+  padding: 48px 0;
   text-align: center;
 }
 
 .tracking-section {
-  background: white;
+  background: var(--nt-bg-page);
+  border: 1px solid var(--nt-border);
   border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 22px 24px 28px;
+  box-shadow: none;
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
   margin-bottom: 20px;
 }
 
 .section-header > div {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .section-header h2 {
   margin: 0;
-  color: #303133;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--nt-text);
+}
+
+.tracking-summary {
+  background: var(--nt-bg-subtle);
+  border: 1px solid var(--nt-border);
+  border-radius: 8px;
+  padding: 18px 16px;
+  margin-bottom: 20px;
+  box-shadow: none;
+}
+
+.tracking-summary .el-statistic {
+  text-align: center;
+}
+
+.news-tracking :deep(.tracking-summary .el-statistic__head) {
+  color: var(--nt-muted);
+  font-size: 13px;
+}
+
+.news-tracking :deep(.tracking-summary .el-statistic__content) {
+  color: var(--nt-text);
+  font-weight: 600;
+}
+
+.news-tracking :deep(.el-tabs--card > .el-tabs__header) {
+  border-bottom: 1px solid var(--nt-border);
+}
+
+.news-tracking :deep(.el-tabs--card > .el-tabs__header .el-tabs__nav) {
+  border: none;
+  gap: 4px;
+}
+
+.news-tracking :deep(.el-tabs--card > .el-tabs__header .el-tabs__item) {
+  border: 1px solid var(--nt-border);
+  border-radius: 8px 8px 0 0;
+  color: var(--nt-muted);
+  background: var(--nt-bg-subtle);
+}
+
+.news-tracking :deep(.el-tabs--card > .el-tabs__header .el-tabs__item.is-active) {
+  color: var(--nt-text);
+  font-weight: 600;
+  background: #ffffff;
+  border-bottom-color: #ffffff;
+}
+
+.news-tracking :deep(.nt-table.el-table) {
+  --el-table-border-color: var(--nt-border);
+  --el-table-header-bg-color: var(--nt-bg-subtle);
+  --el-table-row-hover-bg-color: #f0f0f0;
+}
+
+.news-tracking :deep(.nt-table.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell) {
+  background: #fafafa !important;
+}
+
+.news-tracking :deep(.nt-table .el-table__header th.el-table__cell) {
+  font-weight: 600;
+  color: var(--nt-text);
+}
+
+.news-tracking :deep(.el-text.el-text--info) {
+  color: var(--nt-muted) !important;
+}
+
+.news-tracking :deep(.el-empty__description) {
+  color: var(--nt-muted);
 }
 
 .screenshot-section {
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  padding: 15px;
-  background-color: #fafafa;
+  border: 1px solid var(--nt-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background-color: var(--nt-bg-subtle);
 }
 
-.screenshot-list {
+.existing-screenshots {
+  margin-bottom: 16px;
+}
+
+.existing-screenshots h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nt-text);
+}
+
+.screenshot-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .screenshot-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  background: white;
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border: 1px solid var(--nt-border);
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
 }
 
 .screenshot-preview {
@@ -1198,70 +1471,22 @@ export default {
   border-radius: 4px;
 }
 
-/* 统计信息样式 */
-.tracking-summary {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.tracking-summary .el-statistic {
-  text-align: center;
-}
-
-.tracking-summary .el-statistic__content {
-  color: #409eff;
-  font-weight: bold;
-}
-
-/* 截图相关样式 */
-.screenshot-section {
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  padding: 15px;
-  background-color: #fafafa;
-}
-
-.existing-screenshots {
-  margin-bottom: 20px;
-}
-
-.existing-screenshots h4 {
-  margin: 0 0 15px 0;
-  font-size: 14px;
-  color: #606266;
-}
-
-.screenshot-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 15px;
-}
-
-.screenshot-item {
-  position: relative;
-  width: 100px;
-  height: 100px;
-}
-
 .screenshot-image {
   width: 100%;
   height: 100%;
+  object-fit: cover;
   border-radius: 6px;
 }
 
 .screenshot-actions {
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 4px;
+  right: 4px;
 }
 
 .upload-section {
-  border-top: 1px solid #ebeef5;
-  padding-top: 15px;
+  border-top: 1px solid var(--nt-border);
+  padding-top: 14px;
 }
 
 .upload-area {
@@ -1271,7 +1496,7 @@ export default {
 }
 
 .upload-tip {
-  color: #909399;
+  color: var(--nt-muted);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1280,59 +1505,100 @@ export default {
   margin: 0;
 }
 
-/* 持仓报告样式 */
 .position-report {
-  margin: 15px 0;
-  padding: 15px;
-  background-color: #f9f9f9;
+  margin: 16px 0;
+  padding: 16px;
+  background-color: var(--nt-bg-subtle);
   border-radius: 8px;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--nt-border);
 }
 
 .position-report h4 {
-  margin: 0 0 15px 0;
-  color: #303133;
-  font-size: 16px;
-  font-weight: bold;
+  margin: 0 0 14px;
+  color: var(--nt-text);
+  font-size: 15px;
+  font-weight: 600;
   text-align: center;
   padding-bottom: 10px;
-  border-bottom: 2px solid #409eff;
+  border-bottom: 1px solid var(--nt-border);
 }
 
-.position-report .el-table {
-  border-radius: 4px;
-  overflow: hidden;
+.position-report .nt-table :deep(.el-table__header th.el-table__cell) {
+  background: #e8e8e8 !important;
+  color: var(--nt-text) !important;
 }
 
-.position-report .el-table th {
-  background-color: #409eff !important;
-  color: white !important;
-  font-weight: bold;
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .news-header {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .news-time {
     margin-left: 0;
-    margin-top: 5px;
+    margin-top: 6px;
   }
-  
+
   .news-actions {
     flex-direction: column;
   }
-  
+
   .news-tags {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .position-report {
     overflow-x: auto;
   }
+
+  .tracking-summary :deep(.el-col) {
+    margin-bottom: 12px;
+  }
+}
+</style>
+
+<style>
+.nt-dialog.el-dialog {
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+}
+
+.nt-dialog .el-dialog__header {
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 16px;
+}
+
+.nt-dialog .el-dialog__title {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.nt-dialog.el-dialog .el-button--primary {
+  --el-button-bg-color: #1a1a1a;
+  --el-button-border-color: #1a1a1a;
+  --el-button-hover-bg-color: #333333;
+  --el-button-hover-border-color: #333333;
+}
+
+.nt-dialog.el-dialog .el-button--danger {
+  --el-button-bg-color: #ffffff;
+  --el-button-border-color: #e0e0e0;
+  --el-button-text-color: #1a1a1a;
+  --el-button-hover-bg-color: #ebebeb;
+}
+
+.nt-dialog .nt-icon-btn.el-button {
+  --el-button-bg-color: rgba(255, 255, 255, 0.92);
+  --el-button-border-color: #e0e0e0;
+  --el-button-text-color: #1a1a1a;
+  --el-button-hover-bg-color: #ebebeb;
 }
 </style>

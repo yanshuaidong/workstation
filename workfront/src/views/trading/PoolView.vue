@@ -1,17 +1,18 @@
 <template>
-  <div class="pool-view">
-    <div class="pool-header">
-      <span class="pool-hint">激活品种 {{ activeCount }} / {{ pool.length }}</span>
-      <el-button size="small" :loading="loading" @click="fetchPool">刷新</el-button>
+  <div class="trading-page">
+    <div class="toolbar toolbar-spread">
+      <span class="toolbar-hint">激活品种 {{ activeCount }} / {{ pool.length }}</span>
+      <el-button :loading="loading" @click="fetchPool">刷新</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="pool" stripe class="pool-table">
-      <el-table-column label="品种" prop="variety_name" width="140" />
-      <el-table-column label="板块" width="200">
+    <div class="section-title">品种池</div>
+    <el-table v-loading="loading" :data="pool" stripe class="data-table">
+      <el-table-column label="品种" prop="variety_name" min-width="120" />
+      <el-table-column label="板块" min-width="200">
         <template #default="{ row }">
           <el-select
             v-model="row.sector"
-            size="small"
+            class="sector-select"
             filterable
             allow-create
             default-first-option
@@ -26,6 +27,7 @@
       <el-table-column label="状态" width="100" align="center">
         <template #default="{ row }">
           <el-switch
+            class="pool-switch"
             :model-value="row.is_active === 1"
             :loading="row._updating"
             @change="(val) => toggleActive(row, val)"
@@ -33,6 +35,8 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div v-if="!loading && !pool.length" class="empty-hint">暂无池内品种</div>
   </div>
 </template>
 
@@ -110,13 +114,50 @@ export default {
 </script>
 
 <style scoped>
-.pool-view { padding: 4px 0; }
-.pool-header {
+.trading-page {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
+  flex-direction: column;
+  gap: 14px;
 }
-.pool-hint { color: #5a7896; font-size: 13px; }
-.pool-table { width: 100%; }
+
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.toolbar-spread {
+  justify-content: space-between;
+}
+
+.toolbar-hint {
+  color: #8a8a8a;
+  font-size: 13px;
+}
+
+.section-title {
+  color: #1a1a1a;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.data-table {
+  width: 100%;
+}
+
+.sector-select {
+  width: 100%;
+}
+
+/* 与交易页主色一致，避免默认主题蓝 */
+.pool-switch {
+  --el-switch-on-color: #1a1a1a;
+  --el-switch-off-color: #d0d0d0;
+}
+
+.empty-hint {
+  padding: 20px 0;
+  color: #8a8a8a;
+  font-size: 13px;
+}
 </style>
