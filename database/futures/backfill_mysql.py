@@ -43,13 +43,14 @@ BACKFILL_SKIP_SYMBOLS = frozenset({"lfm", "ppfm", "vfm", "wrm"})
 
 # ─────────────────────────── MySQL 配置 ──────────────────────
 DB_CONFIG = {
-    "host": "rm-bp1u701yzm0y42oh1vo.mysql.rds.aliyuncs.com",
+    "host": "82.156.207.94",
     "port": 3306,
     "user": "ysd",
-    "password": "Yan1234567",
+    "password": "@Yan1234567",
     "database": "futures",
     "charset": "utf8mb4",
 }
+
 
 # ─────────────────────────── 日志 ────────────────────────────
 logging.basicConfig(
