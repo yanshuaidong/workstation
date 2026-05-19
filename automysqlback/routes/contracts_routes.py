@@ -89,8 +89,8 @@ def get_history_data():
                 'message': f'合约 {symbol} 不存在或未激活'
             })
         
-        # 查询历史数据
-        table_name = f"hist_{symbol}"
+        # 查询历史数据（物理表名为 hist_<symbol>，symbol 一律小写，与建表规则一致）
+        table_name = f"hist_{symbol.lower()}"
         cursor.execute(f"""
             SELECT 
                 trade_date,
