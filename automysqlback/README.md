@@ -312,7 +312,7 @@ screenshots/YYYY/MM/DD/<filename>
 | `fut_variety` | 品种维表 |
 | `fut_strength` | 主力/散户指标序列 |
 | `fut_daily_close` | 日线收盘价序列 |
-| `hist_{symbol}` | 各合约历史行情表，表名按合约代码动态拼接 |
+| `hist_{symbol}` | 各合约历史行情表，表名动态拼接，`symbol` 使用小写（如 `hist_srm`） |
 
 ## 开发入口
 
