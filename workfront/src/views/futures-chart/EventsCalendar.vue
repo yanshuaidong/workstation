@@ -58,21 +58,17 @@
         </div>
       </div>
 
-      <!-- 日历表格 -->
+      <!-- 日历表格（单一 Grid，保证星期标题与日期列对齐） -->
       <div v-show="!collapsed" class="calendar-body" v-loading="loading">
-        <!-- 星期标题 -->
-        <div class="calendar-weekdays">
-          <div 
-            v-for="day in weekdays" 
-            :key="day"
+        <div class="calendar-table">
+          <div
+            v-for="day in weekdays"
+            :key="'w-' + day"
             class="weekday-cell"
           >
             {{ day }}
           </div>
-        </div>
 
-        <!-- 日期格子 -->
-        <div class="calendar-grid">
           <div
             v-for="(day, index) in calendarDays"
             :key="index"
@@ -504,37 +500,32 @@ export default {
   padding-top: 20px;
 }
 
-.calendar-weekdays {
+.calendar-table {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-  margin-bottom: 1px;
-  background-color: #f5f7fa;
-}
-
-.weekday-cell {
-  padding: 10px;
-  text-align: center;
-  font-weight: bold;
-  color: #606266;
-  background-color: #fff;
-}
-
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 1px;
   background-color: #e8e8e8;
   border: 1px solid #e8e8e8;
 }
 
+.weekday-cell {
+  padding: 8px;
+  text-align: center;
+  font-weight: bold;
+  color: #606266;
+  background-color: #f5f7fa;
+  min-width: 0;
+}
+
 .calendar-day {
   min-height: 100px;
+  min-width: 0;
   padding: 8px;
   background-color: #fff;
   position: relative;
   cursor: pointer;
   transition: all 0.3s ease;
+  overflow: hidden;
 }
 
 .calendar-day:hover {
@@ -562,7 +553,7 @@ export default {
 
 .calendar-day.today {
   background-color: #ecf5ff;
-  border: 2px solid #409eff;
+  box-shadow: inset 0 0 0 2px #409eff;
 }
 
 .calendar-day.weekend {
@@ -599,6 +590,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .event-item {
@@ -613,6 +605,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
 }
 
 .event-item:hover {
@@ -844,9 +837,13 @@ export default {
     width: 100%;
   }
   
+  .weekday-cell,
+  .calendar-day {
+    padding: 5px;
+  }
+
   .calendar-day {
     min-height: 80px;
-    padding: 5px;
   }
   
   .event-item {
