@@ -8,20 +8,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Common Commands
 
-### Docker 服务（nginx + workfront + automysqlback）
+### 部署
 
 ```bash
-# 首次部署（拉取代码+构建+启动）
-./deploy.sh deploy
+cd /root/workstation
+git pull
+bash deploy.sh deploy
+```
 
-# 启动/停止/重启
-./deploy.sh start
-./deploy.sh stop
-./deploy.sh restart
-
-# 查看状态和日志
-./deploy.sh status
-./deploy.sh logs [service_name]   # service_name: nginx / workfront / automysqlback
+部署脚本其他命令：
+```bash
+bash deploy.sh start      # 启动后端服务 + 重载 Nginx
+bash deploy.sh stop       # 停止后端服务
+bash deploy.sh restart    # 重启后端 + 重载 Nginx
+bash deploy.sh status     # 查看服务状态和健康检查
+bash deploy.sh logs       # 查看后端日志
+bash deploy.sh install-service  # 安装/更新 systemd 服务
+bash deploy.sh install-nginx    # 安装/更新 Nginx 配置
 ```
 
 ### 前端开发（workfront/）
@@ -73,17 +76,17 @@ cd quantlab
 
 | 目录 | 技术栈 | 运行方式 | 说明 |
 |------|--------|---------|------|
-| `workfront/` | Vue 3 + Element Plus + ECharts | Docker | 前端 UI |
-| `automysqlback/` | Flask + PyMySQL | Docker (port 7001) | 后端 REST API |
-| `nginx/` | Nginx | Docker (port 80/443) | 反向代理 |
+| `workfront/` | Vue 3 + Element Plus + ECharts | systemd / npm | 前端 UI |
+| `automysqlback/` | Flask + PyMySQL | systemd (port 7001) | 后端 REST API |
+| `nginx/` | Nginx | systemd (port 80/443) | 反向代理 |
 | `spiderx/` | Python | 本地 nohup | 各类爬虫 & AI 助手 |
 | `database/` | Python | 本地定时 | 国泰期货数据拉取入库 |
 | `quantlab/` | Python + scikit-learn | 本地定时 | 机器学习量化分析 |
 
 ### 请求路由（Nginx）
 
-- `/`       → 前端静态资源（workfront 容器）
-- `/api-a/` → 后端 API（automysqlback 容器，内部重写为 `/api/`）
+- `/`       → 前端静态资源（`/var/www/workstation/dist`）
+- `/api-a/` → 后端 API（`127.0.0.1:7001`，Nginx 内部重写为 `/api/`）
 
 ### 后端 API 规范
 
@@ -112,6 +115,6 @@ cd quantlab
 
 ### 环境配置
 
-`.env` 文件（从 `env.production` 复制）用于 Docker 服务；spiderx 各子目录通常自带配置文件或读取同一 `.env`。
+`.env` 文件（从 `env.production` 复制）用于部署和运行时配置；spiderx 各子目录通常自带配置文件或读取同一 `.env`。
 
 必填环境变量：`DB_HOST`、`DB_USER`、`DB_PASSWORD`、`OSS_ENDPOINT`、`OSS_BUCKET`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`

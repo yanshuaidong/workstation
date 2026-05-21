@@ -1,16 +1,26 @@
 #!/bin/bash
 
-# 期货数据系统部署脚本
-# 使用方法: ./deploy.sh [deploy|start|stop|restart|logs|status|add-service]
+# 部署脚本
+# 使用方法: bash deploy.sh [deploy|start|stop|restart|status|logs|install-service|install-nginx|build]
 
-set -e
+set -euo pipefail
 
-# 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
+
+PROJECT_DIR=${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
+FRONTEND_DIR="${PROJECT_DIR}/workfront"
+BACKEND_DIR="${PROJECT_DIR}/automysqlback"
+VENV_DIR="${BACKEND_DIR}/.venv"
+FRONTEND_DEPLOY_DIR=${FRONTEND_DEPLOY_DIR:-/var/www/workstation/dist}
+SERVICE_NAME="workstation-backend"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+NGINX_SOURCE="${PROJECT_DIR}/nginx/nginx.conf"
+NGINX_TARGET="/etc/nginx/nginx.conf"
+PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
 
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -28,429 +38,301 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# 统一的 compose 命令
-compose() {
-    if command -v docker-compose >/dev/null 2>&1; then
-        docker-compose "$@"
-    elif docker compose version >/dev/null 2>&1; then
-        docker compose "$@"
-    else
-        print_error "Docker Compose 未安装"
+require_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "该命令需要 root 权限，请使用 root 用户或 sudo 执行"
         exit 1
     fi
 }
 
-# 检查系统资源
-check_system_resources() {
-    if command -v free >/dev/null 2>&1; then
-        local total_memory=$(free -m | awk 'NR==2{printf "%.0f", $2}')
-        local available_memory=$(free -m | awk 'NR==2{printf "%.0f", $7}')
-        local swap_total=$(free -m | awk 'NR==3{printf "%.0f", $2}')
-        local swap_used=$(free -m | awk 'NR==3{printf "%.0f", $3}')
-        
-        print_info "系统内存状态:"
-        print_info "  总内存: ${total_memory}MB"
-        print_info "  可用内存: ${available_memory}MB"
-        print_info "  Swap总量: ${swap_total}MB"
-        print_info "  Swap已用: ${swap_used}MB"
-        
-        # 内存不足警告和自动创建swap
-        if [ "$available_memory" -lt 1024 ]; then
-            print_warning "可用内存不足1GB，构建可能失败"
-            
-            # 检查是否有足够的swap
-            local swap_available=$((swap_total - swap_used))
-            if [ "$swap_available" -lt 1024 ]; then
-                print_warning "Swap空间不足，尝试自动创建swap空间..."
-                
-                # 检查是否已存在swapfile
-                if [ ! -f "/swapfile" ]; then
-                    print_info "创建2GB swap文件..."
-                    if fallocate -l 2G /swapfile 2>/dev/null && \
-                       chmod 600 /swapfile && \
-                       mkswap /swapfile >/dev/null 2>&1 && \
-                       swapon /swapfile 2>/dev/null; then
-                        print_success "Swap空间创建成功"
-                        # 添加到fstab以便重启后自动挂载
-                        if ! grep -q "/swapfile" /etc/fstab 2>/dev/null; then
-                            echo "/swapfile none swap sw 0 0" >> /etc/fstab 2>/dev/null || true
-                        fi
-                    else
-                        print_warning "自动创建swap失败，请手动创建:"
-                        print_info "  sudo fallocate -l 2G /swapfile"
-                        print_info "  sudo chmod 600 /swapfile"
-                        print_info "  sudo mkswap /swapfile"
-                        print_info "  sudo swapon /swapfile"
-                    fi
-                else
-                    print_info "Swap文件已存在，尝试启用..."
-                    swapon /swapfile 2>/dev/null || true
-                fi
-            fi
-            
-            print_info "正在尝试释放内存..."
-            # 清理Docker缓存
-            docker system prune -f --volumes >/dev/null 2>&1 || true
-            # 清理系统缓存
-            sync && echo 3 | tee /proc/sys/vm/drop_caches >/dev/null 2>&1 || true
-        fi
-    fi
-}
-
-
-# 部署更新（拉代码+重启）
-deploy_update() {
-    local branch=${1:-main}
-    
-    print_info "开始部署更新，分支: $branch"
-    
-    # 检查Git仓库
-    if [ ! -d ".git" ]; then
-        print_error "当前目录不是Git仓库"
+require_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        print_error "缺少命令: $1"
         exit 1
     fi
-    
-    # 停止服务
-    print_info "停止服务..."
-    compose down || true
-    
-    # 备份当前版本
-    local backup_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-    print_info "备份当前版本: ${backup_commit:0:8}"
-    
-    # 拉取最新代码
-    print_info "拉取最新代码..."
-    git fetch origin
-    git checkout $branch
-    git reset --hard origin/$branch
-    
-    local new_commit=$(git rev-parse HEAD)
-    print_success "更新到版本: ${new_commit:0:8}"
-    
-    # 显示更新内容
-    if [ "$backup_commit" != "$new_commit" ] && [ "$backup_commit" != "unknown" ]; then
-        print_info "更新内容:"
-        git log --oneline $backup_commit..$new_commit | head -5
+}
+
+ensure_project_root() {
+    if [ ! -f "${FRONTEND_DIR}/package.json" ] || [ ! -f "${BACKEND_DIR}/start.py" ]; then
+        print_error "项目目录不正确: ${PROJECT_DIR}"
+        print_info "请在项目根目录执行，或设置 PROJECT_DIR=/root/workstation"
+        exit 1
     fi
-    
-    # 检查环境配置
-    if [ ! -f ".env" ]; then
-        if [ -f "env.production" ]; then
-            print_info "复制生产环境配置文件..."
-            cp env.production .env
-            print_warning "请确保 .env 文件中的敏感信息（如OSS密钥）已正确配置"
-        else
-            print_error "生产环境配置文件 env.production 不存在"
-            exit 1
-        fi
+}
+
+ensure_env() {
+    if [ -f "${PROJECT_DIR}/.env" ]; then
+        print_info "使用现有环境配置: ${PROJECT_DIR}/.env"
+        return
+    fi
+
+    if [ -f "${PROJECT_DIR}/env.production" ]; then
+        print_warning "未找到 .env，正在从 env.production 复制"
+        cp "${PROJECT_DIR}/env.production" "${PROJECT_DIR}/.env"
+        print_warning "请确认 .env 中的数据库和 OSS 密钥已配置正确"
+        return
+    fi
+
+    print_error "未找到 .env 或 env.production"
+    exit 1
+}
+
+check_dependencies() {
+    require_command python3
+    require_command npm
+    require_command nginx
+    require_command systemctl
+    require_command curl
+}
+
+build_frontend() {
+    print_info "构建前端..."
+    cd "${FRONTEND_DIR}"
+
+    if [ -f "package-lock.json" ]; then
+        npm ci
     else
-        print_info "使用现有的 .env 配置文件"
+        npm install
     fi
-    
-    # 重新构建并启动
-    print_info "构建并启动服务..."
-    
-    # 设置 Docker BuildKit 和内存优化
-    export DOCKER_BUILDKIT=1
-    export BUILDKIT_PROGRESS=plain
-    
-    # 检查系统内存和swap
-    check_system_resources
-    
-    # 构建时添加内存限制（适合2GB内存服务器）
-    print_info "开始构建镜像（使用内存优化配置）..."
-    # 先尝试逐个构建服务以减少内存压力
-    if ! compose build --no-cache workfront; then
-        print_warning "前端构建失败，尝试释放内存后重试..."
-        docker system prune -f --volumes || true
-        if ! compose build --no-cache workfront; then
-            print_error "前端构建仍然失败"
-            exit 1
-        fi
+
+    npm run build
+
+    if [ ! -f "${FRONTEND_DIR}/dist/index.html" ]; then
+        print_error "前端构建失败，未找到 dist/index.html"
+        exit 1
     fi
-    
-    if ! compose build --no-cache automysqlback; then
-        print_warning "后端构建失败，尝试释放内存后重试..."
-        docker system prune -f --volumes || true
-        if ! compose build --no-cache automysqlback; then
-            print_error "后端构建仍然失败"
-            exit 1
-        fi
-    fi
-    
-    compose up -d
-    
-    # 等待服务启动
-    print_info "等待服务启动..."
-    sleep 15
-    
-    # 检查服务状态
-    check_services
-    
-    print_success "部署完成！"
+
+    print_success "前端构建完成: ${FRONTEND_DIR}/dist"
 }
 
-# 等待服务健康
-wait_for_service() {
-    local service_name=$1
-    local check_url=$2
-    local max_wait=${3:-120}
-    local wait_time=0
-    
-    print_info "等待 $service_name 服务启动..."
-    
-    while [ $wait_time -lt $max_wait ]; do
-        if curl -f -s "$check_url" > /dev/null 2>&1; then
-            print_success "$service_name 服务已就绪"
-            return 0
-        else
-            printf "."
-            sleep 5
-            wait_time=$((wait_time + 5))
-        fi
-    done
-    
-    echo ""
-    print_error "$service_name 服务启动超时 (${max_wait}秒)"
-    return 1
+publish_frontend() {
+    require_root
+
+    if [ ! -f "${FRONTEND_DIR}/dist/index.html" ]; then
+        print_error "未找到前端构建产物，请先执行 npm run build"
+        exit 1
+    fi
+
+    print_info "发布前端静态文件到: ${FRONTEND_DEPLOY_DIR}"
+    rm -rf "${FRONTEND_DEPLOY_DIR}"
+    mkdir -p "${FRONTEND_DEPLOY_DIR}"
+    cp -a "${FRONTEND_DIR}/dist/." "${FRONTEND_DEPLOY_DIR}/"
+
+    find "${FRONTEND_DEPLOY_DIR}" -type d -exec chmod 755 {} \;
+    find "${FRONTEND_DEPLOY_DIR}" -type f -exec chmod 644 {} \;
+
+    if id nginx >/dev/null 2>&1; then
+        chown -R nginx:nginx "$(dirname "${FRONTEND_DEPLOY_DIR}")"
+    fi
+
+    print_success "前端静态文件发布完成"
 }
 
-# 检查容器状态
-check_container() {
-    local container_name=$1
-    local max_wait=${2:-60}
-    local wait_time=0
-    
-    print_info "检查容器 $container_name 状态..."
-    
-    while [ $wait_time -lt $max_wait ]; do
-        local status=$(docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null || echo "not_found")
-        
-        case "$status" in
-            "running")
-                print_success "容器 $container_name 正在运行"
-                return 0
-                ;;
-            "not_found")
-                print_info "容器 $container_name 不存在，等待创建..."
-                ;;
-            "exited"|"dead")
-                print_error "容器 $container_name 已退出，状态: $status"
-                return 1
-                ;;
-            *)
-                print_info "容器 $container_name 状态: $status，继续等待..."
-                ;;
-        esac
-        
-        sleep 5
-        wait_time=$((wait_time + 5))
-    done
-    
-    print_error "容器 $container_name 检查超时"
-    return 1
+setup_backend() {
+    print_info "准备后端 Python 环境..."
+    cd "${BACKEND_DIR}"
+
+    if [ ! -d "${VENV_DIR}" ]; then
+        python3 -m venv "${VENV_DIR}"
+    fi
+
+    "${VENV_DIR}/bin/python" -m pip install --upgrade pip
+    PIP_INDEX_URL="${PIP_INDEX_URL}" "${VENV_DIR}/bin/pip" install -r requirements.txt
+
+    print_success "后端依赖安装完成"
 }
 
-# 启动服务
+install_service() {
+    require_root
+    ensure_project_root
+    ensure_env
+    setup_backend
+
+    print_info "写入 systemd 服务: ${SERVICE_FILE}"
+    cat > "${SERVICE_FILE}" <<EOF
+[Unit]
+Description=Workstation Futures Backend API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${BACKEND_DIR}
+Environment=PYTHONUNBUFFERED=1
+Environment=MALLOC_ARENA_MAX=2
+Environment=PYTHONPATH=${BACKEND_DIR}
+EnvironmentFile=-${PROJECT_DIR}/env.production
+EnvironmentFile=-${PROJECT_DIR}/.env
+ExecStart=${VENV_DIR}/bin/python start.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable "${SERVICE_NAME}"
+    print_success "systemd 服务安装完成"
+}
+
+install_nginx() {
+    require_root
+    ensure_project_root
+
+    if [ ! -f "${NGINX_SOURCE}" ]; then
+        print_error "未找到 Nginx 配置模板: ${NGINX_SOURCE}"
+        exit 1
+    fi
+
+    local backup_file="${NGINX_TARGET}.bak.$(date +%Y%m%d%H%M%S)"
+    print_info "备份当前 Nginx 配置: ${backup_file}"
+    cp "${NGINX_TARGET}" "${backup_file}"
+
+    print_info "安装 Nginx 配置..."
+    if [ "${PROJECT_DIR}" = "/root/workstation" ]; then
+        cp "${NGINX_SOURCE}" "${NGINX_TARGET}"
+    else
+        sed "s#/var/www/workstation/dist#${FRONTEND_DEPLOY_DIR}#g" "${NGINX_SOURCE}" > "${NGINX_TARGET}"
+    fi
+
+    if nginx -t; then
+        systemctl reload nginx
+        print_success "Nginx 配置已安装并重载"
+    else
+        print_error "Nginx 配置校验失败，正在恢复备份"
+        cp "${backup_file}" "${NGINX_TARGET}"
+        nginx -t || true
+        exit 1
+    fi
+}
+
 start_services() {
-    print_info "启动期货数据系统服务（轻量级版本）..."
-    
-    # 检查环境配置
-    if [ ! -f ".env" ]; then
-        if [ -f "env.production" ]; then
-            print_info "复制生产环境配置文件..."
-            cp env.production .env
-            print_warning "请确保 .env 文件中的敏感信息（如OSS密钥）已正确配置"
-        else
-            print_error "生产环境配置文件 env.production 不存在"
-            exit 1
-        fi
-    else
-        print_info "使用现有的 .env 配置文件"
-    fi
-    
-    # 1. 启动后端服务
-    print_info "第1步: 启动后端 API 服务..."
-    compose up -d automysqlback
-    
-    # 等待后端容器启动
-    if ! check_container "futures-backend" 120; then
-        print_error "后端容器启动失败"
-        compose logs automysqlback
-        return 1
-    fi
-    
-    # 2. 启动前端服务
-    print_info "第2步: 启动前端服务..."
-    compose up -d workfront
-    
-    # 3. 最后启动 Nginx 代理
-    print_info "第3步: 启动 Nginx 反向代理..."
-    compose up -d nginx
-    
-    # 等待服务完全启动
-    print_info "第4步: 等待服务完全启动..."
-    sleep 10
-    
-    # 检查服务状态
-    check_services
-    
-    print_success "所有服务启动完成！"
+    require_root
+    systemctl start "${SERVICE_NAME}"
+    systemctl reload nginx
+    print_success "服务已启动"
 }
 
-# 停止服务
 stop_services() {
-    print_info "停止服务..."
-    compose down
-    print_success "服务已停止"
+    require_root
+    systemctl stop "${SERVICE_NAME}"
+    print_success "后端服务已停止"
 }
 
-# 重启服务
 restart_services() {
-    print_info "重启服务..."
-    compose down
-    compose up -d
-    sleep 5
-    check_services
+    require_root
+    systemctl restart "${SERVICE_NAME}"
+    systemctl reload nginx
+    print_success "服务已重启"
 }
 
-# 检查服务状态
-check_services() {
-    print_info "检查服务状态..."
-    
-    compose ps
-    
+show_status() {
+    print_info "后端服务状态:"
+    systemctl status "${SERVICE_NAME}" --no-pager || true
+
     echo ""
-    print_info "服务健康检查:"
-    
-    # 检查前端
-    if curl -f -s http://localhost/ > /dev/null 2>&1; then
-        print_success "前端服务正常"
-    else
-        print_warning "前端服务异常"
-    fi
-    
-    # 检查后端API
-    if curl -f -s http://localhost/api-a/settings > /dev/null 2>&1; then
-        print_success "后端API服务正常"
-    else
-        print_warning "后端API服务异常"
-    fi
-    
-    
+    print_info "Nginx 配置检查:"
+    nginx -t || true
+
     echo ""
-    print_info "访问地址:"
-    print_info "  前端: http://localhost"
-    print_info "  后端API: http://localhost/api-a/"
+    print_info "健康检查:"
+    if curl -fsS http://127.0.0.1/ >/dev/null 2>&1; then
+        print_success "前端访问正常"
+    else
+        print_warning "前端访问异常"
+    fi
+
+    if curl -fsS http://127.0.0.1/api-a/settings >/dev/null 2>&1; then
+        print_success "后端 API 访问正常"
+    else
+        print_warning "后端 API 访问异常"
+    fi
 }
 
-# 查看日志
 show_logs() {
-    if [ -n "$2" ]; then
-        compose logs -f "$2"
-    else
-        compose logs -f
-    fi
+    journalctl -u "${SERVICE_NAME}" -f --no-pager
 }
 
-# 添加新服务
-add_service() {
-    local service_name=$2
-    local port=$3
-    
-    if [ -z "$service_name" ] || [ -z "$port" ]; then
-        print_error "使用方法: $0 add-service <服务名> <端口>"
-        print_error "例如: $0 add-service newservice 7002"
-        exit 1
-    fi
-    
-    print_info "添加新服务: $service_name (端口: $port)"
-    
-    # 检查docker-compose.yml是否存在该服务
-    if grep -q "^  $service_name:" docker-compose.yml; then
-        print_warning "服务 $service_name 已存在于 docker-compose.yml"
-    else
-        print_info "请手动在 docker-compose.yml 中添加服务配置"
-        print_info "然后在 nginx/nginx.conf 中添加代理配置"
-    fi
-    
-    # 检查nginx配置
-    if grep -q "server $service_name:$port" nginx/nginx.conf; then
-        print_warning "Nginx配置中已存在该服务"
-    else
-        print_info "需要在 nginx/nginx.conf 中添加以下配置:"
-        echo ""
-        echo "    upstream ${service_name}_api {"
-        echo "        server $service_name:$port;"
-        echo "        keepalive 32;"
-        echo "    }"
-        echo ""
-        echo "    location /api-${service_name}/ {"
-        echo "        rewrite ^/api-${service_name}/(.*)$ /api/$1 break;"
-        echo "        proxy_pass http://${service_name}_api;"
-        echo "        proxy_set_header Host \$host;"
-        echo "        proxy_set_header X-Real-IP \$remote_addr;"
-        echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
-        echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
-        echo "        proxy_http_version 1.1;"
-        echo "        proxy_set_header Connection \"\";"
-        echo "    }"
-        echo ""
-        print_info "添加配置后运行: $0 restart"
-    fi
+deploy() {
+    require_root
+    ensure_project_root
+    check_dependencies
+    ensure_env
+    build_frontend
+    publish_frontend
+    install_service
+    install_nginx
+    restart_services
+    sleep 3
+    show_status
+    print_success "部署完成"
 }
 
+usage() {
+    echo "部署脚本"
+    echo ""
+    echo "使用方法: bash $0 [command]"
+    echo ""
+    echo "命令:"
+    echo "  deploy          构建前端、安装后端服务、安装 Nginx 配置并启动"
+    echo "  build           构建并发布前端，同时安装后端依赖"
+    echo "  install-service 安装/更新 systemd 后端服务"
+    echo "  install-nginx   安装/更新 Nginx 配置"
+    echo "  start           启动后端服务并重载 Nginx"
+    echo "  stop            停止后端服务"
+    echo "  restart         重启后端服务并重载 Nginx"
+    echo "  status          查看服务状态和健康检查"
+    echo "  logs            查看后端服务日志"
+    echo ""
+    echo "可选环境变量:"
+    echo "  PROJECT_DIR     项目目录，默认脚本所在目录"
+    echo "  FRONTEND_DEPLOY_DIR 前端静态文件发布目录，默认 /var/www/workstation/dist"
+    echo "  PIP_INDEX_URL   pip 源，默认清华源"
+}
 
-# 主函数
 main() {
     case "${1:-help}" in
-        "deploy")
-            deploy_update "$2"
+        deploy)
+            deploy
             ;;
-        "start")
+        build)
+            ensure_project_root
+            check_dependencies
+            ensure_env
+            build_frontend
+            publish_frontend
+            setup_backend
+            ;;
+        install-service)
+            check_dependencies
+            install_service
+            ;;
+        install-nginx)
+            check_dependencies
+            install_nginx
+            ;;
+        start)
             start_services
             ;;
-        "stop")
+        stop)
             stop_services
             ;;
-        "restart")
+        restart)
             restart_services
             ;;
-        "status")
-            check_services
+        status)
+            show_status
             ;;
-        "logs")
-            show_logs "$@"
+        logs)
+            show_logs
             ;;
-        "add-service")
-            add_service "$@"
-            ;;
-        "help"|"-h"|"--help")
-            echo "期货数据系统部署脚本"
-            echo ""
-            echo "使用方法: $0 [command] [options]"
-            echo ""
-            echo "主要命令:"
-            echo "  deploy [branch]  - 拉取代码并部署更新 (默认main分支)"
-            echo "  start           - 启动所有服务并等待健康检查"
-            echo "  stop            - 停止所有服务"
-            echo "  restart         - 重启所有服务"
-            echo "  status          - 查看服务状态"
-            echo "  logs [service]  - 查看日志 (可指定服务名)"
-            echo "  add-service <name> <port> - 添加新服务指导"
-            echo ""
-            echo "常用场景:"
-            echo "  修改代码后部署: $0 deploy"
-            echo "  首次启动系统: $0 start"
-            echo "  查看服务状态: $0 status"
-            echo "  查看日志: $0 logs"
-            echo "  重启服务: $0 restart"
-            echo ""
-            echo "注意事项:"
+        help|-h|--help)
+            usage
             ;;
         *)
             print_error "未知命令: $1"
-            print_info "使用 '$0 help' 查看帮助"
+            usage
             exit 1
             ;;
     esac
