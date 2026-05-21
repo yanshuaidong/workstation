@@ -29,6 +29,7 @@ import logging
 import time
 import random
 from datetime import datetime
+from pathlib import Path
 
 import akshare as ak
 import pandas as pd
@@ -42,14 +43,36 @@ MAPPING_PATH = os.path.join(SCRIPT_DIR, "futures_mapping.json")
 BACKFILL_SKIP_SYMBOLS = frozenset({"lfm", "ppfm", "vfm", "wrm"})
 
 # ─────────────────────────── MySQL 配置 ──────────────────────
-DB_CONFIG = {
-    "host": "82.156.207.94",
-    "port": 3306,
-    "user": "ysd",
-    "password": "@Yan1234567",
-    "database": "futures",
-    "charset": "utf8mb4",
-}
+def _load_db_config():
+    """从项目根目录 .env 读取数据库配置"""
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if not env_path.exists():
+        raise FileNotFoundError(f"未找到 .env 文件: {env_path}")
+
+    values = {}
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip("\"'")
+
+    required = ("DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME")
+    missing = [k for k in required if not values.get(k)]
+    if missing:
+        raise RuntimeError(f"缺少数据库环境变量: {missing}")
+
+    return {
+        "host": values["DB_HOST"],
+        "port": int(values["DB_PORT"]),
+        "user": values["DB_USER"],
+        "password": values["DB_PASSWORD"],
+        "database": values["DB_NAME"],
+        "charset": "utf8mb4",
+    }
+
+
+DB_CONFIG = _load_db_config()
 
 
 # ─────────────────────────── 日志 ────────────────────────────

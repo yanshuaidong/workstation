@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 MAP_FILE = BASE_DIR / "variety_contracts_map.json"
-ENV_PATH = BASE_DIR / "fut_pulse" / ".env"
+ENV_PATH = BASE_DIR.parent / ".env"
 
 load_dotenv(ENV_PATH)
 

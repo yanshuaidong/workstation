@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
 
 MAX_RETRIES = 3
 RETRY_DELAY = 3  # 秒
