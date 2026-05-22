@@ -128,7 +128,7 @@
                   <el-tag
                     v-if="unreviewedData.current_news.message_label"
                     effect="plain"
-                    class="nt-pill-tag"
+                    :class="['nt-pill-tag', getLabelClass(unreviewedData.current_news.message_label)]"
                     style="margin-left: 10px;"
                   >
                     {{ getLabelText(unreviewedData.current_news.message_label) }}
@@ -209,7 +209,7 @@
                     <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip></el-table-column>
                     <el-table-column prop="message_label" label="标签" width="80">
                       <template #default="scope">
-                        <el-tag effect="plain" class="nt-pill-tag" size="small">
+                        <el-tag effect="plain" :class="['nt-pill-tag', getLabelClass(scope.row.message_label)]" size="small">
                           {{ getLabelText(scope.row.message_label) }}
                         </el-tag>
                       </template>
@@ -246,7 +246,7 @@
                     <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip></el-table-column>
                     <el-table-column prop="message_label" label="标签" width="80">
                       <template #default="scope">
-                        <el-tag effect="plain" class="nt-pill-tag" size="small">
+                        <el-tag effect="plain" :class="['nt-pill-tag', getLabelClass(scope.row.message_label)]" size="small">
                           {{ getLabelText(scope.row.message_label) }}
                         </el-tag>
                       </template>
@@ -283,7 +283,7 @@
                     <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip></el-table-column>
                     <el-table-column prop="message_label" label="标签" width="80">
                       <template #default="scope">
-                        <el-tag effect="plain" class="nt-pill-tag" size="small">
+                        <el-tag effect="plain" :class="['nt-pill-tag', getLabelClass(scope.row.message_label)]" size="small">
                           {{ getLabelText(scope.row.message_label) }}
                         </el-tag>
                       </template>
@@ -320,7 +320,7 @@
                     <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip></el-table-column>
                     <el-table-column prop="message_label" label="标签" width="80">
                       <template #default="scope">
-                        <el-tag effect="plain" class="nt-pill-tag" size="small">
+                        <el-tag effect="plain" :class="['nt-pill-tag', getLabelClass(scope.row.message_label)]" size="small">
                           {{ getLabelText(scope.row.message_label) }}
                         </el-tag>
                       </template>
@@ -866,6 +866,16 @@ export default {
         .catch(() => {})
     },
     
+    // 获取标签样式类
+    getLabelClass(label) {
+      const classMap = {
+        'hard': 'nt-pill-tag--hard',
+        'soft': 'nt-pill-tag--soft',
+        'unknown': 'nt-pill-tag--unknown'
+      }
+      return classMap[label] || 'nt-pill-tag--unknown'
+    },
+
     // 获取标签文本
     getLabelText(label) {
       const texts = {
@@ -1239,6 +1249,24 @@ export default {
 .nt-pill-tag--done {
   background: #e8e8e8 !important;
   border-color: #c8c8c8 !important;
+}
+
+.nt-pill-tag--hard {
+  border-color: #fab6b6 !important;
+  background: #fef0f0 !important;
+  color: #c45656 !important;
+}
+
+.nt-pill-tag--soft {
+  border-color: #b3e19d !important;
+  background: #f0f9eb !important;
+  color: #529b2e !important;
+}
+
+.nt-pill-tag--unknown {
+  border-color: #c8c8c8 !important;
+  background: #f4f4f5 !important;
+  color: #909399 !important;
 }
 
 .nt-badge :deep(.el-badge__content) {
