@@ -44,6 +44,8 @@
       <div v-else-if="!filteredCurve.length" class="chart-placeholder">暂无账户净值数据</div>
       <div v-else ref="chartRef" class="curve-chart" />
     </div>
+
+    <DailyReturnPanel :curve="curve" />
   </div>
 </template>
 
@@ -52,6 +54,7 @@ import { markRaw } from 'vue'
 import * as echarts from 'echarts'
 import request from '@/utils/request'
 import { getTradingAccountCurveApi } from '@/api'
+import DailyReturnPanel from './DailyReturnPanel.vue'
 
 const TIME_OPTIONS = [
   { label: '本月', value: 'month' },
@@ -100,6 +103,9 @@ function getTimeRangeDates(range) {
 
 export default {
   name: 'TradingCurveView',
+  components: {
+    DailyReturnPanel
+  },
   inject: {
     refreshAccountSummary: { default: null }
   },
