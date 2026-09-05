@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AdaptiveNewsAnalysis from '@/components/AdaptiveNewsAnalysis.vue'
 import NewsTracking from '@/components/NewsTracking.vue'
-import FuturesPositions from '@/components/FuturesPositions.vue'
 // import FuturesChart from '@/components/FuturesChart.vue'
 import FuturesChart from '@/views/futures-chart/index.vue'
 import TradingLayout from '@/views/trading/index.vue'
@@ -32,14 +31,6 @@ const routes = [
     component: NewsTracking,
     meta: {
       title: '消息跟踪'
-    }
-  },
-  {
-    path: '/positions',
-    name: 'FuturesPositions',
-    component: FuturesPositions,
-    meta: {
-      title: '我的持仓'
     }
   },
   {

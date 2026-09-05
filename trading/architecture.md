@@ -53,7 +53,6 @@ workfront                 Vue 3 前端，通过 /api-a 经 Nginx 反代访问后
 | `contracts_main` / `history_update_log` / `hist_{symbol}` | 合约与历史行情 |
 | `system_config` / `contract_list_update_log` / `recommendation_log` | 系统设置与运行日志 |
 | `news_red_telegraph` / `news_process_tracking` | 财联社新闻与跟踪 |
-| `futures_positions` | 业务持仓（与策略账户的 `trading_positions` 区分） |
 | `futures_events` | 品种事件 |
 
 策略链路只关心 `fut_*` 与 `trading_*` 两组表，其余表不参与每日批处理。

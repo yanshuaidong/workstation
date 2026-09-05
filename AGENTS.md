@@ -91,7 +91,6 @@ cd quantlab
 - 主要路由模块在 `automysqlback/routes/`：
   - `contracts_routes.py`：合约列表、历史行情数据
   - `news_routes.py`：财联社新闻 CRUD + OSS 文件管理
-  - `positions_routes.py`：持仓管理
   - `app.py`：系统设置、数据库初始化
 
 ### 数据存储

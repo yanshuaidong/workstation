@@ -1,6 +1,6 @@
 # workfront
 
-`workfront` 是个人期货数据系统的前端项目，负责提供期货行情展示、消息面分析、消息跟踪、持仓管理和量化策略可视化界面。
+`workfront` 是个人期货数据系统的前端项目，负责提供期货行情展示、消息面分析、消息跟踪和量化策略可视化界面。
 
 ## 技术栈
 
@@ -17,7 +17,6 @@
 
 - 消息面分析
 - 消息跟踪
-- 我的持仓
 - 期货 K 线图
 - 量化策略：信号面板、操作建议、持仓盈亏、资金曲线、K 线展示、池子管理
 
@@ -25,7 +24,6 @@
 
 - `/news-analysis`
 - `/news-tracking`
-- `/positions`
 - `/futures-chart`
 - `/trading/signals`
 - `/trading/operations`

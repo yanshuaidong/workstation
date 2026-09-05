@@ -102,7 +102,6 @@ python daily_run.py   # 执行每日策略批处理（信号计算 + 操作建�
 - 主要路由模块在 `automysqlback/routes/`：
   - `contracts_routes.py`：合约列表、历史行情数据
   - `news_routes.py`：财联社新闻 CRUD + OSS 文件管理
-  - `positions_routes.py`：持仓管理
   - `events_routes.py`：品种事件管理
   - `trading_routes.py`：交易策略查询（信号、操作建议、持仓曲线、K线、池子管理）
   - `app.py`：系统设置、数据库初始化、蓝图注册

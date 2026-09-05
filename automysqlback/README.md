@@ -44,7 +44,6 @@ automysqlback/
 │   ├── __init__.py
 │   ├── contracts_routes.py
 │   ├── news_routes.py
-│   ├── positions_routes.py
 │   ├── events_routes.py
 │   └── trading_routes.py
 ├── tests/
@@ -147,7 +146,6 @@ docker run -d -p 7001:7001 \
 - `recommendation_log`
 - `news_red_telegraph`
 - `news_process_tracking`
-- `futures_positions`
 
 同时会初始化：
 
@@ -232,18 +230,6 @@ POST http://localhost:7002/api/history/update-all
 screenshots/YYYY/MM/DD/<filename>
 ```
 
-### 持仓
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/api/positions/list` | 查询持仓列表，支持 `status`、`direction`、`symbol` 筛选 |
-| `POST` | `/api/positions/create` | 创建持仓记录 |
-| `GET` | `/api/positions/detail/<position_id>` | 查询持仓详情 |
-| `PUT` | `/api/positions/update/<position_id>` | 更新持仓记录 |
-| `DELETE` | `/api/positions/delete/<position_id>` | 删除持仓记录 |
-| `GET` | `/api/positions/stats` | 查询持仓统计 |
-| `POST` | `/api/positions/toggle-status/<position_id>` | 切换有仓/空仓状态 |
-
 ### 品种事件
 
 | 方法 | 路径 | 说明 |
@@ -297,7 +283,6 @@ screenshots/YYYY/MM/DD/<filename>
 | `recommendation_log` | 每日推荐日志 |
 | `news_red_telegraph` | 财联社新闻主表 |
 | `news_process_tracking` | 新闻处理与跟踪表 |
-| `futures_positions` | 业务持仓表 |
 
 ### 接口直接依赖的业务表
 
@@ -324,6 +309,5 @@ screenshots/YYYY/MM/DD/<filename>
 
 - 合约与历史行情：[routes/contracts_routes.py](D:/ysd/workstation/automysqlback/routes/contracts_routes.py)
 - 新闻与 OSS：[routes/news_routes.py](D:/ysd/workstation/automysqlback/routes/news_routes.py)
-- 持仓：[routes/positions_routes.py](D:/ysd/workstation/automysqlback/routes/positions_routes.py)
 - 品种事件：[routes/events_routes.py](D:/ysd/workstation/automysqlback/routes/events_routes.py)
 - Trading：[routes/trading_routes.py](D:/ysd/workstation/automysqlback/routes/trading_routes.py)

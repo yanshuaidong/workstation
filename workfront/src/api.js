@@ -59,15 +59,6 @@ export const getTrackingListApi = `${BASE_URL_API_A}/news/process/tracking-list`
 export const updateTrackingStatusApi = `${BASE_URL_API_A}/news/process/update-tracking`;
 export const initTrackingApi = `${BASE_URL_API_A}/news/process/init-tracking`;
 
-// 持仓管理接口
-export const getPositionsListApi = `${BASE_URL_API_A}/positions/list`;
-export const createPositionApi = `${BASE_URL_API_A}/positions/create`;
-export const getPositionDetailApi = `${BASE_URL_API_A}/positions/detail`;  // 需要在调用时添加 /{id}
-export const updatePositionApi = `${BASE_URL_API_A}/positions/update`;     // 需要在调用时添加 /{id}
-export const deletePositionApi = `${BASE_URL_API_A}/positions/delete`;     // 需要在调用时添加 /{id}
-export const getPositionsStatsApi = `${BASE_URL_API_A}/positions/stats`;
-export const togglePositionStatusApi = `${BASE_URL_API_A}/positions/toggle-status`;  // 需要在调用时添加 /{id}
-
 // 期货事件管理接口
 export const getEventsListApi = `${BASE_URL_API_A}/events/list`;
 export const getRecentEventsApi = `${BASE_URL_API_A}/events/recent`;  // 获取最近添加的事件（跨品种）
