@@ -22,7 +22,7 @@
           {{ row.current_price !== null ? row.current_price : '--' }}
         </template>
       </el-table-column>
-      <el-table-column label="浮盈浮亏（含10x杠杆）" min-width="200">
+      <el-table-column label="浮盈浮亏（含5x杠杆）" min-width="200">
         <template #default="{ row }">
           <span :class="Number(row.floating_pnl_amount || 0) >= 0 ? 'pnl-pos' : 'pnl-neg'">
             {{ formatSigned(row.floating_pnl_amount) }} 元 /

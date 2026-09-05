@@ -107,7 +107,7 @@ trading/strategies/
 
 ```python
 INITIAL_CAPITAL = 30000.0
-LEVERAGE = 10.0
+LEVERAGE = 5.0
 MAX_SLOTS = 3
 SIZE_PCT = 1 / 3
 BACKGROUND_WINDOW = 5

@@ -98,6 +98,20 @@ def calculate_volume_ratio(today_volume, hist_volumes):
     return round(today_volume / avg_volume, 2)
 
 
+def calculate_change_pct(today_close, yesterday_close):
+    """
+    用今昨收盘价计算涨跌幅（百分比）。
+    涨跌幅 = (今日收盘 - 昨日收盘) / 昨日收盘 * 100%
+    """
+    if today_close is None or yesterday_close is None:
+        return None
+    today_close = float(today_close)
+    yesterday_close = float(yesterday_close)
+    if yesterday_close == 0:
+        return None
+    return round((today_close - yesterday_close) / yesterday_close * 100, 2)
+
+
 def calculate_oi_change_rate(today_oi, yesterday_oi):
     """
     计算持仓量日变化率
@@ -305,14 +319,18 @@ def fetch_futures_top10():
                     logger.debug(f"{symbol} 今日无数据，最新日期: {latest_row[0]}")
                     continue
                 
-                # 今日数据
-                close_price = latest_row[1] if latest_row[1] is not None else 0
-                change_pct = float(latest_row[2]) if latest_row[2] is not None else 0
+                # 今日数据（涨跌幅用今昨收盘价现算，不信任库里的 change_pct）
+                close_price = latest_row[1]
                 today_volume = latest_row[3] if latest_row[3] is not None else 0
                 today_oi = latest_row[4] if latest_row[4] is not None else 0
                 
                 # 历史数据（不包含今日）
                 hist_rows = rows[1:]  # 昨日及之前的数据
+                yesterday_close = hist_rows[0][1] if hist_rows else None
+                change_pct = calculate_change_pct(close_price, yesterday_close)
+                if change_pct is None:
+                    logger.debug(f"{symbol} 无法计算涨跌幅，跳过")
+                    continue
                 
                 # 计算量比（使用5日平均）
                 hist_volumes = [r[3] for r in hist_rows[:5] if r[3] is not None]

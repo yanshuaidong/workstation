@@ -15,7 +15,7 @@ trading_bp = Blueprint("trading", __name__)
 logger = logging.getLogger(__name__)
 
 INITIAL_CAPITAL = 30000.0
-LEVERAGE = 10.0
+LEVERAGE = 5.0
 
 
 def _get_conn():
