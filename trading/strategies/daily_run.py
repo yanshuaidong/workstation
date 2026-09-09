@@ -43,6 +43,7 @@ def main() -> None:
     from trading.strategies.operations import generate_operations
     from trading.strategies.account import execute_close_signals, execute_open_operations, update_account_daily
     from trading.strategies.create_tables import sync_pool_with_varieties
+    from trading.anomaly.detector import run_anomaly_detection
 
     conn = get_connection()
     try:
@@ -55,6 +56,13 @@ def main() -> None:
             logger.error("数据完整性校验失败，终止运行: %s", msg)
             sys.exit(1)
         logger.info("数据完整性校验通过: %s", msg)
+
+        logger.info("Step 0: 异常信号检测")
+        try:
+            anomaly_count = run_anomaly_detection(run_date.isoformat(), conn)
+            logger.info("异常信号写入 %d 条", anomaly_count)
+        except Exception as exc:
+            logger.warning("异常信号检测失败（不中断流程）: %s", exc)
 
         logger.info("Step 1: 计算全品种 A 通道信号")
         triggered = run_signals_for_all(conn, run_date)

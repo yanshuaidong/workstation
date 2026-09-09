@@ -34,6 +34,10 @@
               <el-icon class="menu-icon"><TrendCharts /></el-icon>
               <span class="menu-text">消息跟踪</span>
             </el-menu-item>
+            <el-menu-item index="/anomaly" class="mobile-menu-item">
+              <el-icon class="menu-icon"><Warning /></el-icon>
+              <span class="menu-text">异常监控</span>
+            </el-menu-item>
             <el-menu-item index="/futures-chart" class="mobile-menu-item">
               <el-icon class="menu-icon"><DataLine /></el-icon>
               <span class="menu-text">期货K线图</span>
@@ -66,6 +70,10 @@
               <el-icon class="menu-icon"><TrendCharts /></el-icon>
               <span class="menu-text">消息跟踪</span>
             </el-menu-item>
+            <el-menu-item index="/anomaly" class="menu-item">
+              <el-icon class="menu-icon"><Warning /></el-icon>
+              <span class="menu-text">异常监控</span>
+            </el-menu-item>
             <el-menu-item index="/futures-chart" class="menu-item">
               <el-icon class="menu-icon"><DataLine /></el-icon>
               <span class="menu-text">期货K线</span>
@@ -96,7 +104,7 @@
 </template>
 
 <script>
-import { DataBoard, TrendCharts, ChatDotRound, Edit, DataLine } from '@element-plus/icons-vue'
+import { DataBoard, TrendCharts, ChatDotRound, Edit, DataLine, Warning } from '@element-plus/icons-vue'
 import { markRaw } from 'vue'
 import { isMobile, onDeviceChange } from '@/utils/deviceDetector'
 
@@ -109,6 +117,7 @@ export default {
       ChatDotRound: markRaw(ChatDotRound),
       Edit: markRaw(Edit),
       DataLine: markRaw(DataLine),
+      Warning: markRaw(Warning),
       
       // 设备检测
       isMobileDevice: false,

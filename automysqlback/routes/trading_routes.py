@@ -613,6 +613,144 @@ def get_trading_variety_list():
         conn.close()
 
 
+# ──────────────────────────────────────────────
+# 异常信号
+# ──────────────────────────────────────────────
+
+@trading_bp.route("/trading/anomaly-signals", methods=["GET"])
+def get_trading_anomaly_signals():
+    """
+    查询异常信号。
+
+    参数（均可选）：
+      date_from    起始日期 YYYY-MM-DD（默认7天前）
+      date_to      结束日期 YYYY-MM-DD（默认今日）
+      variety_name 品种名（模糊匹配）
+      metric       指标过滤：change_pct/volume/open_interest/main_force/retail
+      min_z_score  最小 |z_score|，默认 0（不过滤）
+      limit        返回条数上限，默认 200，最大 1000
+    """
+    conn = _get_conn()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    try:
+        from datetime import timedelta
+
+        today = date.today()
+        default_from = (today - timedelta(days=7)).isoformat()
+
+        date_from    = request.args.get("date_from", "").strip() or default_from
+        date_to      = request.args.get("date_to", "").strip() or today.isoformat()
+        variety_name = request.args.get("variety_name", "").strip()
+        metric       = request.args.get("metric", "").strip()
+        min_z_raw    = request.args.get("min_z_score", "").strip()
+        limit        = min(max(int(request.args.get("limit", 200)), 1), 1000)
+
+        min_z = float(min_z_raw) if min_z_raw else 0.0
+
+        clauses = ["signal_date >= %s", "signal_date <= %s", "is_trusted = 1"]
+        params  = [date_from, date_to]
+
+        if variety_name:
+            clauses.append("variety_name LIKE %s")
+            params.append(f"%{variety_name}%")
+        if metric:
+            clauses.append("metric = %s")
+            params.append(metric)
+        if min_z > 0:
+            clauses.append("ABS(z_score) >= %s")
+            params.append(min_z)
+
+        where = "WHERE " + " AND ".join(clauses)
+        params.append(limit)
+
+        cursor.execute(
+            f"SELECT id, signal_date, variety_id, variety_name, symbol, "
+            f"metric, direction, current_value, baseline_mean, baseline_std, "
+            f"z_score, window_days, description, created_at "
+            f"FROM anomaly_signals {where} "
+            f"ORDER BY signal_date DESC, ABS(z_score) DESC "
+            f"LIMIT %s",
+            params,
+        )
+        rows = cursor.fetchall()
+
+        # 统计查询区间内最近一个有可信信号的交易日
+        cursor.execute(
+            "SELECT MAX(signal_date) AS d FROM anomaly_signals "
+            "WHERE signal_date >= %s AND signal_date <= %s AND is_trusted = 1",
+            (date_from, date_to),
+        )
+        stats_row = cursor.fetchone()
+        stats_date = _date_str(stats_row["d"]) if stats_row and stats_row["d"] else None
+        today_stats = {}
+        if stats_date:
+            cursor.execute(
+                "SELECT metric, COUNT(*) AS cnt FROM anomaly_signals "
+                "WHERE signal_date = %s AND is_trusted = 1 GROUP BY metric",
+                (stats_date,),
+            )
+            today_stats = {r["metric"]: int(r["cnt"]) for r in cursor.fetchall()}
+
+        signals = [
+            {
+                "id": r["id"],
+                "signal_date": _date_str(r["signal_date"]),
+                "variety_id": r["variety_id"],
+                "variety_name": r["variety_name"],
+                "symbol": r["symbol"],
+                "metric": r["metric"],
+                "direction": r["direction"],
+                "current_value": float(r["current_value"]) if r["current_value"] is not None else None,
+                "baseline_mean": float(r["baseline_mean"]) if r["baseline_mean"] is not None else None,
+                "baseline_std": float(r["baseline_std"]) if r["baseline_std"] is not None else None,
+                "z_score": float(r["z_score"]) if r["z_score"] is not None else None,
+                "window_days": r["window_days"],
+                "description": r["description"],
+                "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else "",
+            }
+            for r in rows
+        ]
+        return _ok({
+            "signals": signals,
+            "total": len(signals),
+            "date_from": date_from,
+            "date_to": date_to,
+            "stats_date": stats_date,
+            "today_stats": today_stats,
+        })
+    except Exception as exc:
+        logger.error("获取异常信号失败: %s", exc)
+        return _err(f"获取失败: {exc}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@trading_bp.route("/trading/anomaly-signals/<int:signal_id>/untrust", methods=["POST"])
+def untrust_trading_anomaly_signal(signal_id):
+    """将异常信号标记为不可信，列表不再展示。"""
+    conn = _get_conn()
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
+    try:
+        cursor.execute("SELECT id FROM anomaly_signals WHERE id = %s", (signal_id,))
+        row = cursor.fetchone()
+        if not row:
+            return _err("信号不存在")
+        cursor.execute(
+            "UPDATE anomaly_signals SET is_trusted = 0 WHERE id = %s",
+            (signal_id,),
+        )
+        conn.commit()
+        return _ok({"id": signal_id}, "已标记为不可信")
+    except Exception as exc:
+        logger.error("标记异常信号不可信失败: %s", exc)
+        conn.rollback()
+        return _err(f"标记失败: {exc}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @trading_bp.route("/trading/variety-kline", methods=["GET"])
 def get_trading_variety_kline():
     variety_id = request.args.get("variety_id")

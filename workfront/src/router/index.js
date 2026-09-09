@@ -10,6 +10,7 @@ import TradingPositionsView from '@/views/trading/PositionsView.vue'
 import TradingCurveView from '@/views/trading/CurveView.vue'
 import TradingKlineView from '@/views/trading/KlineView.vue'
 import TradingPoolView from '@/views/trading/PoolView.vue'
+import TradingAnomalyView from '@/views/trading/AnomalyView.vue'
 
 
 const routes = [
@@ -32,6 +33,18 @@ const routes = [
     meta: {
       title: '消息跟踪'
     }
+  },
+  {
+    path: '/anomaly',
+    name: 'AnomalyMonitor',
+    component: TradingAnomalyView,
+    meta: {
+      title: '异常监控'
+    }
+  },
+  {
+    path: '/trading/anomaly',
+    redirect: '/anomaly'
   },
   {
     path: '/futures-chart',

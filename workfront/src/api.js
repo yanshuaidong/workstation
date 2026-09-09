@@ -79,6 +79,8 @@ export const patchTradingPoolApi = (varietyId) => `${BASE_URL_API_A}/trading/poo
 export const getTradingMarketContextApi = `${BASE_URL_API_A}/trading/market-context`;
 export const getTradingVarietyListApi = `${BASE_URL_API_A}/trading/variety-list`;
 export const getTradingVarietyKlineApi = `${BASE_URL_API_A}/trading/variety-kline`;
+export const getTradingAnomalySignalsApi = `${BASE_URL_API_A}/trading/anomaly-signals`;
+export const untrustTradingAnomalySignalApi = `${BASE_URL_API_A}/trading/anomaly-signals`;
 
 // 导出端口配置，方便组件使用
 export const API_PORTS = {

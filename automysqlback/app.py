@@ -301,6 +301,40 @@ def init_database():
                 VALUES (1, 'manual', 'success')
             """)
         
+        # 8. 异常信号表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS anomaly_signals (
+                id            INT AUTO_INCREMENT PRIMARY KEY,
+                signal_date   DATE NOT NULL              COMMENT '信号日期（交易日）',
+                variety_id    INT                        COMMENT '品种 ID（关联 fut_variety.id）',
+                variety_name  VARCHAR(50)                COMMENT '品种名称',
+                symbol        VARCHAR(20)                COMMENT '合约代码（contracts_symbol）',
+                metric        VARCHAR(50) NOT NULL       COMMENT '异常指标：change_pct/volume/open_interest/main_force/retail',
+                direction     ENUM('up','down')          COMMENT '异常方向：up=偏高/放量, down=偏低/缩量',
+                current_value FLOAT                      COMMENT '当日指标值',
+                baseline_mean FLOAT                      COMMENT '基准均值（过去 window_days 天）',
+                baseline_std  FLOAT                      COMMENT '基准标准差',
+                z_score       FLOAT                      COMMENT '标准差倍数',
+                window_days   INT DEFAULT 20             COMMENT '基准窗口天数',
+                description   TEXT                       COMMENT '人读描述',
+                is_trusted    TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=展示 0=人工判定不可信',
+                created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_date_variety_metric (signal_date, variety_id, metric),
+                KEY idx_signal_date (signal_date),
+                KEY idx_variety_id  (variety_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='期货指标异常信号'
+        """)
+        try:
+            cursor.execute("""
+                ALTER TABLE anomaly_signals
+                    ADD COLUMN is_trusted TINYINT(1) NOT NULL DEFAULT 1
+                    COMMENT '1=展示 0=人工判定不可信'
+            """)
+        except Exception as alter_exc:
+            code = alter_exc.args[0] if alter_exc.args else None
+            if code != 1060 and "Duplicate column" not in str(alter_exc):
+                raise
+
         conn.commit()
         logger.info("数据库表初始化完成")
         

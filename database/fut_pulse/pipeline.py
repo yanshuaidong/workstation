@@ -321,6 +321,24 @@ def run(
             print("  fut_strength 已上传成功，可稍后重跑 today 或单独处理收盘价补录。")
             sys.exit(1)
 
+        # ── 步骤5：异常信号检测 ──────────────────────────────────────────────
+        if not dry_run:
+            try:
+                import sys as _sys
+                import os as _os
+                _root = str(Path(__file__).resolve().parent.parent.parent)
+                if _root not in _sys.path:
+                    _sys.path.insert(0, _root)
+                from trading.anomaly.detector import run_anomaly_detection
+                # trade_dates 最新日期在最前
+                for td in trade_dates:
+                    n = run_anomaly_detection(td)
+                    logger.info("步骤5：异常检测 %s，写入 %d 条", td, n)
+                    print(f"异常检测 {td}：写入 {n} 条异常信号")
+            except Exception as e:
+                logger.warning("异常信号检测失败（不影响主流程）: %s", e, exc_info=True)
+                print(f"\n[警告] 异常信号检测失败，主流程不受影响。\n  原因：{e}")
+
     logger.info("========== 采集流程完成 [%s] ==========", run_tag)
     print(f"\n===== 全部完成！日志: logs/run_{run_tag}.log =====")
 
