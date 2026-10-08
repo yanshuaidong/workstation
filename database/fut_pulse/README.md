@@ -18,7 +18,8 @@
 fut_pulse/
 ├── collector/
 │   ├── screenshot.py
-│   └── ocr.py
+│   ├── ocr.py
+│   └── vision_review.py     # DeepSeek 今日截图复核
 ├── config/
 │   ├── calibration.json
 │   ├── varieties.json
@@ -68,7 +69,21 @@ DB_PASSWORD=your_password
 DB_NAME=futures
 ```
 
-### 3. 首次校准
+### 3. 配置 DeepSeek 图片复核
+
+在项目根目录 `workstation/.env` 中配置已有的 `DEEPSEEK_KEY`（不是本子目录的数据库 `.env`）：
+
+```ini
+DEEPSEEK_KEY=你的密钥
+# 可选，默认使用文档中支持图片输入的模型
+DEEPSEEK_VISION_MODEL=deepseek-flash
+```
+
+程序通过绝对路径读取根目录配置，不依赖当前工作目录。系统环境变量优先。
+读取复核配置不会将根目录的 `DB_*` 注入环境，不改变现有数据库配置。
+API 使用 Python 标准库调用，无须额外安装 OpenAI SDK。
+
+### 4. 首次校准
 
 启动东方财富客户端并切到目标页面后执行：
 
@@ -88,12 +103,29 @@ python main.py today
 
 实际流程：
 
-1. 截图主力 / 散户资金
-2. OCR 识别
-3. 上传 `fut_variety` / `fut_strength`
-4. 通过 AkShare 自动同步当日 `fut_daily_close`
+1. 截图主力 / 散户资金。
+2. 基础 OCR 识别，保存 `data/result.ocr.json`。
+3. DeepSeek 对照**原始截图**和 OCR 逐项核对数字、负号、小数点，全部通过后生成 `data/result.json`。
+4. 将复核后的数值上传 `fut_variety` / `fut_strength`。
+5. 通过 AkShare 自动同步当日 `fut_daily_close`，随后执行原有异常信号检测。
 
-只截图和 OCR，不写库：
+每批默认复核 5 个品种（10 张图），55 个品种需要 11 批请求；会产生模型 API 费用。
+模型明确读到的值覆盖 OCR 值，包括补齐 OCR 未识别出的值。输出字段仍为
+`id`、`key`、`main_force`、`retail`，与原上传模块兼容。
+
+**失败保护和留档：**
+
+- `data/result.ocr.json`：基础 OCR 原值。
+- `data/result.review.json`：复核状态、各批回复、修改前后数值及失败原因。
+- `data/result.json`：仅在所有品种复核通过后原子写入，作为上传输入。
+- `data/result.previous.json`：开始今日采集（或 `ocr-only --today`）时将旧 `result.json` 移至此处，保留上一份结果。
+  失败时不会恢复为可上传的 `result.json`，避免 `upload-only` 误用旧结果。
+
+缺少密钥、截图缺失、模型无法确认数字、漏行/串品种、返回格式错误或 API 失败都会中止，
+不会自动退回基础 OCR 上传。网络超时、HTTP 429 和 5xx 最多尝试 3 次，单次超时 90 秒。
+模型也可能读错；双重识别能提供额外核对，但不保证绝对准确，关键数据仍建议对照截图抽查。
+
+只截图、OCR 和复核，不写库：
 
 ```bash
 python main.py today --no-upload
@@ -152,7 +184,10 @@ python main.py upload-only
 
 说明：
 
-- `upload-only` 依赖已有 `data/result.json`
+- `ocr-only --today`：复用当前今日截图，重新做基础 OCR + DeepSeek 复核，不重新截图、不写库。
+  复核失败后可用此命令重试；成功且确认截图属于目标交易日后，再执行 `upload-only`。
+- `upload-only` 依赖已有 `data/result.json`，本身不再次调用模型。
+- `history`、默认 `ocr-only` 和独立 `backfill/` 保持原行为，暂未接入 DeepSeek 复核。
 - 如果推断为今日模式，上传 `fut_strength` 后会继续自动补齐当日 `fut_daily_close`
 - 如果推断为历史模式，只上传 `fut_strength`，历史 close 仍需手动执行 `close-history`
 
@@ -163,6 +198,19 @@ python main.py --dry-run today
 python main.py --dry-run history --days 30
 python main.py --dry-run close-history --days 5
 ```
+
+---
+
+## 自动化测试
+
+在 `database/fut_pulse/` 下执行：
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+测试使用模拟的 API、截图采集和数据库步骤，并禁止真实 socket 连接。
+覆盖符号/小数点修正、漏项与错位拒绝、重试、失败留档、结果原子写入和上传阻断。
 
 ---
 
@@ -191,8 +239,9 @@ python main.py --dry-run close-history --days 5
 main.py today
   └── pipeline.py
         ├── [步骤1] collector/screenshot.py → data/screenshots/*.png
-        ├── [步骤2] collector/ocr.py        → data/result.json
-        ├── [步骤3] uploader/mysql.py       → MySQL (fut_variety / fut_strength)
+        ├── [步骤2] collector/ocr.py           → data/result.ocr.json
+        ├── [步骤2b] collector/vision_review.py → data/result.review.json + result.json
+        ├── [步骤3] uploader/mysql.py          → MySQL (fut_variety / fut_strength)
         └── [步骤4] close_price.py          → MySQL (fut_daily_close)
 ```
 

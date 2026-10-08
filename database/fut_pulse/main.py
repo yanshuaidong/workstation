@@ -3,14 +3,14 @@
 
 用法：
   python main.py today                                  # 采集当天数据
-  python main.py today --no-upload                      # 仅截图+OCR，不上传
+  python main.py today --no-upload                      # 截图+OCR+DeepSeek复核，不上传
   python main.py history --days 30                      # 采集最近30个交易日
   python main.py history --start 2026-03-01 --end 2026-04-10  # 指定日期范围
   python main.py close-history --days 30                # 只回填收盘价
   python main.py history --no-screenshot                # 仅对已有历史截图跑OCR+上传
   python main.py calibrate                              # 进入校准菜单
   python main.py ocr-only                               # 仅对已有截图跑OCR（历史模式）
-  python main.py ocr-only --today                       # 仅对已有截图跑OCR（今日模式）
+  python main.py ocr-only --today                       # 已有今日截图：OCR+DeepSeek复核，不上传
   python main.py upload-only                            # 仅上传已有result.json
 
 全局选项：
@@ -91,8 +91,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.required = True
 
     # ── today ──
-    p_today = sub.add_parser("today", help="采集当天数据（截图 → OCR → 上传）")
-    p_today.add_argument("--no-upload", action="store_true", help="仅截图+OCR，跳过上传")
+    p_today = sub.add_parser("today", help="采集当天数据（截图 → OCR → DeepSeek复核 → 上传）")
+    p_today.add_argument("--no-upload", action="store_true", help="截图+OCR+DeepSeek复核，跳过上传")
     p_today.set_defaults(func=cmd_today)
 
     # ── history ──
@@ -146,7 +146,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ocr = sub.add_parser("ocr-only", help="仅对 data/ 目录下已有截图执行 OCR")
     p_ocr.add_argument(
         "--today", action="store_true",
-        help="以今日模式解析（默认为历史模式）",
+        help="今日模式：基础 OCR 后执行 DeepSeek 图片复核（默认为历史模式，仅 OCR）",
     )
     p_ocr.set_defaults(func=cmd_ocr_only)
 

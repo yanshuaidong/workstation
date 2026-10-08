@@ -1,7 +1,7 @@
 """
 流程编排模块
 
-串联截图 → OCR → 上传流程。
+串联截图 → OCR →（今日模式：DeepSeek 图片复核）→ 上传流程。
 today 模式在强度上传成功后，会额外同步当日 fut_daily_close。
 支持 today / history 两种模式，自动生成 trade_dates（排除周末）。
 
@@ -172,28 +172,50 @@ def step_screenshot(mode: str, cfg: dict, dry_run: bool = False):
     logger.info("截图采集完成")
 
 
-def step_ocr(mode: str, cfg: dict, out_path: Path, history_count: int = 30, dry_run: bool = False) -> list:
-    """步骤2：OCR 识别，返回结果列表。"""
-    from collector.ocr import run_today, run_history
-    from collector.screenshot import screenshot_dir_for, history_screenshot_dir_for
+def _backup_previous_result(out_path: Path):
+    """开始今日处理前撤下旧结果，失败时避免 upload-only 误上传。"""
+    if out_path.exists():
+        previous_path = out_path.with_name(out_path.stem + ".previous.json")
+        out_path.replace(previous_path)
+        logging.getLogger("pipeline").info("上次结果已备份到 %s", previous_path)
 
+
+def step_ocr(mode: str, cfg: dict, out_path: Path, history_count: int = 30, dry_run: bool = False) -> list:
+    """步骤2：基础 OCR；今日模式必须完成 DeepSeek 图片复核才发布 result.json。"""
     logger = logging.getLogger("pipeline.ocr")
     logger.info("=== 步骤2：OCR 识别 [%s] ===", mode)
 
     if dry_run:
         logger.info("[dry-run] OCR 跳过，返回空结果")
+        if mode == "today":
+            logger.info("[dry-run] 随后将执行 DeepSeek 图片复核；通过后生成 result.json")
         return []
 
     if mode == "today":
-        main_dir   = screenshot_dir_for(cfg, "main_force")
+        # 先撤下旧结果：本次 OCR/复核失败时，upload-only 不能误上传上次结果。
+        # 基础 OCR 只写旁路文件，最终结果必须在全量复核通过后原子发布。
+        _backup_previous_result(out_path)
+
+    from collector.ocr import run_today, run_history
+    from collector.screenshot import screenshot_dir_for, history_screenshot_dir_for
+
+    if mode == "today":
+        from collector.vision_review import run_review, write_json_atomic
+
+        main_dir = screenshot_dir_for(cfg, "main_force")
         retail_dir = screenshot_dir_for(cfg, "retail")
-        result = run_today(main_dir, retail_dir, out_path, cfg.get("total_count"))
+        ocr_path = out_path.with_name(out_path.stem + ".ocr.json")
+        report_path = out_path.with_name(out_path.stem + ".review.json")
+        result = run_today(main_dir, retail_dir, ocr_path, cfg.get("total_count"))
+        logger.info("=== 步骤2b：DeepSeek 对照原始截图复核 ===")
+        result = run_review(result, main_dir, retail_dir, report_path)
+        write_json_atomic(out_path, result)
     else:
         main_dir   = history_screenshot_dir_for(cfg, "main_force")
         retail_dir = history_screenshot_dir_for(cfg, "retail")
         result = run_history(main_dir, retail_dir, out_path, history_count, cfg.get("total_count"))
 
-    logger.info("OCR 完成，结果已写入 %s", out_path)
+    logger.info("识别完成（今日模式已通过图片复核），结果已写入 %s", out_path)
     return result
 
 
@@ -244,7 +266,7 @@ def run(
     days       : 历史模式下的天数（与 start/end 互斥）
     start/end  : 历史模式下的日期范围（格式 YYYY-MM-DD）
     skip_screenshot : True = 跳过截图步骤（使用已有截图）
-    skip_upload     : True = 跳过上传步骤（仅截图+OCR）
+    skip_upload     : True = 跳过上传步骤（今日模式仍执行图片复核）
     dry_run    : True = 所有步骤只打印，不执行实际操作
     """
     run_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -276,6 +298,8 @@ def run(
     print(f"\n交易日期：{trade_dates[-1]} ~ {trade_dates[0]}，共 {len(trade_dates)} 天")
 
     result_path = DATA_DIR / "result.json"
+    if mode == "today" and not dry_run:
+        _backup_previous_result(result_path)
 
     # ── 步骤1：截图 ──
     if not skip_screenshot:
@@ -294,9 +318,10 @@ def run(
     try:
         result = step_ocr(mode, cfg, result_path, history_count=history_count, dry_run=dry_run)
     except Exception as e:
-        logger.error("OCR 步骤失败: %s", e, exc_info=True)
-        print(f"\n[错误] OCR 步骤失败，跳过上传。\n  原因：{e}")
-        print("  截图文件已保留在 data/ 目录供排查。")
+        logger.error("OCR/图片复核步骤失败: %s", e, exc_info=True)
+        print(f"\n[错误] OCR/图片复核步骤失败，跳过上传。\n  原因：{e}")
+        print("  截图、基础 OCR 结果及已生成的复核报告保留在 data/ 目录供排查。")
+        print("  今日截图修正后，可运行 python main.py ocr-only --today 重试复核。")
         sys.exit(1)
 
     # ── 步骤3：上传 ──
@@ -344,7 +369,7 @@ def run(
 
 
 def run_ocr_only(mode: str = "history"):
-    """仅对 data/ 目录下已有截图执行 OCR，输出 result.json。"""
+    """已有截图执行 OCR；今日模式额外复核，成功后输出 result.json，不上传。"""
     run_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
     setup_logging(run_tag)
     logger = logging.getLogger("pipeline")

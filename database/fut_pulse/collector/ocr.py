@@ -73,17 +73,14 @@ def extract_value(text: str) -> float | None:
     if "." not in raw:
         sign = "-" if raw.startswith("-") else ""
         digits = raw.lstrip("-")
-        if len(digits) >= 4:
+        # 源数据固定两位小数。OCR 漏掉小数点时会出现 037 / 434 / 2131 这类整数，
+        # 统一按末两位补回小数点：037→0.37，434→4.34，2131→21.31。
+        if len(digits) >= 3:
             integer_part = digits[:-2]
             decimal_part = digits[-2:]
             corrected = f"{sign}{integer_part}.{decimal_part}"
             logger.info("小数点修正: %r → %s（原始文本: %r）", raw, corrected, text)
             raw = corrected
-        elif len(digits) == 3:
-            logger.warning(
-                "疑似漏识别小数点（3位整数 %s），但无法确定是否为正常值，未自动修正（原始文本: %r）",
-                raw, text,
-            )
     return round(float(raw), 2)
 
 
