@@ -17,7 +17,7 @@ FAIL_COUNT=0
 SKIP_COUNT=0
 
 # 定义要启动的调度器目录
-SCHEDULERS=("futures" "institution" "stock")
+SCHEDULERS=("futures" "institution")
 
 echo "📋 待启动服务: ${#SCHEDULERS[@]} 个"
 echo "───────────────────────────────────────────────"

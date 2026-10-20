@@ -19,14 +19,10 @@ SKIP_COUNT=0
 
 # 需要停止的服务目录列表（排除示例目录和没有停止脚本的目录）
 SERVICES=(
-    "bbgnews"
-    "chatgpthelper"
     "clsnewscraper"
-    "drivehelper"
     "eastfutuscraper"
     "futurestop10"
     "gthtposiscraper"
-    "rtrsnews"
 )
 
 echo "📋 待停止服务: ${#SERVICES[@]} 个"
@@ -45,12 +41,8 @@ for SERVICE in "${SERVICES[@]}"; do
     
     echo "⏹️  停止 [$SERVICE]..."
     
-    # 检查停止脚本（chatgpthelper 使用 stop_server.sh，其他使用 stop_scheduler.sh）
-    if [ "$SERVICE" = "chatgpthelper" ]; then
-        STOP_SCRIPT="$SERVICE_DIR/stop_server.sh"
-    else
-        STOP_SCRIPT="$SERVICE_DIR/stop_scheduler.sh"
-    fi
+    # 列表中的服务均使用调度器停止脚本
+    STOP_SCRIPT="$SERVICE_DIR/stop_scheduler.sh"
     
     if [ ! -f "$STOP_SCRIPT" ]; then
         echo "   ⚠️  未找到停止脚本，跳过"
