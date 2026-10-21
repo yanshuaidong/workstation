@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 东方财富期货数据爬虫调度器
-运行40天，仅在交易日（周一到周五）的下午4点执行
+长期运行，仅在交易日（周一到周五）的下午4点执行
 """
 
 import time
@@ -26,10 +26,8 @@ class FuturesScheduler:
     
     def __init__(self):
         self.start_time = datetime.now()
-        self.end_time = self.start_time + timedelta(days=40)
         self.execution_hour = 16
         self.execution_count = 0
-        self.max_executions = 30
         self.shutdown_requested = False
         
         self.max_retries = 3
@@ -164,14 +162,10 @@ class FuturesScheduler:
         
         # 最多查找7天
         for _ in range(7):
-            if check_date > self.end_time:
-                return None
-            
             if self.is_trading_day(check_date):
                 # 找到下一个交易日，设置为16:00
                 next_time = check_date.replace(hour=self.execution_hour, minute=0, second=0, microsecond=0)
-                if next_time <= self.end_time:
-                    return next_time
+                return next_time
             
             check_date += timedelta(days=1)
         
@@ -198,8 +192,7 @@ class FuturesScheduler:
     
     def print_status(self):
         """打印状态信息"""
-        remaining = self.end_time - datetime.now()
-        self.logger.info(f"进度: {self.execution_count}/{self.max_executions}, 剩余{remaining.days}天")
+        self.logger.info(f"长期运行中，已执行 {self.execution_count} 次")
     
     def execute_crawl_task(self):
         """
@@ -298,7 +291,7 @@ class FuturesScheduler:
         
         try:
             self.logger.info(
-                f"调度器启动 | 运行至{self.end_time.strftime('%Y-%m-%d')} | "
+                f"调度器启动 | 长期运行（无期限和次数上限） | "
                 f"每交易日{self.execution_hour}:00执行 | "
                 f"每次最多重试{self.max_retries}次 | 连续失败上限{max_consecutive_failures}次"
             )
@@ -318,9 +311,7 @@ class FuturesScheduler:
             # 主循环
             last_execution_date = None
             
-            while (datetime.now() < self.end_time and 
-                   self.execution_count < self.max_executions and 
-                   not self.shutdown_requested):
+            while not self.shutdown_requested:
                 
                 if consecutive_failures >= max_consecutive_failures:
                     self.logger.error(
