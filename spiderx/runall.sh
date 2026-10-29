@@ -23,6 +23,7 @@ SERVICES=(
     "eastfutuscraper"
     "futurestop10"
     "gthtposiscraper"
+    "thsnewscraper"
 )
 
 echo "📋 待启动服务: ${#SERVICES[@]} 个"
