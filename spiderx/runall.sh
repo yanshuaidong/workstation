@@ -19,14 +19,10 @@ SKIP_COUNT=0
 
 # 需要启动的服务目录列表（排除示例目录和没有启动脚本的目录）
 SERVICES=(
-    "bbgnews"
-    "chatgpthelper"
     "clsnewscraper"
-    "drivehelper"
     "eastfutuscraper"
     "futurestop10"
     "gthtposiscraper"
-    "rtrsnews"
 )
 
 echo "📋 待启动服务: ${#SERVICES[@]} 个"
@@ -45,12 +41,8 @@ for SERVICE in "${SERVICES[@]}"; do
     
     echo "▶️  启动 [$SERVICE]..."
     
-    # 检查启动脚本（chatgpthelper 使用 start_server.sh，其他使用 start_scheduler.sh）
-    if [ "$SERVICE" = "chatgpthelper" ]; then
-        START_SCRIPT="$SERVICE_DIR/start_server.sh"
-    else
-        START_SCRIPT="$SERVICE_DIR/start_scheduler.sh"
-    fi
+    # 列表中的服务均使用调度器启动脚本
+    START_SCRIPT="$SERVICE_DIR/start_scheduler.sh"
     
     if [ ! -f "$START_SCRIPT" ]; then
         echo "   ⚠️  未找到启动脚本，跳过"

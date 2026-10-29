@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 财联社新闻爬虫调度器
-运行10天，每1小时执行一次完整流程（爬取+AI分析）
+长期运行，每1小时执行一次完整流程（爬取+AI分析）
 """
 
 import time
@@ -22,10 +22,8 @@ class NewsScheduler:
     
     def __init__(self):
         self.start_time = datetime.now()
-        self.end_time = self.start_time + timedelta(days=40)  # 运行40天
         self.interval_hours = 1  # 每1小时执行一次
         self.execution_count = 0
-        self.max_executions = 960  # 40天 × 24小时 ÷ 1小时 = 960次
         self.shutdown_requested = False  # 优雅退出标志
         
         # 创建logs目录
@@ -122,13 +120,9 @@ class NewsScheduler:
         """打印心跳信息到控制台"""
         current_time = datetime.now()
         elapsed = current_time - self.start_time
-        remaining = self.end_time - current_time
-        
         heartbeat_msg = (
-            f"💓 心跳 #{self.execution_count + 1}/240 | "
-            f"已运行: {elapsed.total_seconds() / 3600:.1f}h | "
-            f"剩余: {remaining.total_seconds() / 3600:.1f}h | "
-            f"预计结束: {self.end_time.strftime('%Y-%m-%d %H:%M:%S')}"
+            f"💓 心跳 #{self.execution_count + 1} | "
+            f"已运行: {elapsed.total_seconds() / 3600:.1f}h | 长期运行（无期限）"
         )
         
         print(heartbeat_msg)  # 直接打印到控制台
@@ -185,15 +179,13 @@ class NewsScheduler:
             self.logger.info("=" * 50)
             self.logger.info("财联社新闻爬虫调度器启动")
             self.logger.info(f"开始时间: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            self.logger.info(f"结束时间: {self.end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            self.logger.info("运行模式: 长期运行，无期限和次数上限")
             self.logger.info(f"执行间隔: {self.interval_hours} 小时")
-            self.logger.info(f"预计执行次数: {self.max_executions} 次")
             self.logger.info("=" * 50)
             
             print(f"🚀 财联社新闻爬虫调度器启动")
-            print(f"📅 运行期间: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} ~ {self.end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"📅 启动时间: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} | 长期运行（无期限）")
             print(f"⏰ 执行间隔: {self.interval_hours} 小时")
-            print(f"🔄 预计执行: {self.max_executions} 次")
             print("=" * 60)
             
             # 立即执行第一次
@@ -201,9 +193,7 @@ class NewsScheduler:
                 return
             
             # 循环执行
-            while (datetime.now() < self.end_time and 
-                   self.execution_count < self.max_executions and 
-                   not self.shutdown_requested):
+            while not self.shutdown_requested:
                 
                 # 更新日志文件（如果需要）
                 self.update_log_file_if_needed()
@@ -227,10 +217,6 @@ class NewsScheduler:
                 if self.shutdown_requested:
                     break
                     
-                # 检查是否还在运行时间内
-                if datetime.now() >= self.end_time:
-                    break
-                
                 # 执行任务
                 if not self.execute_crawl_and_analyze():
                     return  # 异常时立即停止

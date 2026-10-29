@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 期货涨跌幅TOP10定时任务调度器
-运行40天，仅在交易日（周一到周五）的下午17:30执行（期货收盘后）
+长期运行，仅在交易日（周一到周五）的下午17:30执行（期货收盘后）
 """
 
 import time
@@ -21,11 +21,9 @@ class FuturesTop10Scheduler:
     
     def __init__(self):
         self.start_time = datetime.now()
-        self.end_time = self.start_time + timedelta(days=40)  # 运行40天
         self.execution_hour = 17  # 下午5点
         self.execution_minute = 30  # 30分
         self.execution_count = 0
-        self.max_executions = 30  # 最多执行30次（40天约28-30个交易日）
         self.shutdown_requested = False  # 优雅退出标志
         
         # 创建logs目录
@@ -147,9 +145,6 @@ class FuturesTop10Scheduler:
         
         # 最多查找7天
         for _ in range(7):
-            if check_date > self.end_time:
-                return None
-            
             if self.is_trading_day(check_date):
                 # 找到下一个交易日，设置为17:30
                 next_time = check_date.replace(
@@ -158,8 +153,7 @@ class FuturesTop10Scheduler:
                     second=0, 
                     microsecond=0
                 )
-                if next_time <= self.end_time:
-                    return next_time
+                return next_time
             
             check_date += timedelta(days=1)
         
@@ -186,7 +180,7 @@ class FuturesTop10Scheduler:
     
     def print_heartbeat(self):
         """打印心跳信息到控制台"""
-        heartbeat_msg = f"已执行 {self.execution_count}/{self.max_executions} 次"
+        heartbeat_msg = f"已执行 {self.execution_count} 次（无次数上限）"
         print(f"💓 {heartbeat_msg}")  # 直接打印到控制台
     
     def execute_crawl_task(self):
@@ -211,10 +205,10 @@ class FuturesTop10Scheduler:
     def run(self):
         """运行调度器"""
         try:
-            self.logger.info(f"调度器启动 | 运行至 {self.end_time.strftime('%Y-%m-%d')} | 每交易日 {self.execution_hour}:{self.execution_minute:02d} 执行")
+            self.logger.info(f"调度器启动 | 长期运行（无期限和次数上限） | 每交易日 {self.execution_hour}:{self.execution_minute:02d} 执行")
             
             print(f"🚀 期货涨跌幅TOP10调度器启动")
-            print(f"📅 运行期间: {self.start_time.strftime('%Y-%m-%d')} ~ {self.end_time.strftime('%Y-%m-%d')}")
+            print("📅 运行模式: 长期运行，无期限和次数上限")
             print(f"⏰ 执行时间: 每个交易日 {self.execution_hour}:{self.execution_minute:02d}")
             
             # 检查当前是否应该立即执行
@@ -235,9 +229,7 @@ class FuturesTop10Scheduler:
             # 主循环
             last_execution_date = None
             
-            while (datetime.now() < self.end_time and 
-                   self.execution_count < self.max_executions and 
-                   not self.shutdown_requested):
+            while not self.shutdown_requested:
                 
                 # 更新日志文件（如果需要）
                 self.update_log_file_if_needed()

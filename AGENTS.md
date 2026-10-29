@@ -53,8 +53,7 @@ cd spiderx
 ```bash
 cd spiderx/<service>
 ./start_scheduler.sh   # 调度类爬虫（clsnewscraper、eastfutuscraper、gthtposiscraper 等）
-./start_server.sh      # HTTP 服务类（chatgpthelper、geminihelper、doubaohelper、bbgnews、rtrsnews）
-./stop_scheduler.sh / ./stop_server.sh
+./stop_scheduler.sh    # 停止调度类爬虫
 ```
 
 ### 数据库更新（database/ 和 quantlab/）
@@ -99,15 +98,9 @@ cd quantlab
 - **阿里云 OSS**：新闻截图（路径格式：`screenshots/YYYY/MM/DD/`）
 - 动态表：每个合约独立一张历史行情表，命名为 `hist_{symbol}`（小写）
 
-### 爬虫服务端口（本地 HTTP 服务）
+### 原本地 HTTP 助手
 
-| 服务 | 端口 |
-|------|------|
-| bbgnews | 1123 |
-| geminihelper | 1124 |
-| rtrsnews | 1125 |
-| chatgpthelper | 1126 |
-| doubaohelper | 1127 |
+Gemini 和豆包助手已停用，服务端、浏览器扩展及启停代码已移除；不再提供本地 HTTP 端口。
 
 ### 环境配置
 

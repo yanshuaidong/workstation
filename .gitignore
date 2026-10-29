@@ -44,8 +44,13 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.temp
+# 日志及轮转日志（适用于所有子目录）
 *.log
+*.log.*
+logs/
 nohup.out
+launchd.out
+launchd.err
 
 # 运行时文件
 *.pid

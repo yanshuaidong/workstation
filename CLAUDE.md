@@ -49,25 +49,24 @@ python start.py   # 启动 Flask，监听 7001 端口
 
 ```bash
 cd spiderx
-./runall.sh    # 启动 bbgnews、chatgpthelper、clsnewscraper、drivehelper、eastfutuscraper、futurestop10、gthtposiscraper、rtrsnews
+./runall.sh    # 启动 clsnewscraper、eastfutuscraper、futurestop10、gthtposiscraper
 ./stopall.sh   # 停止所有爬虫服务
 ```
 
-> **注意：** `geminihelper` 和 `doubaohelper` 未被 `runall.sh` 管理，需单独启停。
+> **注意：** 原 Gemini 和豆包 HTTP 助手均已停用，相关代码已移除；共享数据库及历史分析数据保留。
 
 各爬虫单独操作：
 ```bash
 cd spiderx/<service>
-./start_scheduler.sh   # 调度类爬虫（clsnewscraper、eastfutuscraper、gthtposiscraper、drivehelper、futurestop10 等）
-./start_server.sh      # HTTP 服务类（chatgpthelper、geminihelper、doubaohelper、bbgnews、rtrsnews）
-./stop_scheduler.sh / ./stop_server.sh
+./start_scheduler.sh   # 调度类爬虫（clsnewscraper、eastfutuscraper、gthtposiscraper、futurestop10 等）
+./stop_scheduler.sh    # 停止调度类爬虫
 ```
 
 ### 数据采集（database/）
 
 ```bash
 cd database
-./runall.sh    # 启动 fut_pulse、futures、institution、stock 四组数据采集任务
+./runall.sh    # 启动 futures、institution 两组数据采集任务
 ```
 
 ### 量化策略（trading/）
@@ -119,7 +118,6 @@ python daily_run.py   # 执行每日策略批处理（信号计算 + 操作建�
 | `fut_pulse/` | 主力/散户资金强度 + 日收盘价（AkShare + 截图OCR） |
 | `futures/` | 主连合约历史数据拉取、更新、回填 |
 | `institution/` | 机构持仓数据 |
-| `stock/` | 股票数据（含 ~1GB SQLite 本地库） |
 
 ### 量化策略模块（trading/strategies/）
 
@@ -134,15 +132,9 @@ python daily_run.py   # 执行每日策略批处理（信号计算 + 操作建�
 | `db.py` | 数据库连接 |
 | `create_tables.py` | `trading_*` 表模式初始化 |
 
-### 爬虫服务端口（本地 HTTP 服务）
+### 原本地 HTTP 助手
 
-| 服务 | 端口 |
-|------|------|
-| bbgnews | 1123 |
-| geminihelper | 1124 |
-| rtrsnews | 1125 |
-| chatgpthelper | 1126 |
-| doubaohelper | 1127 |
+Gemini 和豆包助手已停用，服务端、浏览器扩展及启停代码已移除；不再提供本地 HTTP 端口。
 
 ### 环境配置
 
