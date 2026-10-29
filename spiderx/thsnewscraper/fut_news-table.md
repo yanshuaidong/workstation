@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS fut_news (
   read_at      DATETIME(3)  DEFAULT NULL COMMENT '期货站标记已读的时间，UTC；NULL 表示未读',
   PRIMARY KEY (id),
   UNIQUE KEY uk_fut_news_url (url),
-  KEY idx_fut_news_kind_id (kind, id),
+  KEY idx_fut_news_collected (collected_at, id),
+  KEY idx_fut_news_kind_collected (kind, collected_at, id),
   KEY idx_fut_news_read (read_at, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC
   COMMENT='同花顺期货热点新闻：爬虫写入，期货站读取';
@@ -44,6 +45,12 @@ CREATE TABLE IF NOT EXISTS fut_news (
 | `kind` | VARCHAR(16) | 爬虫 | 见下方判定规则 |
 | `collected_at` | DATETIME(3) | 爬虫 | 本次抓取写入时间，**UTC**，同一批用同一个值 |
 | `read_at` | DATETIME(3) | 期货站 | 标记已读时间，**UTC**；写一次不再变 |
+
+## 排序与 id
+
+- 列表和专题都按 **`collected_at DESC, id DESC`** 排，`current`（最老未读）取 `collected_at ASC, id ASC`。同一批数据用 `id` 兜底，保证翻页顺序稳定。
+- **不要用 `id` 推断时间**：2026-10-29 把本地 SQLite 的旧新闻回填进这张表（610 条新 URL），回填行的 `id` 比采集时间更晚，`id` 顺序从此只代表"写入先后"，不代表采集先后。`idx_fut_news_collected` 就是给这个排序用的。
+- `id` 有跳号是正常的：InnoDB 对被唯一键挡掉的 `INSERT` 也会消耗自增值。`id` 只用来排序和定位，不影响功能。
 
 ## 时间口径
 
@@ -73,7 +80,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
 ON DUPLICATE KEY UPDATE id = id
 ```
 
-- 命中唯一键时 `id = id` 是空更新：**不改标题、不动 `read_at`、不换 `id`**。所以反复抓同一批热点不会把读过的文章变回未读，也不会打乱历史列表顺序（列表按 `id DESC` 排序）。
+- 命中唯一键时 `id = id` 是空更新：**不改标题、不动 `read_at`、不换 `id`**。所以反复抓同一批热点不会把读过的文章变回未读，也不会打乱历史列表顺序（列表按采集时间倒序）。
 - `ON DUPLICATE KEY UPDATE` 而不是 `INSERT IGNORE`：`INSERT IGNORE` 会把主键冲突之外的错误（比如数据截断）也吞掉，静默丢数据。
 - 计数口径：`rowcount == 1` 记为新增，`== 0` 记为重复，累加成「新增 N 条 / 重复 M 条」。
 
@@ -109,8 +116,8 @@ ON DUPLICATE KEY UPDATE id = id
 -- 总数、未读数、最近一次采集时间
 SELECT COUNT(*) AS total, COUNT(read_at) AS read_count, MAX(collected_at) AS last_collected FROM fut_news;
 
--- 最新 10 条
-SELECT id, kind, collected_at, read_at, title FROM fut_news ORDER BY id DESC LIMIT 10;
+-- 最新 10 条（按采集时间，不按 id）
+SELECT id, kind, collected_at, read_at, title FROM fut_news ORDER BY collected_at DESC, id DESC LIMIT 10;
 
 -- 按类型统计
 SELECT kind, COUNT(*) AS total, COUNT(read_at) AS read_count FROM fut_news GROUP BY kind;
